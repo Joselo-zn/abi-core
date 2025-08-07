@@ -4,7 +4,7 @@
 | **Julio** | 🔹 Publicación del Manifiesto y Whitepaper en GitHub                  | ✅ Liberado     |
 |           | 🔹 Setup inicial del repositorio y licencia                           | ✅ Liberado     |
 |           | 🔹 Diseño del MVP (diagrama de agentes, A2A, supervisión)             | ✅ Liberado |
-|           | 🔹 Revisión inicial del stack tec (FastMCP, Weaviate, EmbeddingMesh) | 🟡 En Liberdo |
+|           | 🔹 Revisión inicial del stack tec (FastMCP, Weaviate, EmbeddingMesh) | ✅  Liberdo |
 | **Agosto** | 🔹 Desarrollo del primeros agentes con rol  | 🟡 Progreso      |
 |            | 🔹 Implementación de comunicación entre agentes (MCP / A2A)          | 🟡 Progreso |
 |            | 🔹 Primer prototipo funcional con dashboard de supervisión           | 🟡 Progreso |
