@@ -3,10 +3,10 @@
 | --------- | --------------------------------------------------------------------- | -------------- |
 | **Julio** | 🔹 Publicación del Manifiesto y Whitepaper en GitHub                  | ✅ Liberado     |
 |           | 🔹 Setup inicial del repositorio y licencia                           | ✅ Liberado     |
-|           | 🔹 Diseño del MVP (diagrama de agentes, A2A, supervisión)             | 🟡 En progreso |
-|           | 🔹 Revisión inicial del stack tecnológico (FastAPI, MQTT, PocketBase) | 🟡 En progreso |
+|           | 🔹 Diseño del MVP (diagrama de agentes, A2A, supervisión)             | 🟡 En Progreso |
+|           | 🔹 Revisión inicial del stack tec (FastMCP, Weaviate, EmbeddingMesh) | 🟡 En Liberdo |
 | **Agosto** | 🔹 Desarrollo del primer agente con rol básico | ⏳ Planificado      |
-|            | 🔹 Implementación de comunicación entre agentes (MCP / A2A)          | ⏳ Planificado |
+|            | 🔹 Implementación de comunicación entre agentes (MCP / A2A)          | ⏳ Progreso |
 |            | 🔹 Primer prototipo funcional con dashboard de supervisión           | ⏳ Planificado |
 | **Septiembre** | 🔹 Documentación técnica del MVP (`docs/`)                       | ⏳ Planificado |
 |                | 🔹 Prueba de concepto: demo razonamiento colaborativo supervisado| ⏳ Planificado |

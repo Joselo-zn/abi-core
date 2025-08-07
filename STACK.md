@@ -1,83 +1,88 @@
-# 🧱 Infraestructura Física y Orquestación
-
-- **Kubernetes**: para orquestación de contenedores y separación lógica de agentes.
-- **Docker**: empaquetado de cada agente o servicio.
-- **Terraform**: gestión de infraestructura como código.
-- **Prometheus + Grafana**: monitoreo y visualización.
-- **Vault / Sealed Secrets**: gestión segura de secretos.
+# ✅ `stack.md` (ENGLISH VERSION)
 
 ---
 
-# 🧠 Capa Cognitiva (Agentes Inteligentes)
+## 🧱 Physical Infrastructure & Orchestration
 
-- **Python** *(FastAPI / Langchain / Haystack)*: para desarrollo de agentes individuales.
-- **Ollama / LM Studio**: ejecución local de modelos LLMs.
-- **GPT-4o / Claude 3 / Mistral / LLaMA**: modelos conectables vía MCP Client.
-- **MCP Client**: interfaz local de ejecución de agentes conectados.
-- **MCP Toolbox**: para flujos A2A, validación, gestión de contexto, razonamiento.
-- **Weaviate / ChromaDB**: almacenamiento vectorial de memoria semántica distribuida.
-- **Redis / SQLite / TinyDB (local)**: para persistencia ligera por agente.
-
----
-
-# 🧬 Capa Semántica y de Contexto
-
-- **Model Context Protocol (MCP)**: gestión de contexto compartido, memoria, razonamiento distribuido.
-- **A2A (Agent-to-Agent Protocol)**: ontología activa para comunicación entre agentes.
-- **JSON-LD / RDF / OWL**: representación semántica de conceptos.
-- **YAML / JSON Schemas**: definición estructurada de reglas y configuraciones de agentes.
-- **Neo4j como graph DB** en memoria puede funcionar como:
-
-    💡 Repositorio semántico compartido entre agentes, donde:
-
-    - Se almacenan relaciones (quién dijo qué, cuándo, en qué contexto, con qué resultado).
-    - Se representan conceptos (objetos, ideas, tareas, etc.) como nodos y sus vínculos como aristas.
-
-    **Mecanismo de razonamiento contextual**, donde:
-
-    - Cada agente puede consultar conexiones y relaciones previas.
-    - Se pueden aplicar patrones de razonamiento sobre el grafo: inferencias, propagación, rutas más relevantes.
-    - Compatible con estructuras tipo RDF / OWL si lo encapsulas con una capa de traducción.
+- **Kubernetes (K3s / GKE / EKS)** – container orchestration and logical separation of agents, using `StatefulSet` for agents requiring persistence.
+- **Helm** – deployment packaging for reproducible rollouts of agents and services.
+- **Terraform** – infrastructure as code provisioning.
+- **Ansible** – automated setup of dependencies, environments, and clusters.
+- **Prometheus + Grafana** – monitoring and real-time metrics visualization.
+- **Vault / Sealed Secrets** – encrypted and secure secrets management.
 
 ---
 
-# 🛡️ Seguridad y Gobernanza
+## 🧠 Cognitive Layer (Intelligent Agents)
 
-- **Keycloak**: gestión de identidades y autenticación (SSO, LDAP, etc).
-- **OPA (Open Policy Agent)**: políticas de autorización y validación.
-- **Immutable Logs** *(Sigstore / Loki / Wazuh)*: trazabilidad y auditoría.
-- **Airgap agents / Firecracker**: aislamiento fuerte de agentes críticos.
-
----
-
-# 🧰 Herramientas de Desarrollo y Supervisión
-
-- **VS Code + Dev Containers**: entorno de desarrollo portable.
-- **Jupyter + Langchain Notebooks**: exploración y pruebas interactivas.
-- **N8N / Temporal**: orquestación de flujos de trabajo y tareas asincrónicas.
-- **Webhook Relay / ngrok**: testing remoto y controlado de entradas.
+- **Python (FastAPI + LangChain)** – modular agent development framework.
+- **BaseAgent** – shared base class defining structure and behaviors of all ABI agents.
+- **Ollama** – local LLM runtime with shared download volume across pods.
+- **LLMs** – LLaMA 3.1, Claude, GPT-4o, Mistral – connectable via Ollama or remote adapters.
+- **MCP Client** – interface for agents to interact with the MCP ecosystem.
+- **MCP Toolbox** – tools for validation, shared context, and A2A-based reasoning.
+- **Redis** – agent state/event synchronization layer.
+- **Weaviate / ChromaDB** – distributed semantic vector memory store.
+- **TinyDB / SQLite** – lightweight local state persistence per agent.
 
 ---
 
-# 🌍 Interfaz y Colaboración Humana
+## 🧬 Semantic & Context Layer
 
-- **Next.js / Vue.js / Svelte**: frontend de visualización y control humano.
-- **ShadCN / Tailwind CSS**: diseño UI moderno y accesible.
-- **Socket.IO / WebRTC**: interacción en tiempo real con agentes.
-- **Markdown / Mermaid.js**: documentación viva, diagramas y trazabilidad.
+- **Model Context Protocol (MCP)** – shared context, memory, and distributed reasoning coordination.
+- **A2A (Agent-to-Agent Protocol)** – semantic interaction protocol using RDF/OWL and JSON-LD.
+- **YAML / JSON Schemas** – declarative configuration of rules, policies, and agent capabilities.
+- **Neo4j (optional)** – in-memory semantic graph database for distributed inference and shared context.
+
+### 🔹 As a Semantic Repository
+
+- Tracks who said what, when, in what context, and with what outcome.
+- Models concepts (tasks, agents, decisions) as nodes and relations as edges.
+
+### 🔹 As a Reasoning Engine
+
+- Agents can query past relations and events.
+- Supports inference patterns like propagation, relevance scoring, belief tracking.
+- RDF/OWL-compatible via translation layer.
 
 ---
 
-# 📦 Distribución e Instalación
+## 🛡️ Security & Governance
 
-- **Snapcraft / Homebrew / Docker Compose**: para empaquetar versiones portables.
-- **GitHub Actions / Gitea / Woodpecker CI**: CI/CD local o abierto.
-- **Inno Setup / NSIS (para Windows)**: creadores de instaladores.
+- **Keycloak** – identity and access management (SSO, LDAP, OAuth2).
+- **OPA (Open Policy Agent)** – policy enforcement and access validation for agents.
+- **Immutable Logs (Loki / Wazuh / Sigstore)** – full traceability and action audit logs.
+- **Airgap Agents / Firecracker** *(optional)* – hardened isolation for critical agents.
 
 ---
 
-# 🧭 Opcional (Avanzado / Experimental)
+## 🧰 Development & Supervision Tools
 
-- **NeMo Framework / HuggingFace Transformers**: entrenamiento o fine-tuning personalizado.
-- **AgentVerse / Autogen / CrewAI**: para experimentos con frameworks multi-agente.
-- **DeltaLake / Apache Arrow / DuckDB**: si necesitas procesamiento de datos estructurados y consulta local.
+- **VS Code + DevContainers** – reproducible portable development environments.
+- **Jupyter Notebooks + LangChain** – interactive agent experimentation and testing.
+- **N8N / Temporal.io** – asynchronous workflows and task orchestration across agents.
+- **Webhook Relay / ngrok** – controlled remote testing from outside the cluster.
+
+---
+
+## 🌍 Human Interface & Collaboration
+
+- **Vue.js / Next.js** – dashboards for human interaction and system supervision.
+- **Socket.IO / WebRTC** – real-time interaction channels with agents.
+- **Markdown + Mermaid.js** – living documentation, architecture diagrams, and traceable state.
+
+---
+
+## 📦 Distribution & Installation
+
+- **Helm** – primary packaging tool per agent or module.
+- **GitHub Actions / Woodpecker CI** – local or cloud-based CI/CD pipelines.
+- **Inno Setup / NSIS / Snapcraft / Homebrew** *(optional)* – native installable package creation.
+
+---
+
+## 🧭 Optional / Advanced
+
+- **NeMo / HuggingFace Transformers** – fine-tuning and custom model training.
+- **AgentVerse / Autogen / CrewAI** – multi-agent architecture experimentation.
+- **DeltaLake / DuckDB / Apache Arrow** – analytical query and structured data processing.
