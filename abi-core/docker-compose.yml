@@ -6,6 +6,19 @@ services:
     image: abi-llm-base
     volumes:
       - ollama-data:/root/.ollama
+  mcp-server:
+    build:
+      context: ./mcp
+    depends_on:
+      - abi-llm-base
+    ports:
+      - 10100:10100
+    volumes:
+      - ./mcp/server:/app
+      - ollama-data:/root/.ollama
+    networks:
+      - abi-network
+    restart: "unless-stopped"  
 
   orchestrator:
     build:
@@ -25,19 +38,6 @@ services:
     networks:
       - abi-network
     restart: "unless-stopped"
-
-  mcp-server:
-    build:
-      context: ./mcp
-    depends_on:
-      - abi-llm-base
-    ports:
-      - 10100:10100
-    volumes:
-      - mcp/root/.app
-    network:
-      - abi-network
-    restart: "unless-stopped"  
 
   # auditor:
   #   build:

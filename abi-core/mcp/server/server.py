@@ -6,8 +6,8 @@ import pandas as pd
 import google.generativeai as genai
 
 from pathlib import Path
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.utilities.logging import get_logger
+from fastmcp import FastMCP
+from fastmcp.utilities.logging import get_logger
 
 
 logger = get_logger(__name__)

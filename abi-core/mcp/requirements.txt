@@ -1,0 +1,6 @@
+numpy
+pandas
+google-generativeai
+fastapi
+fastmcp
+uvicorn
