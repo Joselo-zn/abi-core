@@ -1,0 +1,24 @@
+{
+  "id": "auditor-agent",
+  "name": "Auditor Agent",
+  "description": "Evaluates agent outputs against expected behavior, ensuring accuracy, traceability, and alignment with policies.",
+  "version": "1.0.0",
+  "author": "ABI Framework",
+  "agent_type": "auditor",
+  "content_types": ["application/json", "text/plain", "text/markdown"],
+  "entrypoint": "auditor.main:app",
+  "communication_protocol": "A2A-Protocol",
+  "requires_context_id": true,
+  "inputs": [
+    "agent_outputs",
+    "expected_behaviors",
+    "policy_documents"
+  ],
+  "outputs": [
+    "audit_report",
+    "deviation_score",
+    "compliance_trace"
+  ],
+  "prompt_reference": "prompts.AUDITOR_COT_INSTRUCTIONS",
+  "tags": ["abi", "auditor", "evaluation", "compliance", "traceability"]
+}

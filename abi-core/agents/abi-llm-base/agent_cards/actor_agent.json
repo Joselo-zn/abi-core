@@ -1,0 +1,24 @@
+{
+  "id": "actor-agent",
+  "name": "Actor Agent",
+  "description": "Executes delegated tasks and interacts with tools or systems.",
+  "version": "1.0.0",
+  "author": "ABI Framework",
+  "agent_type": "actor",
+  "content_types": ["text/plain", "text", "application/json"],
+  "entrypoint": "actor.main:app",
+  "communication_protocol": "A2A-Protocol",
+  "requires_context_id": true,
+  "inputs": [
+    "task_description",
+    "tool_parameters",
+    "execution_context"
+  ],
+  "outputs": [
+    "execution_result",
+    "status_report",
+    "error_logs"
+  ],
+  "prompt_reference": "prompts.ACTOR_COT_INSTRUCTIONS",
+  "tags": ["abi", "actor", "execution", "tool", "agent"]
+}

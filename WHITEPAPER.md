@@ -51,3 +51,96 @@ ABI proposes a new way of thinking about AI: not as a closed, centralized system
 * **Supervised**: with native human control
 * **Audited**: with immutable records and integrated governance
 * **Composable**: each agent contributes a part of the whole
+
+
+flowchart TD
+
+%% ─────── Layer 1: Human Interface ───────
+subgraph L1["🧑‍💻 User Interaction Layer"]
+    UI["User Interface (Vue.js / Next.js)"]
+end
+
+%% ─────── Layer 2: Agent Orchestration ───────
+subgraph L2["🧠 Orchestration Layer"]
+    ORCH["Orchestrator Agent"]
+    PLAN["Planner Agent"]
+end
+
+%% ─────── Layer 3: Agent Execution ───────
+subgraph L3["🤖 Execution Agents (K8s Pods)"]
+    WORK["Worker Agent"]
+    OBS["Observer Agent"]
+    AUD["Auditor Agent"]
+    VER["Verifier Agent"]
+end
+
+%% ─────── Layer 4: Discovery & Context ───────
+subgraph L4["🧬 Discovery & Shared Context"]
+    MCP["MCP Server"]
+    TOOLBOX["MCP Toolbox"]
+    A2A["A2A Protocol"]
+    RULES["Rules & Schemas"]
+    GRAPH["Graph DB (Neo4j / RDF / OWL)"]
+end
+
+%% ─────── Layer 5: LLM & Memory ───────
+subgraph L5["🗃️ LLM Runtime & Memory"]
+    OLLAMA["Ollama (LLM Runtime)"]
+    MODELS["LLMs (LLaMA / Claude / Mistral)"]
+    VDB["Vector DB (Weaviate / Chroma)"]
+    REDIS["Redis / TinyDB"]
+end
+
+%% ─────── Layer 6: Security & Policy ───────
+subgraph L6["🔐 Security & Governance"]
+    KEYCLOAK["Keycloak (SSO / Auth)"]
+    OPA["OPA (Policies)"]
+    LOGS["Immutable Logs (Loki / Wazuh)"]
+end
+
+%% ─────── Layer 7: Infra & Deployment ───────
+subgraph L7["⚙️ Infra, CI/CD & Provisioning"]
+    K8S["Kubernetes"]
+    HELM["Helm Charts"]
+    TF["Terraform"]
+    ANS["Ansible"]
+    CI["GitHub Actions / CI/CD"]
+    MON["Prometheus / Grafana"]
+end
+
+%% ─────── Layer 8: Agent Base ───────
+subgraph L8["🔧 Agent Kernel"]
+    BASE["BaseAgent (Shared Logic)"]
+end
+
+%% Connections
+UI --> ORCH
+ORCH --> PLAN
+
+ORCH --> WORK & OBS & AUD & VER
+WORK & OBS & AUD & VER --> BASE
+
+ORCH --> MCP & TOOLBOX & A2A & RULES
+MCP --> GRAPH
+TOOLBOX --> RULES & GRAPH
+
+AUD --> OPA
+ORCH --> KEYCLOAK & LOGS
+
+WORK & OBS & AUD & VER --> OLLAMA & MODELS & VDB & REDIS
+
+K8S --> HELM
+HELM --> ORCH & MCP & OLLAMA & WORK & AUD & VER & OBS
+TF --> K8S
+ANS --> K8S
+CI --> HELM
+MON --> K8S
+
+%% Styling
+classDef agent fill:#f9f,stroke:#333,stroke-width:2px
+classDef infra fill:#DFF0D8,stroke:#2D882D,stroke-width:2px
+classDef logic fill:#E8EAF6,stroke:#1A237E,stroke-width:2px
+class AUD,VER agent
+class ORCH,PLAN,WORK,OBS agent
+class K8S,HELM,TF,ANS,CI,MON infra
+class BASE,TOOLBOX,GRAPH,A2A,RULES logic

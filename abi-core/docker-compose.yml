@@ -1,0 +1,142 @@
+services:
+
+  abi-llm-base:
+    build:
+      context: ./agents/abi-llm-base
+    image: abi-llm-base
+    volumes:
+      - ollama-data:/root/.ollama
+
+  orchestrator:
+    build:
+      context: ./agents/orchestrator
+    depends_on:
+      - abi-llm-base
+    ports:
+      - 11435:11434
+      - 8081:8001
+    environment:
+      - ORCHESTRATOR_HOST=0.0.0.0
+      - ORCHESTRATOR_BASE=https://orchestrator:8001
+    volumes:
+      - orchestrator/root/.app
+      - ollama-data:/root/.ollama
+      - ./agents/orchestrator/agent:/agent
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
+  mcp-server:
+    build:
+      context: ./mcp
+    depends_on:
+      - abi-llm-base
+    ports:
+      - 10100:10100
+    volumes:
+      - mcp/root/.app
+    network:
+      - abi-network
+    restart: "unless-stopped"  
+
+  # auditor:
+  #   build:
+  #     context: ./agents/auditor
+  #   depends_on:
+  #     - orchestrator
+  #   ports:
+  #     - 11435:11435
+  #   environment:
+  #     - AUDITOR_HOST=0.0.0.0
+  #     - AUDITOR_BASE=https://auditor:11435
+  #   volumes:
+  #     - auditor/root/.app
+  #   networks:
+  #     - abi-network
+  #   restart: "unless-stopped"
+
+  # verifier:
+  #   build:
+  #     context: ./agents/verifier
+  #   depends_on:
+  #     - auditor
+  #   ports:
+  #     - 11437:11437
+  #   environment:
+  #     - VERIFIER_HOST=0.0.0.0
+  #     - VERIFIER_BASE=https://verifier:11437
+  #   volumes:
+  #     - verifier/root/.app
+  #   networks:
+  #     - abi-network
+  #   restart: "unless-stopped"
+
+  # observer:
+  #   build:
+  #     context: ./agents/worker-observer
+  #   depends_on:
+  #     - verifier
+  #   ports:
+  #     - 11439:11439
+  #   environment:
+  #     - OBSERVER_HOST=0.0.0.0
+  #     - OBSERVER_BASE=https://observer:11439
+  #   volumes:
+  #     - worker-observer/root/.app
+  #   networks:
+  #     - abi-network
+  #   restart: "unless-stopped"
+
+  actor:
+     build:
+       context: ./agents/worker-act
+     depends_on:
+       - orchestrator
+     ports:
+       - 11436:11434
+       - 8082:8002
+     environment:
+       - ACTOR_HOST=0.0.0.0
+       - ACTOR_BASE=https://actor:8002
+     volumes:
+       - worker-act/root/.app
+       - ollama-data:/root/.ollama
+       - ./agents/worker-act/agent:/agent
+     networks:
+       - abi-network
+     restart: "unless-stopped"
+
+  #model-loader:
+  #  image: curlimages/curl:latest
+  #  depends_on:
+  #    - orchestrator
+  #  volumes:
+  #    - ./agents/abi-llm-base/model-loader.sh:/model-loader.sh
+  #  entrypoint: ["sh", "/model-loader.sh"]
+  #  networks:
+  #    - abi-network
+
+  #pocketbase:
+  # build:
+  #    context: ./pocketbase
+  #  ports:
+  #    - "8090:8080"  # host:container
+  #  volumes:
+  #    - ./pocketbase/pocketbase_data:/pb/pocketbase_data
+  #  networks:
+  #    - abi-network
+
+ # mcp-neo4j:
+  #  image: mcp/server:neo4j-memory
+  # ports:
+  #    - "7687:7687"
+  #    - "7474:7474"
+  # networks:
+  #   - abi-network
+
+volumes:
+  ollama-data:
+
+networks:
+  abi-network:
+    driver: bridge
