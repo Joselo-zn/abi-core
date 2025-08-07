@@ -1,6 +1,3 @@
-
-<<<<<<< HEAD
-=======
 # 🧱 Infraestructura Física y Orquestación
 
 - **Kubernetes**: para orquestación de contenedores y separación lógica de agentes.
@@ -84,4 +81,3 @@
 - **NeMo Framework / HuggingFace Transformers**: entrenamiento o fine-tuning personalizado.
 - **AgentVerse / Autogen / CrewAI**: para experimentos con frameworks multi-agente.
 - **DeltaLake / Apache Arrow / DuckDB**: si necesitas procesamiento de datos estructurados y consulta local.
->>>>>>> 7fac44c (agents servers and addtional logic added)
