@@ -1,6 +1,7 @@
 #!/bin/sh
 
 MODEL_NAME="mixtral:8x22b"
+EMBEDDING_MODEL="jina/jina-embeddings-v2-base-es:latest"
 HOSTS="http://orchestrator:11434 http://auditor:11435 http://verifier:11437 http://observer:11439 http://actor:11438"
 
 for OLLAMA_HOST in $HOSTS; do
