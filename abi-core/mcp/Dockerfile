@@ -19,12 +19,13 @@ COPY requirements.txt .
 # Instala dependencias de Python
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Copia el código fuente
-COPY ./server /app/server
+COPY mcp_server/ /app/mcp_server/
+
+ENV PYTHONPATH=/app
 
 # Expone el puerto si aplica (ajústalo si usas FastAPI u otro framework con puerto específico)
 EXPOSE 10100
 
 # Comando para lanzar el servidor MCP
-CMD ["uvicorn", "app.server.main:app", "--host", "0.0.0.0", "--port", "10100"]
+CMD ["python", "-m", "mcp_server.main"]
 

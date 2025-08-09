@@ -6,19 +6,22 @@ services:
     image: abi-llm-base
     volumes:
       - ollama-data:/root/.ollama
+
   mcp-server:
     build:
-      context: ./mcp
-    depends_on:
-      - abi-llm-base
+      context: .               # 👈 build desde la raíz
+      dockerfile: mcp/Dockerfile
     ports:
-      - 10100:10100
+      - "10100:10100"
+    environment:
+      AGENT_CARDS_BASE: "/app/mcp_server/agent_cards"
+      MODEL: "models/embedding-001"
+      SQLLITE_DB: "abi_context.db"
     volumes:
-      - ./mcp/server:/app
-      - ollama-data:/root/.ollama
+      - ./mcp/mcp_server:/app/mcp_server:ro
     networks:
       - abi-network
-    restart: "unless-stopped"  
+    restart: unless-stopped
 
   orchestrator:
     build:
