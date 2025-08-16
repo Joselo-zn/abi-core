@@ -11,15 +11,24 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     fastapi \
     mcp \
     mcp-toolbox \
-    python-a2a \
+    a2a-sdk \
+    uvicorn \
     redis \
-    tinydb
+    tinydb \
+    httpx
 
-# Copia el script de inicio
-COPY ./start.sh /start.sh
-RUN chmod +x /start.sh
+COPY agents.d/ /opt/abi/agents.d/
+COPY shared/abi-motd /etc/abi-motd
+COPY shared/abi-motd.sh  /etc/profile.d/abi-motd.sh
+COPY agent /app/agent
+COPY agent_cards /app/agent_cards
+COPY common /app/common
+COPY mcp /app/mcp
+
+RUN chmod +x /etc/profile.d/abi-motd.sh
+RUN chmod +x /opt/abi/agents.d/abi-base.sh
 
 # 3. Set default working directory (agents will override if needed)
 WORKDIR /app
 
-ENTRYPOINT ["/start.sh"]
+ENTRYPOINT ["/opt/abi/agents.d/abi-base.sh"]

@@ -1,11 +1,10 @@
 FROM abi-llm-base
 
-# Copia el script de inicio
-COPY ./start.sh /start.sh
-RUN chmod +x /start.sh
+COPY ./agent/main.py /app/agent
+COPY ./agent/orchestrator.py /app/agent
 
-COPY ./agent /app
+RUN chmod +x /opt/abi/agents.d/orchestrator.sh
 
 WORKDIR /app
 
-ENTRYPOINT ["/start.sh"]
+ENTRYPOINT ["/opt/abi/agents.d/orchestrator.sh"]
