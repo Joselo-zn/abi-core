@@ -5,6 +5,8 @@ set -euo pipefail
 # Powered by ABI
 # Developed by Jose Luis Martinez
 # ==============================
+# Model quick test: tinyllama:latest
+
 MODEL_NAME="${MODEL_NAME:-mixtral:8x22b}"
 EMBEDDING_MODEL="${EMBEDDING_MODEL:-jina/jina-embeddings-v2-base-es:latest}"
 

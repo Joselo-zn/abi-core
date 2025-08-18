@@ -5,8 +5,29 @@
   "@type": "Agent",
   "id": "agent://orchestrator",
   "name": "Orchestrator Agent",
+  "version": "1.0.0",
+  "url": "http://orchestrator:8002",
   "description": "Coordinates and controls the execution flow of agents by navigating the semantic workflow graph. Ensures correct delegation, result aggregation and context continuity.",
   "contentType": "text/plain",
+
+  "capabilities": [
+    "routing",
+    "workflow_execution",
+    "context_propagation",
+    "result_aggregation",
+    "resume_execution"
+  ],
+
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+
+  "skills": [
+    "plan_workflow",
+    "select_agent",
+    "track_state",
+    "summarize_outputs"
+  ],
+
   "supportedTasks": [
     "execute_graph",
     "resume_workflow",
@@ -14,13 +35,16 @@
     "aggregate_artifacts",
     "generate_summary"
   ],
+
   "llmConfig": {
     "provider": "ollama",
-    "model": "mixtral:8x22b",
+    "model": "tinyllama:latest",
     "temperature": 0.0
   },
+
   "tools": [],
   "functions": [],
   "embedding": false,
+
   "prompt": "You are a high-level orchestrator responsible for managing workflows between agents. Given a workflow graph and task context, you must decide which agent should handle each task. Track context across queries, resume paused executions, and produce a final output summary. Maintain semantic alignment throughout the workflow."
 }

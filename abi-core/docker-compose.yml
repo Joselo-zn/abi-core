@@ -9,7 +9,7 @@ services:
       - 8081:8001
     environment:
       - BASELLM_HOST=0.0.0.0
-      - ABI_LLM_BASE=https://abi_llmbase:8000
+      - ABI_LLM_BASE=https://abi-llmbase:8000
       - ABI_ROLE=LLM Base
       - ABI_NODE=ABI Node
     volumes:
@@ -27,7 +27,7 @@ services:
       - "10100:10100"
     environment:
       AGENT_CARDS_BASE: "/app/mcp_server/agent_cards"
-      MODEL: "models/embedding-001"
+      MODEL: "jina/jina-embeddings-v2-base-es"
       SQLLITE_DB: "abi_context.db"
       ABI_ROLE: "MCP Server"
       ABI_NODE: "ABI Node"
@@ -37,7 +37,7 @@ services:
       - abi-network
     restart: unless-stopped
 
-  orchestrator:
+  abi-orchestrator:
     build:
       context: ./agents/orchestrator
     depends_on:
@@ -46,11 +46,12 @@ services:
       - 11435:11434
       - 8082:8002
     environment:
-      - ORCHESTRATOR_HOST=0.0.0.0
-      - ORCHESTRATOR_BASE=https://abiorchestrator:8002
-      - AGENT_CARD=./agent_cards/orchestrator_agent.json
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-orchestrator:8002
+      - AGENT_CARD=/app/agent_cards/orchestrator_agent.json
       - ABI_ROLE=Orchestrator Agent
       - ABI_NODE=ABI AGENT
+      - PYTHONPATH=/app
     volumes:
       - ollama-data:/root/.ollama
       - ./agents/orchestrator/agent:/agent
@@ -58,16 +59,16 @@ services:
       - abi-network
     restart: "unless-stopped"
 
-  # auditor:
+  # abi-auditor:
   #   build:
   #     context: ./agents/auditor
   #   depends_on:
-  #     - orchestrator
+  #     - abi-orchestrator
   #   ports:
   #     - 11435:11435
   #   environment:
-  #     - AUDITOR_HOST=0.0.0.0
-  #     - AUDITOR_BASE=https://auditor:11435
+  #     - AGENT_HOST=0.0.0.0
+  #     - AGENT_BASE=https://abi-auditor:11435
   #    - ABI_ROLE=Auditor Agent
   #    - ABI_NODE=ABI AGENT
   #   volumes:
@@ -76,16 +77,16 @@ services:
   #     - abi-network
   #   restart: "unless-stopped"
 
-  # verifier:
+  # abi-verifier:
   #   build:
   #     context: ./agents/verifier
   #   depends_on:
-  #     - auditor
+  #     - abi-auditor
   #   ports:
   #     - 11437:11437
   #   environment:
-  #     - VERIFIER_HOST=0.0.0.0
-  #     - VERIFIER_BASE=https://verifier:11437
+  #     - AGENT_HOST=0.0.0.0
+  #     - AGENT_BASE=https://abi-verifier:11437
   #    - ABI_ROLE=Verifier Agent
   #    - ABI_NODE=ABI AGENT
   #   volumes:
@@ -94,35 +95,35 @@ services:
   #     - abi-network
   #   restart: "unless-stopped"
 
-  # observer:
+  # abi-observer:
   #   build:
   #     context: ./agents/worker-observer
   #   depends_on:
-  #     - verifier
+  #     - abi-verifier
   #   ports:
   #     - 11439:11439
   #   environment:
-  #     - OBSERVER_HOST=0.0.0.0
-  #     - OBSERVER_BASE=https://observer:11439
-  #    - ABI_ROLE=Observer Agent
-  #    - ABI_NODE=ABI AGENT
+  #     - AGENT_HOST=0.0.0.0
+  #     - AGENT_BASE=https://abi-observer:11439
+  #     - ABI_ROLE=Observer Agent
+  #     - ABI_NODE=ABI AGENT
   #   volumes:
   #     - worker-observer/root/.app
   #   networks:
   #     - abi-network
   #   restart: "unless-stopped"
 
-  #actor:
+  #abi-actor:
   #   build:
   #     context: ./agents/worker-act
   #   depends_on:
-  #     - orchestrator
+  #     - abi-orchestrator
   #   ports:
   #     - 11436:11434
   #     - 8082:8002
   #   environment:
-  #     - ACTOR_HOST=0.0.0.0
-  #     - ACTOR_BASE=https://actor:8002
+  #     - AGENT_HOST=0.0.0.0
+  #     - AGENT_BASE=https://abi-actor:8002
   #     - ABI_ROLE=Actor Agent
   #     - ABI_NODE=ABI AGENT
   #   volumes:
@@ -136,7 +137,7 @@ services:
   #model-loader:
   #  image: curlimages/curl:latest
   #  depends_on:
-  #    - orchestrator
+  #    - abi-actor
   #  volumes:
   #    - ./agents/abi-llm-base/model-loader.sh:/model-loader.sh
   #  entrypoint: ["sh", "/etc/profile.d/model-loader.sh"]

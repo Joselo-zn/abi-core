@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # ----------------------------
 ABI_LLM_BASE = os.getenv('ABI_LLM_BASE', 'https://abi_llmbase:8000')
 ABI_LLM_BASE  = os.getenv("ABI_LLM_BASE", "http://abi-llm-base:11434").rstrip("/")
-EMBED_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+EMBED_MODEL = os.getenv("EMBEDDING_MODEL", "jina/jina-embeddings-v2-base-es")
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "60"))
 
 _EMBED_URL = f"{ABI_LLM_BASE}/api/embeddings"

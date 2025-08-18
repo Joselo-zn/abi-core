@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     curl unzip gnupg cron lsb-release python3 python3-pip build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+#@TODO Change it by requirements.txt
 # 2. Install Python libraries used by all agents
 RUN pip3 install --no-cache-dir --break-system-packages \
     langchain \
@@ -15,7 +16,10 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     uvicorn \
     redis \
     tinydb \
-    httpx
+    httpx \
+    networkx \
+    langchain-community \
+    starlette
 
 COPY agents.d/ /opt/abi/agents.d/
 COPY shared/abi-motd /etc/abi-motd

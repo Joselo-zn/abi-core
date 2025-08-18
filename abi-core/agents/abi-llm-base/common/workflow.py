@@ -10,12 +10,12 @@ import httpx
 import networkx as nx
 
 from a2a.client import A2AClient
-from a2a_mcp.common.utils import get_mcp_server_config
-from a2a_mcp.mcp import client
+from common.utils import get_mcp_server_config
+from mcp import client
 from a2a.types import (
     AgentCard,
     MessageSendParams,
-    SendingStreamingMessageRequest,
+    SendStreamingMessageRequest,
     SendStreamingMessageSuccessResponse,
     TaskArtifactUpdateEvent,
     TaskState,
@@ -44,7 +44,7 @@ class WorkflowNode:
 
     def __init__(
         self,
-        task: string,
+        task: str,
         node_key: str | None = None,
         node_label: str | None = None,
 
@@ -90,7 +90,7 @@ class WorkflowNode:
         logger.info(f'Execute node {self.id}')
         agent_card = None
         if self.node_key ==  'planner':
-            agent_card = get_planner_resource()
+            agent_card = self.get_planner_resource()
         else:
             agent_card = await self.find_agent_for_task()
         async with httpx.AsyncClient() as httpx_client:
@@ -104,15 +104,15 @@ class WorkflowNode:
                     'contextId': context_id
                 }
             }
-            request = SendingStreamingMessageRequest(
+            request = SendStreamingMessageRequest(
                 id=str(uuid4()), params=MessageSendParams(**payload)
             )
             response_stream = client.send_message_stream(request)
-            async for chunk in read_stream:
+            async for chunk in response_stream:
                 if isinstance(
                     chunk.root,
                     SendStreamingMessageSuccessResponse,
-                ) and (isinstance(chunk.root.result, TaskArtifactUpdateEvent))
+                ) and (isinstance(chunk.root.result, TaskArtifactUpdateEvent)):
                     artifact = chunk.root.result.artifact
                     self.result = artifact
                 yield chunk
@@ -134,7 +134,7 @@ class WorkflowGraph:
         self.lates_node = node.id
         self.graph.add_node(node.id, query=node.task)
 
-    def add_edge(from_node_id: str, to_node_id: str)  -> None:
+    def add_edge(self, from_node_id: str, to_node_id: str)  -> None:
         if from_node_id not in self.nodes or to_node_id not in self.nodes:
             raise ValueError('Invalid Node IDs')
         self.graph.add_edge(from_node_id, to_node_id)
@@ -144,9 +144,9 @@ class WorkflowGraph:
     ) -> AsyncIterable[dict[str, any]]:
         logger.info('Running Workflow')
         if not start_node_id or start_node_id not in self.nodes:
-            start_nodes = [n for n, d in self.graph.in_degree() if d = 0]
+            start_nodes = [n for n, d in self.graph.in_degree() if d == 0]
         else:
-            start_nodes = [self.nodes[start_node_id].id]+
+            start_nodes = [self.nodes[start_node_id].id]
         
         applicable_graph = set()
 
@@ -155,11 +155,11 @@ class WorkflowGraph:
             applicable_graph.update(nx.descendants(self.graph, node_id))
 
         complete_graph = list(nx.topological_sort(self.graph))
-        sub_graph = [n for n in complete_graph: if n in applicable]
+        sub_graph = [n for n in complete_graph if n in applicable_graph]
         self.state = Status.RUNNING
         for node_id in sub_graph:
             node = self.nodes[node_id]
-            node.state = state.RUNNING
+            node.state = self.state.RUNNING
             query = self.nodes[node_id].get('query')
             task_id = self.node[node_id].get('task_id')
             context_id = self.nodes[node_id].get('context_id')
@@ -168,8 +168,7 @@ class WorkflowGraph:
                 if node.state != Status.PAUSED:
                     if isinstance(
                         chunk.root, SendStreamingMessageSuccessResponse
-                    )
-                    and (
+                    )and (
                         isinstance(chunk.root.result, TaskStatusUpdateEvent)
                     ):
                         task_status_event = chunk.root.result

@@ -1,4 +1,6 @@
 import json
+import logging
+
 from collections.abc import AsyncIterable
 
 from a2a.types import (
@@ -11,7 +13,7 @@ from common import prompts
 from common.workflow import Status, WorkflowGraph, WorkflowNode
 from agent.agent import Agent
 
-from langchain.chat_models import ChatOllama
+from langchain_community.chat_models import ChatOllama
 from langchain.schema.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ class OrchestratorAgent(Agent):
 
         # Initialize LangChain LLM (can be OpenAI, Ollama, etc.)
         self.llm = ChatOllama(model_name="mixtral:8x22b", temperature=0.0)
+        logger.info(f'[🚀] Starting Orchestrator Agent')
 
     async def generate_summary(self) -> str:
         """Generate a summary from current results using LangChain LLM."""
