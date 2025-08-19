@@ -19,8 +19,8 @@ services:
 
   mcp-server:
     build:
-      context: .
-      dockerfile: mcp/Dockerfile
+      context: ./mcp
+      dockerfile: Dockerfile
     depends_on:
       - abi-llm-base
     ports:
@@ -49,6 +49,7 @@ services:
       - AGENT_HOST=0.0.0.0
       - AGENT_BASE=https://abi-orchestrator:8002
       - AGENT_CARD=/app/agent_cards/orchestrator_agent.json
+      - MODEL_NAME=tinyllama:latest
       - ABI_ROLE=Orchestrator Agent
       - ABI_NODE=ABI AGENT
       - PYTHONPATH=/app

@@ -1,50 +1,54 @@
 {
-  "@context": [
-    "https://raw.githubusercontent.com/GoogleCloudPlatform/a2a-llm/main/a2a/ontology/a2a_context.jsonld"
-  ],
-  "@type": "Agent",
-  "id": "agent://orchestrator",
   "name": "Orchestrator Agent",
-  "version": "1.0.0",
-  "url": "http://orchestrator:8002",
   "description": "Coordinates and controls the execution flow of agents by navigating the semantic workflow graph. Ensures correct delegation, result aggregation and context continuity.",
-  "contentType": "text/plain",
+  "url": "http://orchestrator:8002/",
+  "version": "1.0.0",
 
-  "capabilities": [
-    "routing",
-    "workflow_execution",
-    "context_propagation",
-    "result_aggregation",
-    "resume_execution"
-  ],
-
-  "defaultInputModes": ["text"],
-  "defaultOutputModes": ["text"],
-
-  "skills": [
-    "plan_workflow",
-    "select_agent",
-    "track_state",
-    "summarize_outputs"
-  ],
-
-  "supportedTasks": [
-    "execute_graph",
-    "resume_workflow",
-    "route_to_agent",
-    "aggregate_artifacts",
-    "generate_summary"
-  ],
-
-  "llmConfig": {
-    "provider": "ollama",
-    "model": "tinyllama:latest",
-    "temperature": 0.0
+  "capabilities": {
+    "streaming": "True",
+    "pushNotifications": "True",
+    "stateTransitionHistory": "False"
   },
 
-  "tools": [],
-  "functions": [],
-  "embedding": false,
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
 
-  "prompt": "You are a high-level orchestrator responsible for managing workflows between agents. Given a workflow graph and task context, you must decide which agent should handle each task. Track context across queries, resume paused executions, and produce a final output summary. Maintain semantic alignment throughout the workflow."
+  "skills": [
+    {
+      "id": "plan_workflow",
+      "name": "Workflow Planning",
+      "description": "Plan a multi‑agent workflow based on the user request and context.",
+      "tags": ["planning", "workflow", "orchestration"],
+      "examples": ["Break down an R&D task into agent steps"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "select_agent",
+      "name": "Agent Routing",
+      "description": "Choose the best downstream agent for a given task.",
+      "tags": ["routing", "selection", "policy"],
+      "examples": ["Pick the right agent for data extraction"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "track_state",
+      "name": "State Tracking",
+      "description": "Maintain and update shared workflow state across tasks.",
+      "tags": ["state", "context", "memory"],
+      "examples": ["Persist intermediate results during execution"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "summarize_outputs",
+      "name": "Result Summarization",
+      "description": "Aggregate artifacts and produce a final concise summary.",
+      "tags": ["aggregation", "summary", "report"],
+      "examples": ["Summarize outputs from multiple agents"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    }
+  ]
 }

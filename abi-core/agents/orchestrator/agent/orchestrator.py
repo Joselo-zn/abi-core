@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from collections.abc import AsyncIterable
 
@@ -18,6 +19,8 @@ from langchain.schema.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
 
+MODEL_NAME = os.getenv('MODEL_NAME', 'tinyllama:latest')
+
 
 class OrchestratorAgent(Agent):
     """Orchestrator Agent for coordinating other agents using LangChain as LLM."""
@@ -35,7 +38,7 @@ class OrchestratorAgent(Agent):
         self.context_id = None
 
         # Initialize LangChain LLM (can be OpenAI, Ollama, etc.)
-        self.llm = ChatOllama(model_name="mixtral:8x22b", temperature=0.0)
+        self.llm = ChatOllama(model_name=MODEL_NAME, temperature=0.0)
         logger.info(f'[🚀] Starting Orchestrator Agent')
 
     async def generate_summary(self) -> str:
@@ -49,7 +52,7 @@ class OrchestratorAgent(Agent):
     def answer_user_question(self, question) -> str:
             try:
                 self.llm = ChatOllama(
-                    model_name="mixtral:8x22b",
+                    model_name=MODEL_NAME,
                     temperature=0.0,
                     response_format="json"
                 )
