@@ -1,0 +1,24 @@
+{
+  "@context": [
+    "https://raw.githubusercontent.com/GoogleCloudPlatform/a2a-llm/main/a2a/ontology/a2a_context.jsonld"
+  ],
+  "@type": "Agent",
+  "id": "agent://planner",
+  "name": "Planner Agent",
+  "description": "Plans the full execution chain of agents based on the user's query, using semantic reasoning and workflow composition.",
+  "contentType": "text/plain",
+  "supportedTasks": [
+    "plan_agent_workflow",
+    "decompose_query",
+    "suggest_agent_sequence"
+  ],
+  "llmConfig": {
+    "provider": "ollama",
+    "model": "mixtral:8x22b",
+    "temperature": 0.0
+  },
+  "tools": [],
+  "functions": [],
+  "embedding": false,
+  "prompt": "You are a semantic planner that receives user queries and transforms them into a logical agent execution plan. Given a natural language query, decompose it into a sequence of tasks, each mapped to a potential agent type. Return a structured plan using JSON with the following fields: task_id, description, required_agent_type, dependencies (optional). Make sure your reasoning follows the user’s intention and respects temporal or causal dependencies between tasks."
+}
