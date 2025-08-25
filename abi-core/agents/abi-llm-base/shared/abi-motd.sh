@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Prints ABI banner + some dynamic info
 
-# Si NO quieres que se muestre en shells no interactivos, quita FORCE_ABI_MOTD
+# Delete FORCE_ABI_MOTD to not show not interactictive shell
 if [[ -z "${FORCE_ABI_MOTD:-}" ]]; then
   [ -t 1 ] || return 0          # requiere TTY
   [ -n "${PS1:-}" ] || return 0 # requiere shell interactivo
 fi
 
-# tput seguro: no revienta si no hay TERM o capability
+
 _safe_tput() {
   command -v tput >/dev/null 2>&1 || return 0
   local term="${TERM:-dumb}"
@@ -15,7 +15,7 @@ _safe_tput() {
 }
 
 BOLD="$(_safe_tput bold)"
-# 'dim' no está en todos los terminfo; si no existe, queda vacío
+
 DIM="$(_safe_tput dim)"
 RESET="$(_safe_tput sgr0)"
 
@@ -26,7 +26,7 @@ CPU="$(nproc) cores"
 TIME="$(date -u '+%a %d %b %Y %H:%M:%S UTC')"
 HOSTNAME_SHOW="${HOSTNAME:-$(hostname)}"
 
-# Bloque estático (opcional)
+
 if [[ -f /etc/abi-motd ]]; then
   cat /etc/abi-motd
 fi

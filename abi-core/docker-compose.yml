@@ -17,25 +17,50 @@ services:
     networks:
       - abi-network
 
-  mcp-server:
+  semantic-layer:
     build:
-      context: ./mcp
+      context: ./semantic_layer
       dockerfile: Dockerfile
     depends_on:
-      - abi-llm-base
+      - abi-weaviate
     ports:
       - "10100:10100"
     environment:
-      AGENT_CARDS_BASE: "/app/mcp_server/agent_cards"
+      AGENT_CARDS_BASE: "/app/layer/mcp_server/agent_cards"
       MODEL: "jina/jina-embeddings-v2-base-es"
       SQLLITE_DB: "abi_context.db"
       ABI_ROLE: "MCP Server"
       ABI_NODE: "ABI Node"
+      OLLAMA_HOST: "http://abi-llm-base:11434"
+      WEAVIATE_URL: "http://abi-weaviate:8080"
     volumes:
       - ./mcp/mcp_server:/app/mcp_server:ro
     networks:
       - abi-network
     restart: unless-stopped
+
+  abi-weaviate:
+    image: semitechnologies/weaviate:1.32.4
+    depends_on:
+      - abi-llm-base
+    ports:
+      - 8080:8080
+      #- 8081:8081 Prometeus metric Optional
+    environment:
+      QUERY_DEFAULT_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: 'var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 
+      CLUSTER_HOSTNAME: 'node1'
+    volumes:
+      - weaviate-data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - abi-network
 
   abi-orchestrator:
     build:
@@ -155,6 +180,7 @@ services:
 
 volumes:
   ollama-data:
+  weaviate-data:
 
 networks:
   abi-network:

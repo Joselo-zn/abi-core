@@ -29,25 +29,21 @@ def _attach_health_route(app: Starlette) -> None:
         return JSONResponse({"ok": True}, status_code=200)
 
     try:
-        # opción A (simple):
         app.add_route("/health", health, methods=["GET"])
-        # opción B (si prefieres Route):
-        # app.router.routes.append(Route("/health", endpoint=health, methods=["GET"]))
     except Exception as e:
         logger.warning(f"[!] Could not attach /health route: {e}")
 
-def start_server(host: str, port: int, agent_card: str, agent: Agent):
-    """Arranca servidor A2A de un agente."""
+def start_client(host: str, port: int, agent_card: str, agent: Agent):
+    """Starts A2A client agent"""
     try:
         if not agent_card:
             raise ValueError("[!] Abi Agent card is required")
 
-        # FIX: leer archivo correctamente
         with Path(agent_card).open("r", encoding="utf-8") as f:
             data = json.load(f)
         agent_card_obj = AgentCard(**data)
 
-        # Nota: httpx.AsyncClient no se cierra aquí (MVP); idealmente ciérralo en lifespan
+        # Nota: httpx.AsyncClient no se cierra aquí (MVP); idealmente cerrarlo en lifespan
         client = httpx.AsyncClient()
         push_cfg_store = InMemoryPushNotificationConfigStore()
         push_sender = BasePushNotificationSender(
