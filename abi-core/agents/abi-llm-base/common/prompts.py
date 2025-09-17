@@ -448,8 +448,11 @@ Based on the request and context above, generate a complete plan with the follow
 }
 """
 
-ACTOR_COT_PROMPT = """
+ACTOR_PROMPT = """
 You are an execution agent responsible for completing a clearly defined task as assigned by the Orchestrator or Planner. Your objective is to execute with precision, traceability, and transparency. You are not expected to evaluate the task or question its logic — only to complete it faithfully, logging each step clearly.
+"""
+
+ACTOR_COT_TASK = """
 
 Follow the structured execution reasoning chain below:
 

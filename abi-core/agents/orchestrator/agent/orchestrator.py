@@ -12,7 +12,7 @@ from a2a.types import (
 )
 from common import prompts
 from common.workflow import Status, WorkflowGraph, WorkflowNode
-from agent.agent import Agent
+from agent.agent import AbiAgent
 
 from langchain_community.chat_models import ChatOllama
 from langchain.schema.messages import HumanMessage
@@ -22,12 +22,12 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = os.getenv('MODEL_NAME', 'tinyllama:latest')
 
 
-class OrchestratorAgent(Agent):
+class AbiOrchestratorAgent(AbiAgent):
     """Orchestrator Agent for coordinating other agents using LangChain as LLM."""
 
     def __init__(self):
         super().__init__(
-            agent_name='Orchestrator Agent',
+            agent_name='Abi Orchestrator Agent',
             description='Facilitate inter agent communication',
             content_types=['text', 'text/plain'],
         )
@@ -38,20 +38,20 @@ class OrchestratorAgent(Agent):
         self.context_id = None
 
         # Initialize LangChain LLM (can be OpenAI, Ollama, etc.)
-        self.llm = ChatOllama(model_name=MODEL_NAME, temperature=0.0)
-        logger.info(f'[🚀] Starting Orchestrator Agent')
+        self.abi_orchestrator = ChatOllama(model_name=MODEL_NAME, temperature=0.0)
+        logger.info(f'[🚀] Starting ABI Orchestrator Agent')
 
     async def generate_summary(self) -> str:
         """Generate a summary from current results using LangChain LLM."""
-        prompt = prompts.SUMMARY_COT_INSTRUCTIONS.replace(
+        prompt = prompts.ORCHESTRATOR_COT_INSTRUCTIONS.replace(
             '{task_data}', str(self.results)
         )
-        response = await self.llm.ainvoke([HumanMessage(content=prompt)])
+        response = await self.abi_orchestrator.ainvoke([HumanMessage(content=prompt)])
         return response.content
 
     def answer_user_question(self, question) -> str:
             try:
-                self.llm = ChatOllama(
+                self.abi_orchestrator = ChatOllama(
                     model_name=MODEL_NAME,
                     temperature=0.0,
                     response_format="json"
@@ -61,7 +61,7 @@ class OrchestratorAgent(Agent):
                     ).replace(
                          '{CONVERSATION_HISTORY}', str(self.query_history)
                          ).replace('{USER_QUESTION}', question)
-                response = self.llm.ainvoke([HumanMessage(
+                response = self.abi_orchestrator.ainvoke([HumanMessage(
                     contents=prompt)])
                 return response.text
             except Exception as e:

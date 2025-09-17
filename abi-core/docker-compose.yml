@@ -85,6 +85,28 @@ services:
       - abi-network
     restart: "unless-stopped"
 
+  abi-actor:
+    build:
+      context: ./agents/worker_actor
+    depends_on:
+      - abi-orchestrator
+    ports:
+      - 11436:11434
+      - 8083:8002
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-actor:8002
+      - AGENT_CARD=/app/agent_cards/actor_agent.json
+      - MODEL_NAME=tinyllama:latest
+      - ABI_ROLE=Actor Agent
+      - ABI_NODE=ABI AGENT
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./agents/worker_actor/agent:/agent
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
   # abi-auditor:
   #   build:
   #     context: ./agents/auditor
@@ -135,27 +157,6 @@ services:
   #     - ABI_NODE=ABI AGENT
   #   volumes:
   #     - worker-observer/root/.app
-  #   networks:
-  #     - abi-network
-  #   restart: "unless-stopped"
-
-  #abi-actor:
-  #   build:
-  #     context: ./agents/worker-act
-  #   depends_on:
-  #     - abi-orchestrator
-  #   ports:
-  #     - 11436:11434
-  #     - 8082:8002
-  #   environment:
-  #     - AGENT_HOST=0.0.0.0
-  #     - AGENT_BASE=https://abi-actor:8002
-  #     - ABI_ROLE=Actor Agent
-  #     - ABI_NODE=ABI AGENT
-  #   volumes:
-  #     - worker-act/root/.app
-  #     - ollama-data:/root/.ollama
-  #     - ./agents/worker-act/agent:/agent
   #   networks:
   #     - abi-network
   #   restart: "unless-stopped"

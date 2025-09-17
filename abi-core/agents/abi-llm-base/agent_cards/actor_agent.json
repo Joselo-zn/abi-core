@@ -1,24 +1,67 @@
 {
-  "id": "actor-agent",
-  "name": "Actor Agent",
-  "description": "Executes delegated tasks and interacts with tools or systems.",
+  "name": "Abi Actor Agent",
+  "description": "Executes delegated tasks, interacts with tools or external systems, and returns structured results while preserving context continuity.",
+  "url": "http://actor:8002/",
   "version": "1.0.0",
-  "author": "ABI Framework",
-  "agent_type": "actor",
-  "content_types": ["text/plain", "text", "application/json"],
-  "entrypoint": "actor.main:app",
-  "communication_protocol": "A2A-Protocol",
-  "requires_context_id": true,
-  "inputs": [
-    "task_description",
-    "tool_parameters",
-    "execution_context"
+
+  "capabilities": {
+    "streaming": "True",
+    "pushNotifications": "True",
+    "stateTransitionHistory": "False"
+  },
+
+  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultOutputModes": ["text/plain", "application/json"],
+
+  "skills": [
+    {
+      "id": "run_task",
+      "name": "Task Execution",
+      "description": "Execute a concrete task delegated by the orchestrator using the provided context.",
+      "tags": ["execution", "task", "context"],
+      "examples": ["Run a web-scraping job with given parameters", "Call a REST API and return parsed JSON"],
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["application/json", "text/plain"]
+    },
+    {
+      "id": "execute_tool",
+      "name": "Tool Integration",
+      "description": "Invoke local or remote tools (APIs, CLIs, functions) with safe parameter handling.",
+      "tags": ["tools", "integration", "io"],
+      "examples": ["Invoke a vector DB search", "Run a shell command in a sandbox"],
+      "inputModes": ["application/json", "text/plain"],
+      "outputModes": ["application/json", "text/plain"]
+    },
+    {
+      "id": "validate_inputs",
+      "name": "Input Validation",
+      "description": "Validate and normalize incoming parameters before execution.",
+      "tags": ["validation", "schema", "safety"],
+      "examples": ["Check required fields and types for a data-extraction task"],
+      "inputModes": ["application/json", "text/plain"],
+      "outputModes": ["application/json", "text/plain"]
+    },
+    {
+      "id": "report_status",
+      "name": "Status & Error Reporting",
+      "description": "Emit progress updates, structured results, and actionable error reports.",
+      "tags": ["status", "logging", "report"],
+      "examples": ["Stream partial output", "Return an error with remediation hints"],
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["application/json", "text/plain"]
+    }
   ],
-  "outputs": [
-    "execution_result",
-    "status_report",
-    "error_logs"
-  ],
-  "prompt_reference": "prompts.ACTOR_COT_INSTRUCTIONS",
-  "tags": ["abi", "actor", "execution", "tool", "agent"]
+
+  "metadata": {
+    "id": "actor-agent",
+    "author": "ABI Framework",
+    "agent_type": "actor",
+    "entrypoint": "actor.main:app",
+    "communication_protocol": "A2A-Protocol",
+    "requires_context_id": true,
+    "prompt_reference": "prompts.ACTOR_COT_INSTRUCTIONS",
+    "tags": ["abi", "actor", "execution", "tool", "agent"],
+    "declared_inputs": ["task_description", "tool_parameters", "execution_context"],
+    "declared_outputs": ["execution_result", "status_report", "error_logs"]
+  }
 }

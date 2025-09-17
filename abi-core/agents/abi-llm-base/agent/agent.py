@@ -2,7 +2,7 @@ from agent.base_agent import BaseAgent
 from agent.policy import evaluate_policy
 from agent.semantics import enrich_input
 
-class Agent(BaseAgent):
+class AbiAgent(BaseAgent):
     def handle_input(self, input_data):
         enriched = enrich_input(input_data)
         if not evaluate_policy(enriched):

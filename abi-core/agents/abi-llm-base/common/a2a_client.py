@@ -7,7 +7,7 @@ import httpx
 import uvicorn
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
-from starlette.routing import Route  # opcional si usas add_route
+from starlette.routing import Route,  Mount, WebSocketRoute
 
 from a2a.types import AgentCard
 from a2a.server.apps import A2AStarletteApplication
@@ -18,10 +18,42 @@ from a2a.server.tasks import (
     InMemoryTaskStore,
 )
 
-from agent.agent import Agent
+from agent.agent import AbiAgent
 from common.agent_executor import ABIAgentExecutor
 
 logger = logging.getLogger(__name__)
+
+def _attach_card_route(app: Starlette, card_dict: dict) -> None:
+    async def card(_request):
+        return JSONResponse(card_dict, status_code=200)
+    app.add_route("/card", card, methods=["GET"])
+
+def _attach_routes_route(app: Starlette) -> None:
+    def _collect(r, base=""):
+        items = []
+        if isinstance(r, Route):
+            items.append({"path": base + r.path, "methods": sorted(list(r.methods or [])), "name": r.name})
+        elif isinstance(r, WebSocketRoute):
+            items.append({"path": base + r.path, "methods": ["WEBSOCKET"], "name": r.name})
+        elif isinstance(r, Mount):
+            for sr in r.routes:
+                items.extend(_collect(sr, base + r.path))
+        return items
+
+    async def routes(_request):
+        items = []
+        for r in app.routes:
+            items.extend(_collect(r, ""))
+        # opcional: ordena por path
+        items.sort(key=lambda x: x["path"])
+        return JSONResponse(items, status_code=200)
+
+    app.add_route("/__routes", routes, methods=["GET"])
+
+def _attach_root_head(app: Starlette) -> None:
+    async def root_head(_request):
+        return JSONResponse({}, status_code=200)
+    app.add_route("/", root_head, methods=["HEAD"])
 
 def _attach_health_route(app: Starlette) -> None:
     """Añade /health a la app Starlette/ASGI."""
@@ -33,7 +65,7 @@ def _attach_health_route(app: Starlette) -> None:
     except Exception as e:
         logger.warning(f"[!] Could not attach /health route: {e}")
 
-def start_client(host: str, port: int, agent_card: str, agent: Agent):
+def start_client(host: str, port: int, agent_card: str, agent: AbiAgent):
     """Starts A2A client agent"""
     try:
         if not agent_card:
@@ -64,6 +96,9 @@ def start_client(host: str, port: int, agent_card: str, agent: Agent):
         )
         asgi_app = a2a_app.build()
         _attach_health_route(asgi_app)
+        _attach_root_head(asgi_app)
+        _attach_card_route(asgi_app, data)
+        _attach_routes_route(asgi_app) 
 
         logger.info(f"[🚀] Starting A2A {agent_card_obj.name} Client on {host}:{port}")
         uvicorn.run(asgi_app, host=host, port=port)

@@ -1,0 +1,13 @@
+langchain
+fastapi
+mcp
+mcp-toolbox
+a2a-sdk
+uvicorn
+redis
+tinydb
+httpx
+networkx
+langchain-community
+langgraph
+starlette
