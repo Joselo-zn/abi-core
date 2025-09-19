@@ -12,6 +12,7 @@ services:
       - ABI_LLM_BASE=https://abi-llmbase:8000
       - ABI_ROLE=LLM Base
       - ABI_NODE=ABI Node
+      - PYTHONPATH=/app
     volumes:
       - ollama-data:/root/.ollama
     networks:
@@ -80,7 +81,7 @@ services:
       - PYTHONPATH=/app
     volumes:
       - ollama-data:/root/.ollama
-      - ./agents/orchestrator/agent:/agent
+      - ./agents/orchestrator/agent:/app/agent
     networks:
       - abi-network
     restart: "unless-stopped"
@@ -100,9 +101,10 @@ services:
       - MODEL_NAME=tinyllama:latest
       - ABI_ROLE=Actor Agent
       - ABI_NODE=ABI AGENT
+      - PYTHONPATH=/app
     volumes:
       - ollama-data:/root/.ollama
-      - ./agents/worker_actor/agent:/agent
+      - ./agents/worker_actor/agent:/app/agent
     networks:
       - abi-network
     restart: "unless-stopped"

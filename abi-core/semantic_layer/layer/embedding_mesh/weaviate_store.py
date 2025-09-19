@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
+import json
 import time
 
 from typing import Any, Dict, Iterable, List
 from weaviate.exceptions import WeaviateConnectionError
-from weaviate.classes.config import Property, DataType, Configure, VectorDistances
+from weaviate.classes.config import Property, DataType
 from . import weaviate_client
 
 
@@ -22,7 +23,9 @@ def get_client_with_retry(retries: int = 10, delay: float = 1.0):
 def ensure_collections()-> None:
     try:
         client = get_client_with_retry()
-        if "AgentCard" not in [c.name for c in client.collections.list_all()]:
+        existing_collections = [c.name for c in client.collections.list_all()]
+        
+        if "AgentCard" not in existing_collections:
             client.collections.create(
                 name="AgentCard",
                 description="Agent card vectors",
@@ -30,27 +33,19 @@ def ensure_collections()-> None:
                     Property(name="text", data_type=DataType.TEXT),
                     Property(name="uri", data_type=DataType.TEXT),
                     Property(name="origin", data_type=DataType.TEXT),
-                    Property(name="metadata", data_type=DataType.OBJECT)
-                ],
-                vectorizer_config=Configure.Vectorize.none(),
-                vector_index_config=Configure.VectorIndex.hnsw(
-                    distance=VectorDistances.COSINE
-                )
+                    Property(name="metadata_json", data_type=DataType.TEXT)
+                ]
             )
         
-        if "MeshItem" not in [c.name for c in client.collections.list_all()]:
+        if "MeshItem" not in existing_collections:
             client.collections.create(
                 name="MeshItem",
                 description="Ad-hoc upserted texts",
                 properties=[
                     Property(name="text", data_type=DataType.TEXT),
                     Property(name="origin", data_type=DataType.TEXT),
-                    Property(name="metadata", data_type=DataType.OBJECT)
-                ],
-                vectorizer_config=Configure.Vectorize.none(),
-                vector_index_config=Configure.VectorIndex.hnsw(
-                    distance=VectorDistances.COSINE
-                )
+                    Property(name="metadata_json", data_type=DataType.TEXT)
+                ]
             )
     finally:
         client.close()
@@ -77,7 +72,7 @@ def upsert_agent_cards(
                         "text": it["text"],
                         "uri": it.get("uri", ""),
                         "origin": it["origin"],
-                        "metadata": it.get("metadata", {}),
+                        "metadata_json": json.dumps(it.get("metadata", {})),
                     },
                     vector=it["vector"],
                     uuid=it.get("id")
@@ -105,7 +100,7 @@ def upsert_mesh_items(
                     properties={
                         "text": it["text"],
                         "origin": "upsert",
-                        "metadata": it.get("metadata", {}),
+                        "metadata_json": json.dumps(it.get("metadata", {})),
                     },
                     vector=it["vector"],
                     uuid=it.get("id"),
@@ -126,12 +121,17 @@ def search_agent_cards(
         hits = []
         for o in res.objects:
             props = o.properties or {}
+            metadata_json = props.get("metadata_json", "{}")
+            try:
+                metadata = json.loads(metadata_json)
+            except:
+                metadata = {}
             hits.append({
                 "id": o.uuid,
                 "score": 1.0 - float(o.metadata.distance or 0.0),  # convertir distancia→similaridad
                 "text": props.get("text", ""),
                 "source": "agent_card",
-                "metadata": props.get("metadata"),
+                "metadata": metadata,
                 "uri": props.get("uri"),
             })
         return hits
@@ -150,12 +150,17 @@ def search_upserts(
         hits = []
         for o in res.objects:
             props = o.properties or {}
+            metadata_json = props.get("metadata_json", "{}")
+            try:
+                metadata = json.loads(metadata_json)
+            except:
+                metadata = {}
             hits.append({
                 "id": o.uuid,
                 "score": 1.0 - float(o.metadata.distance or 0.0),
                 "text": props.get("text", ""),
                 "source": "upsert",
-                "metadata": props.get("metadata"),
+                "metadata": metadata,
             })
         return hits
     finally:
