@@ -44,7 +44,7 @@ class FilePayload(BaseModel):
         None, description="Base64 Content (just small blobs/opcional)."
     )
 
-GuardialPayload = Union[EmbeddingPayload, JsonPayload, TextPayload, FilePayload]
+PlannerPayload = Union[EmbeddingPayload, JsonPayload, TextPayload, FilePayload]
 
 # ---------- Task traces ----------
 
@@ -66,9 +66,9 @@ class TaskLog(BaseModel):
                 return int((e - s).total_seconds() * 1000)
         return v
 
-# ---------- Guardial response ----------
+# ---------- Planner response ----------
 
-class GuardialResponse(BaseModel):
+class PlannerResponse(BaseModel):
     # Identidad / estado
     id: Optional[str] = Field(None, description="Correlationable ID (trace_id, job_id, etc.)")
     ok: bool = True
@@ -79,13 +79,13 @@ class GuardialResponse(BaseModel):
     )
 
     # Observabilidad / contexto
-    source: str = Field(..., description="Source of truth (guardial/agent/nodo).")
+    source: str = Field(..., description="Source of truth (planner/agent/nodo).")
     processed_at: datetime = Field(default_factory=datetime.utcnow)
     duration_ms: Optional[int] = None
     tasks: List[TaskLog] = Field(default_factory=list)
 
     # Datos
-    payload: GuardialPayload
+    payload: PlannerPayload
     meta: Dict[str, Any] = Field(default_factory=dict, description="Extra Metadata.")
     errors: List[str] = Field(default_factory=list)
 
@@ -105,7 +105,7 @@ class GuardialResponse(BaseModel):
         ok: bool = True,
         status_code: Optional[int] = None,
         duration_ms: Optional[int] = None,
-    ) -> "GuardialResponse":
+    ) -> "PlannerResponse":
         return cls(
             id=id,
             ok=ok,
@@ -130,7 +130,7 @@ class GuardialResponse(BaseModel):
         status_code: Optional[int] = None,
         duration_ms: Optional[int] = None,
         errors: Optional[List[str]] = None,
-    ) -> "GuardialResponse":
+    ) -> "PlannerResponse":
         return cls(
             id=id,
             ok=ok,
@@ -157,7 +157,7 @@ class GuardialResponse(BaseModel):
         ok: bool = True,
         status_code: Optional[int] = None,
         duration_ms: Optional[int] = None,
-    ) -> "GuardialResponse":
+    ) -> "PlannerResponse":
         return cls(
             id=id,
             ok=ok,
@@ -186,7 +186,7 @@ class GuardialResponse(BaseModel):
         ok: bool = True,
         status_code: Optional[int] = None,
         duration_ms: Optional[int] = None,
-    ) -> "GuardialResponse":
+    ) -> "PlannerResponse":
         return cls(
             id=id,
             ok=ok,

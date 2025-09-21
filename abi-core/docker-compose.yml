@@ -18,28 +18,6 @@ services:
     networks:
       - abi-network
 
-  semantic-layer:
-    build:
-      context: ./semantic_layer
-      dockerfile: Dockerfile
-    depends_on:
-      - abi-weaviate
-    ports:
-      - "10100:10100"
-    environment:
-      AGENT_CARDS_BASE: "/app/layer/mcp_server/agent_cards"
-      MODEL: "jina/jina-embeddings-v2-base-es"
-      SQLLITE_DB: "abi_context.db"
-      ABI_ROLE: "MCP Server"
-      ABI_NODE: "ABI Node"
-      OLLAMA_HOST: "http://abi-llm-base:11434"
-      WEAVIATE_URL: "http://abi-weaviate:8080"
-    volumes:
-      - ./mcp/mcp_server:/app/mcp_server:ro
-    networks:
-      - abi-network
-    restart: unless-stopped
-
   abi-weaviate:
     image: semitechnologies/weaviate:1.32.4
     depends_on:
@@ -62,6 +40,29 @@ services:
       retries: 30
     networks:
       - abi-network
+
+  semantic-layer:
+    build:
+      context: ./semantic_layer
+      dockerfile: Dockerfile
+    depends_on:
+      - abi-weaviate
+    ports:
+      - "10100:10100"
+    environment:
+      AGENT_CARDS_BASE: "/app/layer/mcp_server/agent_cards"
+      MODEL: "jina/jina-embeddings-v2-base-es"
+      SQLLITE_DB: "abi_context.db"
+      ABI_ROLE: "MCP Server"
+      ABI_NODE: "ABI Node"
+      OLLAMA_HOST: "http://abi-llm-base:11434"
+      WEAVIATE_URL: "http://abi-weaviate:8080"
+    volumes:
+      - ./mcp/mcp_server:/app/mcp_server:ro
+    networks:
+      - abi-network
+    restart: unless-stopped
+
 
   abi-orchestrator:
     build:
@@ -86,11 +87,47 @@ services:
       - abi-network
     restart: "unless-stopped"
 
+  abi-guardial:
+    build:
+      context: ./agents/guardial
+    depends_on:
+      - abi-orchestrator
+    ports:
+      - 11435:11435
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-guardial:11435
+      - ABI_ROLE=Guardial Agent
+      - ABI_NODE=ABI AGENT
+    volumes:
+      - auditor/root/.app
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
+  abi-planner:
+    build:
+      context: ./agents/planner
+    depends_on:
+      - abi-orchestrator
+    ports:
+      - 11437:11437
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-planner:11437
+      - ABI_ROLE=Planner Agent
+      - ABI_NODE=ABI AGENT
+    volumes:
+      - planner/root/.app
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
   abi-actor:
     build:
       context: ./agents/worker_actor
     depends_on:
-      - abi-orchestrator
+      - abi-planner
     ports:
       - 11436:11434
       - 8083:8002
@@ -109,47 +146,11 @@ services:
       - abi-network
     restart: "unless-stopped"
 
-  # abi-guardial:
-  #   build:
-  #     context: ./agents/auditor
-  #   depends_on:
-  #     - abi-orchestrator
-  #   ports:
-  #     - 11435:11435
-  #   environment:
-  #     - AGENT_HOST=0.0.0.0
-  #     - AGENT_BASE=https://abi-auditor:11435
-  #    - ABI_ROLE=Auditor Agent
-  #    - ABI_NODE=ABI AGENT
-  #   volumes:
-  #     - auditor/root/.app
-  #   networks:
-  #     - abi-network
-  #   restart: "unless-stopped"
-
-  # abi-verifier:
-  #   build:
-  #     context: ./agents/verifier
-  #   depends_on:
-  #     - abi-auditor
-  #   ports:
-  #     - 11437:11437
-  #   environment:
-  #     - AGENT_HOST=0.0.0.0
-  #     - AGENT_BASE=https://abi-verifier:11437
-  #    - ABI_ROLE=Verifier Agent
-  #    - ABI_NODE=ABI AGENT
-  #   volumes:
-  #     - verifier/root/.app
-  #   networks:
-  #     - abi-network
-  #   restart: "unless-stopped"
-
   # abi-observer:
   #   build:
   #     context: ./agents/worker-observer
   #   depends_on:
-  #     - abi-verifier
+  #     - abi-guardial
   #   ports:
   #     - 11439:11439
   #   environment:
