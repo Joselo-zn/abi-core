@@ -6,7 +6,7 @@ from pathlib import Path
 
 from a2a.types import AgentCard
 from agent.orchestrator import AbiOrchestratorAgent
-from common.a2a_client import start_client
+from common.a2a_server import start_server
 
 logger = logging.getLogger(__name__)
 
@@ -24,4 +24,4 @@ def orchestrator_factory(agent_card_dir: AgentCard):
 
 if __name__ == "__main__":
     
-    start_client("0.0.0.0", 8002, agent_card_dir, orchestrator_factory)
+    start_server("0.0.0.0", 8002, agent_card_dir, orchestrator_factory)

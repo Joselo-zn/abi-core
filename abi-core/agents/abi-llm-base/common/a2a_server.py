@@ -65,8 +65,8 @@ def _attach_health_route(app: Starlette) -> None:
     except Exception as e:
         logger.warning(f"[!] Could not attach /health route: {e}")
 
-def start_client(host: str, port: int, agent_card: str, agent: AbiAgent):
-    """Starts A2A client agent"""
+def start_server(host: str, port: int, agent_card: str, agent: AbiAgent):
+    """Starts A2A server agent"""
     try:
         if not agent_card:
             raise ValueError("[!] Abi Agent card is required")
