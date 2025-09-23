@@ -14,7 +14,7 @@
 | | 🔹 Orchestrator Agent con workflow management | ✅ Liberado |
 | | 🔹 Planner Agent con descomposición de tareas | ✅ Liberado |
 | | 🔹 Actor Agent con ejecución de herramientas | ✅ Liberado |
-| | 🔹 Guardian Agent para supervisión y políticas | ✅ Liberado |
+| | 🔹 Guardian Agent con OPA avanzado | ✅ Liberado |
 | **Comunicación** | 🔹 Protocolo A2A completamente implementado | ✅ Liberado |
 | | 🔹 MCP Server con semantic agent discovery | ✅ Liberado |
 | | 🔹 Streaming real-time entre agentes | ✅ Liberado |
@@ -23,7 +23,10 @@
 | | 🔹 Búsqueda semántica de agentes por tarea | ✅ Liberado |
 | **Workflows** | 🔹 NetworkX para grafos de workflow | ✅ Liberado |
 | | 🔹 Context preservation cross-agent | ✅ Liberado |
-| | � Pauses/Resume mechanisms | ✅ Liberado |
+| | 🔹 Pauses/Resume mechanisms | ✅ Liberado |
+| **Seguridad** | 🔹 OPA Policy Engine con políticas inmutables | ✅ Liberado |
+| | 🔹 Sistema de puntuación de riesgo | ✅ Liberado |
+| | 🔹 Fail-safe mechanisms y emergency shutdown | ✅ Liberado |
 
 ## 🟡 En Progreso (Septiembre 2025)
 
@@ -98,7 +101,7 @@ abi-init create-agent --name my_new_agent
 
 ## 📊 Métricas de Progreso
 
-### Implementación Core: **85% Completado**
+### Implementación Core: **95% Completado**
 - ✅ Multi-agent architecture
 - ✅ A2A communication protocol
 - ✅ Semantic layer con Weaviate
@@ -106,9 +109,9 @@ abi-init create-agent --name my_new_agent
 - ✅ Policy enforcement
 - 🟡 PyPI packaging (en progreso)
 
-### Developer Experience: **30% Completado**
+### Developer Experience: **40% Completado**
 - 🟡 CLI tooling (en desarrollo)
-- ⏳ Documentation (planificado)
+- ✅ Comprehensive agent documentation (completado)
 - ⏳ Templates & scaffolding (planificado)
 
 ### Community & Adoption: **10% Completado**
