@@ -1,7 +1,11 @@
 FROM abi-llm-base
 
+# Install additional dependencies for secure OPA integration
+RUN pip install httpx pyyaml
+
 COPY ./agent /app
 
 WORKDIR /app
 
-ENTRYPOINT ["/start.sh"]
+# Use the secure main file with mandatory security validation
+CMD ["python", "main_secure.py"]

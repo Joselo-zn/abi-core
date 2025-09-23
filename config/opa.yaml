@@ -1,0 +1,48 @@
+# ABI OPA Configuration
+# This file configures the Open Policy Agent integration for ABI Guardian
+
+opa:
+  url: "http://abi-opa:8181"
+  timeout: 30
+  retry_attempts: 3
+  retry_delay: 1
+
+policies:
+  base_path: "./policies"
+  auto_reload: true
+  validation_enabled: true
+  bundle_name: "abi"
+  
+  # Policy discovery paths (in priority order)
+  discovery_paths:
+    - "./policies"                    # Local project policies
+    - "~/.abi/policies"              # User-specific policies  
+    - "/etc/abi/policies"            # System-wide policies
+
+logging:
+  level: "INFO"
+  audit_enabled: true
+  decision_logs: true
+  structured_logging: true
+
+security:
+  fail_safe_mode: "deny"             # deny | allow | warn
+  require_opa: true
+  cache_decisions: false
+  max_risk_score: 1.0
+  
+  # Emergency overrides
+  emergency_bypass: false
+  emergency_contacts: []
+
+# Performance tuning
+performance:
+  connection_pool_size: 10
+  request_timeout: 5
+  max_concurrent_requests: 100
+
+# Development settings
+development:
+  debug_mode: false
+  policy_validation: true
+  verbose_logging: false

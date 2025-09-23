@@ -434,6 +434,3 @@ class AbiGuardianSecure(AbiAgent):
     async def close(self):
         """Cleanup resources"""
         await self.policy_engine.close()
-
-# Alias for backward compatibility
-AbiGuardianSecure = AbiGuardianSecure

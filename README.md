@@ -26,28 +26,29 @@ It's an architecture designed to reason, act, and learn across networks — and 
 ## 🚀 What's Implemented
 
 ### Multi-Agent System
-- **5 specialized agents** working in coordination:
-  - **Orchestrator**: Coordinates workflows and manages agent communication
-  - **Planner**: Decomposes queries into executable task sequences
-  - **Actor**: Executes tasks and integrates with external tools
-  - **Guardian**: Enforces policies and audits agent behavior
-  - **Observer**: Monitors system state and provides insights
+- **4 core agents** fully operational + 1 in development:
+  - **Orchestrator**: ✅ Coordinates workflows and manages agent communication
+  - **Planner**: ✅ Decomposes queries into executable task sequences
+  - **Actor**: ✅ Executes tasks and integrates with external tools
+  - **Guardian**: ✅ Advanced OPA-based policy enforcement and security
+  - **Observer**: 🚧 Monitoring system (documentation ready, implementation pending)
 
 ### Core Infrastructure
 - **Docker-based deployment** with full containerization
 - **Weaviate vector database** for semantic search and embeddings
-- **Ollama integration** for local LLM execution
-- **FastAPI** REST APIs for each agent
-- **MCP (Model Context Protocol)** for standardized communication
-- **A2A (Agent-to-Agent)** protocol for inter-agent messaging
+- **Ollama integration** for local LLM execution with jina embeddings
+- **FastAPI** REST APIs for each agent with A2A protocol
+- **MCP (Model Context Protocol)** server with semantic agent discovery
+- **A2A (Agent-to-Agent)** protocol fully implemented with streaming
 
 ### Advanced Features
-- **Workflow orchestration** with dependency management
-- **Semantic agent discovery** based on task requirements
-- **Real-time streaming** responses and status updates
+- **Semantic workflow orchestration** with NetworkX graphs
+- **Intelligent agent discovery** via embedding similarity search
+- **Real-time streaming** responses with pause/resume capabilities
 - **Context preservation** across multi-step workflows
-- **Policy enforcement** and safety mechanisms
-- **Audit trails** for all agent interactions
+- **Advanced OPA policy engine** with immutable core policies
+- **Comprehensive audit trails** and security validation
+- **Emergency shutdown mechanisms** and fail-safe defaults
 
 ## 🏗️ Architecture
 
@@ -98,10 +99,12 @@ docker-compose up -d
 ```
 
 ### Access Points
-- **Orchestrator API**: http://localhost:8082
-- **Actor Agent API**: http://localhost:8083
-- **Semantic Layer**: http://localhost:10100
-- **Weaviate Console**: http://localhost:8080
+- **Orchestrator API**: http://localhost:8082 (workflow coordination)
+- **Actor Agent API**: http://localhost:8083 (task execution)
+- **Guardian Agent API**: http://localhost:8003 (policy validation)
+- **Semantic Layer MCP**: http://localhost:10100 (agent discovery)
+- **Weaviate Console**: http://localhost:8080 (vector database)
+- **OPA Policy Server**: http://localhost:8181 (policy engine)
 
 ### Example Usage
 ```bash
@@ -117,35 +120,37 @@ curl -X POST http://localhost:8082/stream \
 
 ## 📋 Agent Capabilities
 
-### Orchestrator Agent
-- Workflow coordination and task distribution
-- Context management across agent interactions
-- Real-time streaming of results
-- Human-in-the-loop decision points
+### Orchestrator Agent ✅
+- **Workflow coordination** using NetworkX graphs with pause/resume
+- **Semantic agent discovery** via MCP server integration
+- **Real-time streaming** with A2A protocol communication
+- **Context preservation** across multi-step workflows
+- **Human-in-the-loop** decision points with automatic Q&A
 
-### Planner Agent
-- Query decomposition into executable tasks
-- Agent selection based on semantic matching
-- Dependency resolution and sequencing
-- Resource allocation planning
+### Planner Agent ✅
+- **Query decomposition** using LangGraph with structured responses
+- **Task sequencing** with dependency resolution
+- **Agent capability matching** via semantic similarity
+- **Incremental planning** with memory persistence
 
-### Actor Agent
-- Task execution with tool integration
-- External API and system interactions
-- Structured result reporting
-- Error handling and recovery
+### Actor Agent ✅
+- **Task execution** with comprehensive tool integration
+- **A2A communication** for inter-agent coordination
+- **Structured result reporting** with artifact generation
+- **Error handling** and recovery mechanisms
 
-### Guardian Agent
-- Policy enforcement and compliance checking
-- Security audit and access control
-- Behavioral monitoring and alerts
-- Emergency shutdown capabilities
+### Guardian Agent ✅
+- **Advanced OPA integration** with secure policy engine
+- **Immutable core policies** that cannot be overridden by agents
+- **Real-time policy validation** with risk scoring
+- **Emergency shutdown** mechanisms always available
+- **Comprehensive audit trails** with remediation suggestions
 
-### Observer Agent
-- System state monitoring and metrics
-- Performance analysis and optimization
-- Anomaly detection and reporting
-- Health checks and diagnostics
+### Observer Agent 🚧
+- **System monitoring** (documentation complete, implementation pending)
+- **Performance metrics** collection and analysis
+- **Anomaly detection** and alerting
+- **Health checks** and diagnostics
 
 ## 🔧 Configuration
 
@@ -174,19 +179,26 @@ Each agent is defined by a JSON configuration card specifying:
 
 ## 🔒 Security & Governance
 
-### Built-in Safety Mechanisms
-- **Human veto power** on all critical decisions
-- **Immutable audit logs** for all agent communications
-- **Network isolation** between agent subnets
-- **Resource limits** and access controls
-- **Policy validation** before task execution
+### Advanced OPA Policy Engine ✅
+- **Immutable core policies** auto-generated at startup
+- **Multi-layer policy evaluation** (core + custom policies)
+- **Real-time risk scoring** with contextual modifiers
+- **Fail-safe security defaults** (deny by default)
+- **Comprehensive audit logging** with decision traceability
 
-### Governance Rules
-- Agents cannot modify firewall or network rules
-- Self-replication is strictly prohibited
-- All inter-agent communication is logged
-- Emergency shutdown mechanisms are always available
-- Human oversight is required for sensitive operations
+### Built-in Safety Mechanisms
+- **Human veto power** on all critical decisions (implemented)
+- **Emergency shutdown** mechanisms always available
+- **Self-replication blocking** via core policies
+- **Policy modification protection** (agents cannot alter security policies)
+- **Sensitive data detection** and blocking
+
+### Governance Rules (Enforced by OPA)
+- ✅ **Self-replication strictly prohibited** by immutable core policies
+- ✅ **Policy modification blocked** for all agents except human operators
+- ✅ **System-level access denied** to all agents
+- ✅ **Network access controlled** to authorized endpoints only
+- ✅ **Resource access validated** with risk assessment
 
 ## 📚 Documentation
 
@@ -217,8 +229,8 @@ Read our [Manifesto](MANIFIESTO.md) and [Whitepaper](WHITEPAPER.md) to understan
 
 ## Status
 
-**ABI is a functional prototype** ready for deployment and experimentation.  
-The core infrastructure is implemented and operational, with active development continuing on advanced features and optimizations.
+**ABI is a production-ready multi-agent system** with advanced security and semantic capabilities.  
+The core infrastructure is fully operational with 4/5 agents implemented, comprehensive OPA policy engine, and semantic workflow orchestration. Observer agent implementation is the primary remaining development task.
 
 ---
 
