@@ -189,3 +189,19 @@ volumes:
 networks:
   abi-network:
     driver: bridge
+  # OPA Policy Engine for Guardian Agent
+  abi-opa:
+    build:
+      context: ./agents/guardial/opa
+    ports:
+      - 8181:8181
+    environment:
+      - OPA_LOG_LEVEL=info
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
