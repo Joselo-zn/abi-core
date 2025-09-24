@@ -9,6 +9,7 @@ testing/
 ├── __init__.py                 # Testing package initialization
 ├── conftest.py                 # Pytest configuration and shared fixtures
 ├── test_config.py              # Test configuration and path setup
+├── test_opa_migration.py       # OPA migration verification test
 ├── run_tests.py                # Main test runner script
 ├── README.md                   # This file
 ├── guardial/                   # Guardian agent tests
@@ -118,6 +119,14 @@ Unit tests for individual components including:
 - Utility functions
 - Data models
 
+### Migration Tests
+
+- **OPA Migration Test** (`test_opa_migration.py`)
+  - Verifies OPA module reorganization
+  - Tests new import paths
+  - Validates configuration loading
+  - Ensures old imports are properly deprecated
+
 ## Test Configuration
 
 ### Environment Setup
@@ -127,7 +136,27 @@ Tests automatically configure the Python path to include the `abi-core` director
 ```python
 from testing.test_config import TEST_CONFIG
 from agents.guardial.agent.guardial_secure import AbiGuardianSecure
+from abi_llm_base.opa.config import get_opa_config
+from abi_llm_base.opa.policy_loader_v2 import PolicyLoaderV2
 ```
+
+### OPA Module Updates
+
+**Important**: The OPA (Open Policy Agent) modules have been reorganized. Use the new import paths:
+
+```python
+# NEW - Use these imports
+from abi_llm_base.opa.config import get_opa_config
+from abi_llm_base.opa.policy_loader import PolicyLoader
+from abi_llm_base.opa.policy_loader_v2 import PolicyLoaderV2
+from abi_llm_base.opa.core_policies import CorePolicyGenerator
+
+# OLD - These imports are deprecated
+# from common.opa.config import get_opa_config
+# from common.opa.policy_loader import PolicyLoader
+```
+
+See `abi-core/agents/abi-llm-base/opa/MIGRATION_GUIDE.md` for complete migration details.
 
 ### Configuration Options
 
@@ -215,9 +244,11 @@ Exit codes:
 ### Common Issues
 
 1. **Import Errors**: Ensure `testing/test_config.py` is imported to set up paths
-2. **Async Test Issues**: Use `@pytest.mark.asyncio` for async tests
-3. **Mock Setup**: Check that external services are properly mocked
-4. **Path Issues**: Verify that the abi-core directory is in the Python path
+2. **OPA Import Errors**: Use new import paths (`from abi_llm_base.opa.*` instead of `from common.opa.*`)
+3. **Async Test Issues**: Use `@pytest.mark.asyncio` for async tests
+4. **Mock Setup**: Check that external services are properly mocked
+5. **Path Issues**: Verify that the abi-core directory is in the Python path
+6. **Policy Loading Issues**: Check that OPA policies are in the new `./opa/` directory
 
 ### Debug Mode
 

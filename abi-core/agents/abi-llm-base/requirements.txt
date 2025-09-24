@@ -14,3 +14,4 @@ starlette
 jinja2
 aiohttp
 psutil
+pyyaml

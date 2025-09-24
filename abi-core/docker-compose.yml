@@ -192,7 +192,7 @@ networks:
   # OPA Policy Engine for Guardian Agent
   abi-opa:
     build:
-      context: ./agents/guardial/opa
+      context: ./agents/abi-llm-base/opa
     ports:
       - 8181:8181
     environment:

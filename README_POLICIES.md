@@ -179,7 +179,7 @@ export ABI_REQUIRE_OPA="true"
 ### 1. Policy Validation
 
 ```python
-from common.opa.policy_loader import PolicyLoader
+from abi_llm_base.opa.policy_loader import PolicyLoader
 
 loader = PolicyLoader()
 policies = loader.load_all_policies()

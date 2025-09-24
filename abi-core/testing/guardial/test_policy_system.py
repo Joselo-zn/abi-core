@@ -101,7 +101,7 @@ async def test_core_policy_generation():
     try:
         await test_manager.setup_test_environment()
         
-        from common.opa.core_policies import CorePolicyGenerator
+        from abi_llm_base.opa.core_policies import CorePolicyGenerator
         
         # Initialize core policy generator
         generator = CorePolicyGenerator(policy_dir=str(test_manager.test_dir / "policies"))
@@ -148,7 +148,7 @@ async def test_policy_integrity_validation():
     try:
         await test_manager.setup_test_environment()
         
-        from common.opa.core_policies import CorePolicyGenerator
+        from abi_llm_base.opa.core_policies import CorePolicyGenerator
         
         generator = CorePolicyGenerator(policy_dir=str(test_manager.test_dir / "policies"))
         
@@ -200,7 +200,7 @@ async def test_automatic_policy_regeneration():
     try:
         await test_manager.setup_test_environment()
         
-        from common.opa.core_policies import CorePolicyGenerator
+        from abi_llm_base.opa.core_policies import CorePolicyGenerator
         
         generator = CorePolicyGenerator(policy_dir=str(test_manager.test_dir / "policies"))
         
@@ -262,7 +262,7 @@ async def test_multi_source_policy_loading():
     try:
         await test_manager.setup_test_environment()
         
-        from common.opa.policy_loader_v2 import PolicyLoaderV2
+        from abi_llm_base.opa.policy_loader_v2 import PolicyLoaderV2
         
         # Create test policies in different directories
         
@@ -365,8 +365,8 @@ async def test_policy_conflict_resolution():
     try:
         await test_manager.setup_test_environment()
         
-        from common.opa.policy_loader_v2 import PolicyLoaderV2
-        from common.opa.core_policies import CorePolicyGenerator
+        from abi_llm_base.opa.policy_loader_v2 import PolicyLoaderV2
+        from abi_llm_base.opa.core_policies import CorePolicyGenerator
         
         # Generate core policies first
         generator = CorePolicyGenerator(policy_dir=str(test_manager.test_dir / "policies"))
@@ -458,7 +458,7 @@ async def test_dynamic_policy_reloading():
     try:
         await test_manager.setup_test_environment()
         
-        from common.opa.policy_loader_v2 import PolicyLoaderV2
+        from abi_llm_base.opa.policy_loader_v2 import PolicyLoaderV2
         
         # Create initial policy
         initial_policy = """
@@ -551,7 +551,7 @@ async def test_policy_system_stress():
     try:
         await test_manager.setup_test_environment()
         
-        from common.opa.policy_loader_v2 import PolicyLoaderV2
+        from abi_llm_base.opa.policy_loader_v2 import PolicyLoaderV2
         
         # Generate large number of policies
         num_policies = 100
@@ -658,7 +658,7 @@ async def test_health_check_integration():
     try:
         await test_manager.setup_test_environment()
         
-        from agent.guardial_secure import AbiGuardianSecure
+        from agents.guardial.agent.guardial_secure import AbiGuardianSecure
         
         # Initialize guardian with test environment
         guardian = AbiGuardianSecure()

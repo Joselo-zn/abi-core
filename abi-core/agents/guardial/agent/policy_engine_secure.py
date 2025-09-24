@@ -6,8 +6,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 
-from common.opa.config import get_opa_config
-from common.opa.policy_loader_v2 import get_policy_loader
+from abi_llm_base.opa.config import get_opa_config
+from abi_llm_base.opa.policy_loader_v2 import get_policy_loader
 
 logger = logging.getLogger(__name__)
 
