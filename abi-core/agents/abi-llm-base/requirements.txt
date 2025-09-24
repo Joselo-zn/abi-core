@@ -11,3 +11,6 @@ networkx
 langchain-community
 langgraph
 starlette
+jinja2
+aiohttp
+psutil

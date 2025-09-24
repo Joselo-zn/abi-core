@@ -378,10 +378,18 @@ class SecurePolicyEngine:
             'core_policies_present': False
         }
         
-        # Check for core policies
+        # Check for core policies with enhanced integrity information
         if self.policies_loaded:
             manifest = self.policy_loader.get_policy_manifest()
             health['core_policies_present'] = manifest.get('core_policies_loaded', False)
+            
+            # Add core policy integrity information
+            core_generator = self.policy_loader.core_generator
+            health['core_policy_integrity'] = {
+                'checksums_count': len(core_generator.policy_checksums),
+                'last_validation': core_generator.last_validation.isoformat() if core_generator.last_validation else None,
+                'integrity_file_exists': (Path(self.policy_loader.base_policy_path) / core_generator.integrity_state_file).exists()
+            }
         
         # Check OPA connectivity
         try:
@@ -398,6 +406,101 @@ class SecurePolicyEngine:
         )
         
         return health
+    
+    async def reload_policies(self) -> bool:
+        """
+        Reload policies dynamically without restart
+        
+        Returns:
+            True if reload successful, False otherwise
+        """
+        try:
+            logger.info("🔄 Starting dynamic policy reload...")
+            
+            # Backup current state
+            old_policies_loaded = self.policies_loaded
+            old_security_validated = self.security_validated
+            
+            # Reset state for reload
+            self.policies_loaded = False
+            
+            # Reload policies
+            await self.initialize()
+            
+            if self.security_validated and self.policies_loaded:
+                logger.info("✅ Dynamic policy reload successful")
+                return True
+            else:
+                # Restore previous state on failure
+                self.policies_loaded = old_policies_loaded
+                self.security_validated = old_security_validated
+                logger.error("🚨 Dynamic policy reload failed - restored previous state")
+                return False
+                
+        except Exception as e:
+            logger.error(f"🚨 Dynamic policy reload failed: {e}")
+            # Restore previous state on exception
+            self.policies_loaded = old_policies_loaded
+            self.security_validated = old_security_validated
+            return False
+    
+    async def validate_policy_changes(self) -> Dict[str, Any]:
+        """
+        Validate potential policy changes without applying them
+        
+        Returns:
+            Validation results with issues and recommendations
+        """
+        try:
+            # Create temporary policy loader for validation
+            temp_loader = get_policy_loader(self.config.get('policies.base_path'))
+            
+            # Load policies for validation
+            temp_policies = temp_loader.load_all_policies()
+            
+            # Validate policies
+            validation_issues = temp_loader.validate_policies()
+            
+            # Check for critical issues
+            critical_issues = [i for i in validation_issues if i.get('severity') == 'CRITICAL']
+            
+            return {
+                'valid': len(critical_issues) == 0,
+                'total_policies': len(temp_policies),
+                'validation_issues': validation_issues,
+                'critical_issues': critical_issues,
+                'recommendations': self._generate_policy_recommendations(validation_issues)
+            }
+            
+        except Exception as e:
+            logger.error(f"Policy validation failed: {e}")
+            return {
+                'valid': False,
+                'error': str(e),
+                'recommendations': ['Fix policy loading errors before reload']
+            }
+    
+    def _generate_policy_recommendations(self, issues: List[Dict[str, Any]]) -> List[str]:
+        """Generate recommendations based on validation issues"""
+        recommendations = []
+        
+        critical_count = len([i for i in issues if i.get('severity') == 'CRITICAL'])
+        error_count = len([i for i in issues if i.get('severity') == 'ERROR'])
+        warning_count = len([i for i in issues if i.get('severity') == 'WARNING'])
+        
+        if critical_count > 0:
+            recommendations.append(f"Fix {critical_count} critical issues before reload")
+        
+        if error_count > 0:
+            recommendations.append(f"Address {error_count} policy errors")
+        
+        if warning_count > 0:
+            recommendations.append(f"Consider fixing {warning_count} policy warnings")
+        
+        if not issues:
+            recommendations.append("Policies are valid and ready for reload")
+        
+        return recommendations
     
     async def close(self):
         """Close HTTP client"""

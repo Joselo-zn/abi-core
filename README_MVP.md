@@ -1,4 +1,4 @@
-# ABI – Agent-Based Infrastructure
+# ABI – Agent-Based Infrastructure (MVP)
 Created and maintained by José Luis Martínez
 
 **ABI** is a paradigm shift in how we design, deploy, and interact with intelligent systems.
@@ -23,32 +23,32 @@ It's an architecture designed to reason, act, and learn across networks — and 
 - **Explainability and auditability** by design
 - **No black boxes** — cognition is distributed, not hidden
 
-## 🚀 What's Implemented
+## 🚀 What's Implemented (MVP Status)
 
 ### Multi-Agent System
-- **4 core agents** operational with A2A communication + 1 framework ready:
-  - **Orchestrator**: ✅ Workflow coordination with semantic agent discovery via MCP
-  - **Planner**: ✅ Task decomposition using LangGraph with structured responses
-  - **Actor**: ✅ Task execution with A2A communication and tool integration
-  - **Guardian**: ✅ Advanced OPA policy engine with emergency response capabilities
+- **4 core agents** in MVP operational state + 1 framework ready:
+  - **Orchestrator**: ✅ Basic workflow coordination with LangChain integration
+  - **Planner**: ✅ Task decomposition using LangGraph (extensible foundation)
+  - **Actor**: ✅ Basic task execution with structured responses
+  - **Guardian**: ✅ OPA policy engine with emergency response capabilities
   - **Observer**: 🚧 Architecture defined, implementation framework ready
 
 ### Core Infrastructure
 - **Docker-based deployment** with full containerization
 - **Weaviate vector database** for semantic search and embeddings
 - **Ollama integration** for local LLM execution with jina embeddings
-- **FastAPI** REST APIs for each agent with A2A protocol
-- **MCP (Model Context Protocol)** server with semantic agent discovery
-- **A2A (Agent-to-Agent)** protocol with streaming communication
+- **FastAPI** REST APIs for each agent with A2A protocol foundation
+- **MCP (Model Context Protocol)** server with basic semantic agent discovery
+- **A2A (Agent-to-Agent)** protocol basic implementation
 
-### Implemented Features
-- **Semantic workflow orchestration** with NetworkX graphs and MCP discovery
-- **Intelligent agent discovery** via embedding similarity search (`find_agent` tool)
-- **Real-time streaming** responses with A2A protocol communication
-- **Context preservation** across multi-step workflows
-- **OPA policy engine** with immutable core policies and emergency controls
-- **Comprehensive audit trails** and security validation
-- **Emergency shutdown mechanisms** and fail-safe defaults
+### MVP Features (Extensible Foundation)
+- **Basic workflow orchestration** with NetworkX graphs (expandable)
+- **Agent discovery** via MCP semantic similarity (foundation implemented)
+- **Streaming responses** with basic pause/resume (core functionality)
+- **Context preservation** across workflows (basic implementation)
+- **OPA policy engine** with core security policies (operational)
+- **Audit logging** and security validation (basic implementation)
+- **Emergency response system** with shutdown capabilities (functional)
 
 ## 🏗️ Architecture
 
@@ -118,40 +118,39 @@ curl -X POST http://localhost:8082/stream \
   }'
 ```
 
-## 📋 Agent Capabilities
+## 📋 Agent Capabilities (MVP Implementation)
 
-### Orchestrator Agent ✅
-- **Workflow coordination** using NetworkX graphs with pause/resume
-- **Semantic agent discovery** via MCP server integration (`find_agent` tool)
-- **Real-time streaming** with A2A protocol communication
-- **Context preservation** across multi-step workflows
-- **Human-in-the-loop** decision points with automatic Q&A
+### Orchestrator Agent ✅ MVP
+- **Basic workflow coordination** using NetworkX graphs
+- **MCP server integration** for agent discovery (foundation)
+- **Streaming responses** with A2A protocol basics
+- **Context management** across simple workflows
+- **Q&A integration** with LangChain (basic implementation)
 
-### Planner Agent ✅
-- **Query decomposition** using LangGraph with structured responses
-- **Task sequencing** with dependency resolution
+### Planner Agent ✅ MVP
+- **Query decomposition** using LangGraph (basic structured responses)
+- **Task breakdown** with simple sequencing
 - **Memory persistence** via LangGraph checkpointer
-- **A2A communication** for inter-agent coordination
+- **Extensible planning framework** ready for advanced features
 
-### Actor Agent ✅
-- **Task execution** with LangChain integration
-- **A2A communication** for inter-agent coordination
-- **Structured result reporting** with artifact generation
-- **Error handling** and recovery mechanisms
+### Actor Agent ✅ MVP
+- **Basic task execution** with LangChain integration
+- **Structured response format** with status handling
+- **Error handling** and basic recovery
+- **Foundation for tool integration** (extensible)
 
-### Guardian Agent ✅
-- **Advanced OPA integration** with secure policy engine
-- **Immutable core policies** that cannot be overridden by agents
-- **Real-time policy validation** with risk scoring
-- **Emergency shutdown** mechanisms always available
-- **Comprehensive audit trails** with remediation suggestions
+### Guardian Agent ✅ MVP+
+- **OPA policy engine integration** with core security policies
+- **Emergency response system** with shutdown capabilities
+- **Policy validation** with risk assessment
+- **Audit logging** and compliance tracking
 - **Dashboard and alerting** system integration
 
-### Observer Agent 🚧
-- **System monitoring** (architecture defined, implementation pending)
-- **Performance metrics** collection and analysis
-- **Anomaly detection** and alerting
-- **Health checks** and diagnostics
+### Observer Agent 🚧 Framework Ready
+- **Architecture defined** with monitoring interfaces
+- **Integration points** established with other agents
+- **Extensible framework** for metrics and health monitoring
+- **Ready for implementation** of specific monitoring features
 
 ## 🔧 Configuration
 
@@ -180,26 +179,26 @@ Each agent is defined by a JSON configuration card specifying:
 
 ## 🔒 Security & Governance
 
-### Advanced OPA Policy Engine ✅
-- **Immutable core policies** auto-generated at startup
-- **Multi-layer policy evaluation** (core + custom policies)
-- **Real-time risk scoring** with contextual modifiers
+### OPA Policy Engine ✅ MVP
+- **Core policies** auto-generated at startup
+- **Basic policy evaluation** (core + custom policies)
+- **Risk scoring** with basic assessment
 - **Fail-safe security defaults** (deny by default)
-- **Comprehensive audit logging** with decision traceability
+- **Audit logging** with decision tracking
 
 ### Built-in Safety Mechanisms
-- **Human veto power** on all critical decisions (implemented)
-- **Emergency shutdown** mechanisms always available
+- **Human veto power** on critical decisions (basic implementation)
+- **Emergency shutdown** mechanisms available
 - **Self-replication blocking** via core policies
 - **Policy modification protection** (agents cannot alter security policies)
-- **Sensitive data detection** and blocking
+- **Basic sensitive data detection**
 
 ### Governance Rules (Enforced by OPA)
 - ✅ **Self-replication strictly prohibited** by immutable core policies
 - ✅ **Policy modification blocked** for all agents except human operators
 - ✅ **System-level access denied** to all agents
 - ✅ **Network access controlled** to authorized endpoints only
-- ✅ **Resource access validated** with risk assessment
+- ✅ **Resource access validated** with basic risk assessment
 
 ## 📚 Documentation
 
@@ -231,29 +230,23 @@ Read our [Manifesto](MANIFIESTO.md) and [Whitepaper](WHITEPAPER.md) to understan
 
 ## Status
 
-**ABI is a functional MVP demonstrating distributed agent-based infrastructure** with semantic discovery and human supervision.  
-The system provides a solid foundation with 4/5 agents operational, OPA policy engine, and MCP-based semantic workflow orchestration. This MVP serves as an extensible platform for building production-ready multi-agent systems.
+**ABI is a functional MVP (Minimum Viable Product)** demonstrating the core concepts of distributed agent-based infrastructure.  
+The system provides a solid foundation with 4/5 agents in basic operational state, OPA policy engine integration, and semantic workflow orchestration. This MVP serves as an extensible platform for building production-ready multi-agent systems.
 
 ### Current Implementation Status:
 - **Infrastructure**: ✅ Production-ready (Docker, Weaviate, Ollama, MCP Server)
-- **Core Agents**: ✅ Operational with A2A communication and semantic discovery
-- **Security Layer**: ✅ Advanced Guardian with OPA integration and emergency systems
-- **Semantic Layer**: ✅ MCP-based agent discovery with embedding similarity
+- **Core Agents**: ✅ MVP functional (basic implementations with room for enhancement)
+- **Security Layer**: ✅ Operational (OPA integration with emergency systems)
+- **Semantic Layer**: ✅ Basic MCP integration (extensible foundation)
 - **Observer Agent**: 🚧 Framework ready, implementation pending
 
-### Key Architectural Achievements:
-- **Semantic Agent Discovery**: Agents discover each other via MCP `find_agent` tool using embedding similarity
-- **A2A Communication**: All agents implement A2A server with standardized communication protocol
-- **Human Supervision**: Native human-in-the-loop controls with emergency shutdown capabilities
-- **Policy-First Security**: OPA-based governance with immutable core policies
-- **Vendor Independence**: Local LLM execution with Ollama, no external API dependencies
-
 ### Roadmap to Production:
-1. **Complete Observer Agent** - Implement monitoring and metrics collection
-2. **Enhanced Tool Ecosystem** - Expand agent capabilities with specialized tools
-3. **Performance Optimization** - Optimize semantic discovery and A2A communication
-4. **Enterprise Features** - Multi-tenancy, advanced security, and compliance
-5. **Community Ecosystem** - Agent marketplace and contribution framework
+1. **Enhanced Agent Capabilities** - Expand from basic to advanced functionality
+2. **Complete MCP Integration** - Full semantic protocol implementation
+3. **Observer Agent Implementation** - Complete the monitoring system
+4. **Advanced Security Features** - Enhanced policy engine and audit systems
+5. **Production Testing** - Comprehensive integration and performance testing
+6. **Tool Ecosystem** - Rich integration with external tools and services
 
 ---
 

@@ -7,5 +7,5 @@ COPY ./agent /app
 
 WORKDIR /app
 
-# Use the secure main file with mandatory security validation
-CMD ["python", "main_secure.py"]
+# Use the main file with security validation
+CMD ["python", "main.py"]

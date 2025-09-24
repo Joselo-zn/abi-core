@@ -8,6 +8,8 @@ The system will NOT start without these core policies.
 
 import os
 import logging
+import hashlib
+import json
 from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
@@ -325,6 +327,9 @@ security_violations := [violation |
     def __init__(self):
         self.version = "1.0.0"
         self.required_policies = ["abi.core"]
+        self.policy_checksums = {}
+        self.last_validation = None
+        self.integrity_state_file = ".abi_policy_integrity.json"
         
     def generate_core_policies(self) -> str:
         """
@@ -409,7 +414,7 @@ security_violations := [violation |
     
     def ensure_core_policies(self, policy_directory: str) -> bool:
         """
-        Ensure core policies exist, generate if missing
+        Ensure core policies exist, generate if missing, regenerate if corrupted
         
         Args:
             policy_directory: Directory where policies should exist
@@ -419,24 +424,165 @@ security_violations := [violation |
         """
         policy_file = Path(policy_directory) / "abi_policies.rego"
         
-        # Check if policies exist and are valid
-        if self.validate_core_policies_exist(policy_directory):
-            return True
+        # Load existing integrity state
+        self.load_integrity_state(policy_directory)
         
-        # Generate core policies
-        logger.warning("Core policies missing, generating...")
-        success = self.write_core_policies(str(policy_file))
+        # Check if policies exist
+        if not policy_file.exists():
+            logger.warning("Core policies missing, generating...")
+            success = self.write_core_policies(str(policy_file))
+            
+            if not success:
+                logger.error("CRITICAL: Failed to generate core policies - SYSTEM CANNOT START")
+                return False
         
-        if not success:
-            logger.error("CRITICAL: Failed to generate core policies - SYSTEM CANNOT START")
-            return False
+        # Validate policy integrity
+        if not self.validate_policy_integrity(str(policy_file)):
+            logger.error("CRITICAL: Core policy integrity validation failed")
+            
+            # Attempt automatic regeneration
+            if not self.regenerate_corrupted_policies(policy_directory):
+                logger.error("CRITICAL: Failed to regenerate corrupted policies - SYSTEM CANNOT START")
+                return False
+            
+            logger.info("Core policies successfully regenerated after corruption detection")
         
-        # Validate generated policies
+        # Final validation check
         if not self.validate_core_policies_exist(policy_directory):
-            logger.error("CRITICAL: Generated core policies are invalid - SYSTEM CANNOT START")
+            logger.error("CRITICAL: Final policy validation failed - SYSTEM CANNOT START")
             return False
         
+        # Save integrity state
+        self.save_integrity_state(policy_directory)
+        
+        logger.info("Core policies validated and integrity confirmed")
         return True
+    
+    def calculate_policy_checksum(self, policy_content: str) -> str:
+        """Calculate SHA-256 checksum of policy content"""
+        return hashlib.sha256(policy_content.encode('utf-8')).hexdigest()
+    
+    def save_integrity_state(self, policy_directory: str) -> bool:
+        """Save policy integrity state to file"""
+        try:
+            state_file = Path(policy_directory) / self.integrity_state_file
+            state = {
+                'version': self.version,
+                'checksums': self.policy_checksums,
+                'last_validation': self.last_validation.isoformat() if self.last_validation else None,
+                'generated_at': datetime.utcnow().isoformat()
+            }
+            
+            with open(state_file, 'w') as f:
+                json.dump(state, f, indent=2)
+            
+            logger.info(f"Policy integrity state saved: {state_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save integrity state: {e}")
+            return False
+    
+    def load_integrity_state(self, policy_directory: str) -> bool:
+        """Load policy integrity state from file"""
+        try:
+            state_file = Path(policy_directory) / self.integrity_state_file
+            
+            if not state_file.exists():
+                logger.info("No existing integrity state found")
+                return False
+            
+            with open(state_file, 'r') as f:
+                state = json.load(f)
+            
+            self.policy_checksums = state.get('checksums', {})
+            last_val = state.get('last_validation')
+            self.last_validation = datetime.fromisoformat(last_val) if last_val else None
+            
+            logger.info(f"Policy integrity state loaded: {len(self.policy_checksums)} checksums")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load integrity state: {e}")
+            return False
+    
+    def validate_policy_integrity(self, policy_path: str) -> bool:
+        """Validate policy integrity using checksums and required elements"""
+        try:
+            policy_file = Path(policy_path)
+            
+            if not policy_file.exists():
+                logger.error(f"Policy file not found: {policy_file}")
+                return False
+            
+            # Read current policy content
+            with open(policy_file, 'r') as f:
+                current_content = f.read()
+            
+            # Calculate current checksum
+            current_checksum = self.calculate_policy_checksum(current_content)
+            
+            # Check if we have a stored checksum
+            policy_name = policy_file.name
+            stored_checksum = self.policy_checksums.get(policy_name)
+            
+            if stored_checksum and stored_checksum != current_checksum:
+                logger.error(f"Policy integrity violation detected: {policy_name}")
+                logger.error(f"Expected: {stored_checksum}, Got: {current_checksum}")
+                return False
+            
+            # Validate required elements
+            required_elements = [
+                "package abi.core",
+                "default allow := false",
+                "create_agent",
+                "spawn_process", 
+                "replicate"
+            ]
+            
+            for element in required_elements:
+                if element not in current_content:
+                    logger.error(f"Policy missing required element: {element}")
+                    return False
+            
+            # Update checksum and validation time
+            self.policy_checksums[policy_name] = current_checksum
+            self.last_validation = datetime.utcnow()
+            
+            logger.info(f"Policy integrity validation passed: {policy_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Policy integrity validation failed: {e}")
+            return False
+    
+    def regenerate_corrupted_policies(self, policy_directory: str) -> bool:
+        """Regenerate policies when corruption is detected"""
+        try:
+            logger.warning("Regenerating corrupted core policies...")
+            
+            # Generate new policies
+            policy_file = Path(policy_directory) / "abi_policies.rego"
+            success = self.write_core_policies(str(policy_file))
+            
+            if not success:
+                logger.error("Failed to regenerate core policies")
+                return False
+            
+            # Validate regenerated policies
+            if not self.validate_policy_integrity(str(policy_file)):
+                logger.error("Regenerated policies failed validation")
+                return False
+            
+            # Save new integrity state
+            self.save_integrity_state(policy_directory)
+            
+            logger.info("Core policies successfully regenerated")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Policy regeneration failed: {e}")
+            return False
 
 # Singleton instance
 _core_policy_generator = None

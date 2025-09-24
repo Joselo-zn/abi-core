@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Union
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
+import uuid
 
 # ---------- Payloads ----------
 
@@ -204,3 +205,81 @@ class GuardialResponse(BaseModel):
             ),
             meta=meta or {},
         )
+
+# ---------- MCP Data Models ----------
+
+class SemanticSignals(BaseModel):
+    """Semantic signals from vector store analysis"""
+    pii_detected: bool = False
+    secrets_found: List[str] = Field(default_factory=list)
+    scope_creep: float = 0.0
+    bias_indicators: List[str] = Field(default_factory=list)
+    risk_level: Literal["low", "medium", "high", "critical"] = "low"
+    confidence_score: float = 0.0
+
+class GuardialInputV1(BaseModel):
+    """Input schema for guardial.evaluate MCP tool"""
+    task_id: str
+    context_id: str
+    user_id: str
+    policy_refs: List[str] = Field(default_factory=list)
+    expected_behaviors_ref: Optional[str] = None
+    agent_outputs: Dict[str, Any] = Field(default_factory=dict)
+    semantic_signals: SemanticSignals = Field(default_factory=SemanticSignals)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class PolicyViolation(BaseModel):
+    """Represents a policy violation"""
+    policy_name: str
+    rule_name: str
+    severity: Literal["low", "medium", "high", "critical"]
+    description: str
+    violated_content: Optional[str] = None
+    remediation: Optional[str] = None
+
+class SemanticViolation(BaseModel):
+    """Represents a semantic violation"""
+    violation_type: str
+    severity: Literal["low", "medium", "high", "critical"]
+    description: str
+    confidence: float
+    detected_content: Optional[str] = None
+    remediation: Optional[str] = None
+
+class RiskAssessment(BaseModel):
+    """Risk assessment details"""
+    overall_risk: float
+    policy_risk: float
+    semantic_risk: float
+    risk_factors: List[str] = Field(default_factory=list)
+    mitigation_suggestions: List[str] = Field(default_factory=list)
+
+class AuditReport(BaseModel):
+    """Structured audit report"""
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    policy_violations: List[PolicyViolation] = Field(default_factory=list)
+    semantic_violations: List[SemanticViolation] = Field(default_factory=list)
+    risk_assessment: RiskAssessment
+    remediation_suggestions: List[str] = Field(default_factory=list)
+
+class ComplianceTrace(BaseModel):
+    """Compliance trace for audit trail"""
+    rules_evaluated: List[str] = Field(default_factory=list)
+    decision_path: List[str] = Field(default_factory=list)
+    timestamps: Dict[str, datetime] = Field(default_factory=dict)
+    evaluation_context: Dict[str, Any] = Field(default_factory=dict)
+
+class GuardialEvaluationResponse(BaseModel):
+    """Response from guardial.evaluate MCP tool"""
+    decision: Literal["allow", "deny", "review"]
+    deviation_score: float
+    audit_report: AuditReport
+    compliance_trace: ComplianceTrace
+    report_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    uncertain: bool = False
+    processing_time_ms: Optional[int] = None
+    
+    # Additional metadata
+    evaluated_at: datetime = Field(default_factory=datetime.utcnow)
+    evaluator_version: str = "1.0.0"
+    policy_version: Optional[str] = None

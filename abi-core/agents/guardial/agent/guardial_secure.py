@@ -3,6 +3,7 @@ import os
 import json
 from typing import Dict, Any, Optional
 from collections.abc import AsyncIterable
+from datetime import datetime
 
 from a2a.types import (
     SendStreamingMessageSuccessResponse,
@@ -12,8 +13,12 @@ from a2a.types import (
 )
 from common import prompts
 from agent.agent import AbiAgent
-from agent.models.agent_models import GuardialResponse
+from agent.models.agent_models import (
+    GuardialResponse, GuardialInputV1, GuardialEvaluationResponse,
+    AuditReport, ComplianceTrace, RiskAssessment
+)
 from agent.policy_engine_secure import get_secure_policy_engine, PolicyDecision
+from agent.mcp_interface import get_guardial_mcp_tool
 
 from langchain_core.messages import AIMessage
 from langchain_community.chat_models import ChatOllama
@@ -44,6 +49,7 @@ class AbiGuardianSecure(AbiAgent):
         )
 
         self.policy_engine = get_secure_policy_engine()
+        self.mcp_tool = get_guardial_mcp_tool()
         self.llm = ChatOllama(model_name=MODEL_NAME, temperature=0.0)
         self.system_secure = False
         
@@ -248,6 +254,75 @@ class AbiGuardianSecure(AbiAgent):
             remediation_suggestions=remediation
         )
 
+    async def evaluate_mcp(self, guardial_input: GuardialInputV1) -> GuardialEvaluationResponse:
+        """
+        MCP evaluation endpoint for guardial.evaluate
+        
+        Args:
+            guardial_input: Normalized input from MCP with semantic signals
+            
+        Returns:
+            GuardialEvaluationResponse with decision and audit trail
+        """
+        
+        # CRITICAL: Check system security first
+        if not self.system_secure:
+            logger.error("🚨 CRITICAL: MCP evaluation blocked - system security not validated")
+            return GuardialEvaluationResponse(
+                decision="deny",
+                deviation_score=1.0,
+                audit_report=AuditReport(
+                    risk_assessment=RiskAssessment(
+                        overall_risk=1.0,
+                        policy_risk=1.0,
+                        semantic_risk=0.0,
+                        risk_factors=["System security not validated"],
+                        mitigation_suggestions=["Initialize system security", "Contact administrator"]
+                    )
+                ),
+                compliance_trace=ComplianceTrace(
+                    rules_evaluated=["system_security_check"],
+                    decision_path=["security_not_validated", "hard_deny"]
+                ),
+                uncertain=True
+            )
+        
+        logger.info(f"🛡️ MCP Evaluation request for task_id: {guardial_input.task_id}")
+        
+        try:
+            # Use MCP tool for evaluation
+            response = await self.mcp_tool.evaluate(guardial_input)
+            
+            # Log the decision
+            logger.info(f"✅ MCP Evaluation completed: {response.decision} (score: {response.deviation_score:.3f})")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"🚨 MCP Evaluation failed: {e}")
+            
+            # Return error response
+            return GuardialEvaluationResponse(
+                decision="review",
+                deviation_score=1.0,
+                audit_report=AuditReport(
+                    risk_assessment=RiskAssessment(
+                        overall_risk=1.0,
+                        policy_risk=1.0,
+                        semantic_risk=0.0,
+                        risk_factors=["Evaluation failed"],
+                        mitigation_suggestions=["Manual review required", "Check system logs"]
+                    ),
+                    remediation_suggestions=[f"Evaluation error: {str(e)}"]
+                ),
+                compliance_trace=ComplianceTrace(
+                    rules_evaluated=["error_handling"],
+                    decision_path=["evaluation_failed"],
+                    evaluation_context={"task_id": guardial_input.task_id, "error": str(e)}
+                ),
+                uncertain=True
+            )
+
     async def emergency_shutdown(self, reason: str, initiated_by: str) -> Dict[str, Any]:
         """
         Emergency shutdown mechanism - always available regardless of policies
@@ -256,26 +331,201 @@ class AbiGuardianSecure(AbiAgent):
         """
         logger.error(f"🚨 EMERGENCY SHUTDOWN INITIATED by {initiated_by}: {reason}")
         
+        # Record emergency event in metrics
+        if hasattr(self, 'mcp_tool') and hasattr(self.mcp_tool, 'metrics'):
+            self.mcp_tool.metrics.record_system_event(
+                "emergency_shutdown",
+                {"reason": reason, "initiated_by": initiated_by}
+            )
+        
         shutdown_log = {
-            "timestamp": json.dumps({"timestamp": "now"}),  # Placeholder
+            "timestamp": datetime.utcnow().isoformat(),
             "reason": reason,
             "initiated_by": initiated_by,
             "system_state": {
                 "security_validated": self.system_secure,
-                "policies_loaded": self.policy_engine.policies_loaded if hasattr(self.policy_engine, 'policies_loaded') else False
+                "policies_loaded": self.policy_engine.policies_loaded if hasattr(self.policy_engine, 'policies_loaded') else False,
+                "active_evaluations": 0  # Could track active evaluations
             },
-            "emergency_action": "SYSTEM_SHUTDOWN"
+            "emergency_action": "SYSTEM_SHUTDOWN",
+            "affected_components": [
+                "policy_engine",
+                "mcp_interface",
+                "audit_system",
+                "metrics_collector"
+            ]
         }
         
-        # Log emergency shutdown
-        logger.error(f"🚨 EMERGENCY SHUTDOWN LOG: {json.dumps(shutdown_log)}")
+        # Set emergency mode flag
+        self.emergency_mode = True
+        self.system_secure = False  # Block all operations
+        
+        # Log emergency shutdown with structured logging
+        logger.error(f"🚨 EMERGENCY SHUTDOWN LOG: {json.dumps(shutdown_log, indent=2)}")
+        
+        # Attempt to persist emergency log
+        try:
+            if hasattr(self, 'mcp_tool') and hasattr(self.mcp_tool, 'audit_manager'):
+                # Create emergency audit entry
+                emergency_response = GuardialEvaluationResponse(
+                    decision="deny",
+                    deviation_score=1.0,
+                    audit_report=AuditReport(
+                        risk_assessment=RiskAssessment(
+                            overall_risk=1.0,
+                            policy_risk=1.0,
+                            semantic_risk=0.0,
+                            risk_factors=["Emergency shutdown"],
+                            mitigation_suggestions=["System requires manual restart"]
+                        ),
+                        remediation_suggestions=[f"Emergency shutdown: {reason}"]
+                    ),
+                    compliance_trace=ComplianceTrace(
+                        rules_evaluated=["emergency_shutdown"],
+                        decision_path=["emergency_initiated", "system_shutdown"],
+                        evaluation_context={
+                            "emergency_reason": reason,
+                            "initiated_by": initiated_by,
+                            "shutdown_timestamp": datetime.utcnow().isoformat()
+                        }
+                    ),
+                    uncertain=False  # Emergency shutdown is certain
+                )
+                
+                await self.mcp_tool.audit_manager.persist_report(
+                    emergency_response,
+                    {
+                        "task_id": "emergency_shutdown",
+                        "context_id": "system_emergency",
+                        "user_id": initiated_by
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Failed to persist emergency shutdown log: {e}")
         
         return {
             "shutdown_initiated": True,
             "reason": reason,
             "initiated_by": initiated_by,
-            "log": shutdown_log
+            "timestamp": shutdown_log["timestamp"],
+            "emergency_mode": True,
+            "system_blocked": True,
+            "log": shutdown_log,
+            "recovery_instructions": [
+                "System is in emergency mode",
+                "All operations are blocked",
+                "Manual restart required",
+                "Contact system administrator"
+            ]
         }
+    
+    async def check_emergency_conditions(self) -> Optional[Dict[str, Any]]:
+        """
+        Check for conditions that warrant emergency shutdown
+        
+        Returns:
+            Emergency condition details if found, None otherwise
+        """
+        if not hasattr(self, 'mcp_tool') or not hasattr(self.mcp_tool, 'metrics'):
+            return None
+        
+        try:
+            # Check active alerts
+            active_alerts = self.mcp_tool.metrics.check_alerts()
+            critical_alerts = [alert for alert in active_alerts if alert['severity'] == 'critical']
+            
+            if len(critical_alerts) >= 3:
+                return {
+                    "condition": "multiple_critical_alerts",
+                    "details": f"{len(critical_alerts)} critical alerts active",
+                    "alerts": critical_alerts,
+                    "recommended_action": "emergency_shutdown"
+                }
+            
+            # Check security metrics
+            security_metrics = self.mcp_tool.metrics.get_security_metrics()
+            
+            if security_metrics.get('security_status') == 'CRITICAL':
+                return {
+                    "condition": "critical_security_status",
+                    "details": "Security status is CRITICAL",
+                    "metrics": security_metrics,
+                    "recommended_action": "emergency_shutdown"
+                }
+            
+            # Check policy violations rate
+            violations_last_hour = security_metrics.get('policy_violations_last_hour', 0)
+            if violations_last_hour > 50:
+                return {
+                    "condition": "excessive_policy_violations",
+                    "details": f"{violations_last_hour} policy violations in last hour",
+                    "threshold": 50,
+                    "recommended_action": "emergency_shutdown"
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Emergency condition check failed: {e}")
+            return {
+                "condition": "emergency_check_failure",
+                "details": f"Emergency condition check failed: {str(e)}",
+                "recommended_action": "manual_review"
+            }
+    
+    async def get_system_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive system status including emergency state
+        
+        Returns:
+            Complete system status information
+        """
+        status = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "system_secure": self.system_secure,
+            "emergency_mode": getattr(self, 'emergency_mode', False),
+            "security_initialized": hasattr(self, 'system_secure'),
+            "components": {
+                "policy_engine": {
+                    "status": "healthy" if self.policy_engine.security_validated else "unhealthy",
+                    "policies_loaded": self.policy_engine.policies_loaded,
+                    "security_validated": self.policy_engine.security_validated
+                },
+                "mcp_interface": {
+                    "status": "healthy" if hasattr(self, 'mcp_tool') else "not_initialized"
+                },
+                "audit_system": {
+                    "status": "healthy" if hasattr(self, 'mcp_tool') and hasattr(self.mcp_tool, 'audit_manager') else "not_initialized"
+                },
+                "metrics_collector": {
+                    "status": "healthy" if hasattr(self, 'mcp_tool') and hasattr(self.mcp_tool, 'metrics') else "not_initialized"
+                }
+            }
+        }
+        
+        # Add metrics if available
+        if hasattr(self, 'mcp_tool') and hasattr(self.mcp_tool, 'metrics'):
+            try:
+                performance_metrics = self.mcp_tool.metrics.get_performance_metrics()
+                security_metrics = self.mcp_tool.metrics.get_security_metrics()
+                active_alerts = self.mcp_tool.metrics.check_alerts()
+                
+                status["performance"] = performance_metrics
+                status["security"] = security_metrics
+                status["alerts"] = {
+                    "active_count": len(active_alerts),
+                    "critical_count": len([a for a in active_alerts if a['severity'] == 'critical']),
+                    "alerts": active_alerts
+                }
+            except Exception as e:
+                status["metrics_error"] = str(e)
+        
+        # Check emergency conditions
+        emergency_condition = await self.check_emergency_conditions()
+        if emergency_condition:
+            status["emergency_condition"] = emergency_condition
+        
+        return status
 
     async def stream(
         self, 
