@@ -2,7 +2,7 @@ FROM openpolicyagent/opa:latest-envoy
 
 # Copy policies and configuration
 COPY ./policies /policies
-COPY ./config.yaml /config.yaml
+COPY ./opa.yaml /config.yaml
 
 # Expose OPA port
 EXPOSE 8181

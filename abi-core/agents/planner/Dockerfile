@@ -1,7 +1,10 @@
 FROM abi-llm-base
 
-COPY ./agent /app
+# Copy planner-specific files without overwriting base agent files
+COPY ./agent/planner.py /app/agent/
+COPY ./agent/main.py /app/agent/
+COPY ./agent/models /app/agent/models
 
 WORKDIR /app
 
-ENTRYPOINT ["/start.sh"]
+ENTRYPOINT ["/opt/abi/agents.d/start.sh"]

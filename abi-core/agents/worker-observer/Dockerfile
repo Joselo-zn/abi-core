@@ -4,4 +4,4 @@ COPY ./agent /app
 
 WORKDIR /app
 
-ENTRYPOINT ["/start.sh"]
+ENTRYPOINT ["/opt/abi/agents.d/start.sh"]

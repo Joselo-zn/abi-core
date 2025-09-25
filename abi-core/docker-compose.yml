@@ -63,7 +63,6 @@ services:
       - abi-network
     restart: unless-stopped
 
-
   abi-orchestrator:
     build:
       context: ./agents/orchestrator
@@ -93,14 +92,14 @@ services:
     depends_on:
       - abi-orchestrator
     ports:
-      - 11435:11435
+      - 11438:11438
     environment:
       - AGENT_HOST=0.0.0.0
-      - AGENT_BASE=https://abi-guardial:11435
+      - AGENT_BASE=https://abi-guardial:11438
       - ABI_ROLE=Guardial Agent
       - ABI_NODE=ABI AGENT
     volumes:
-      - auditor/root/.app
+      - ollama-data:/root/.ollama
     networks:
       - abi-network
     restart: "unless-stopped"
@@ -118,7 +117,7 @@ services:
       - ABI_ROLE=Planner Agent
       - ABI_NODE=ABI AGENT
     volumes:
-      - planner/root/.app
+      - planner-data:/root/.app
     networks:
       - abi-network
     restart: "unless-stopped"
@@ -146,6 +145,24 @@ services:
       - abi-network
     restart: "unless-stopped"
 
+  abi-opa:
+    build:
+      context: ./agents/guardial/opa
+    depends_on:
+      - abi-guardial
+    ports:
+      - 8181:8181
+    environment:
+      - OPA_LOG_LEVEL=info
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # abi-observer:
   #   build:
   #     context: ./agents/worker-observer
@@ -159,7 +176,7 @@ services:
   #     - ABI_ROLE=Observer Agent
   #     - ABI_NODE=ABI AGENT
   #   volumes:
-  #     - worker-observer/root/.app
+  #     - observer-data:/root/.app
   #   networks:
   #     - abi-network
   #   restart: "unless-stopped"
@@ -185,23 +202,10 @@ services:
 volumes:
   ollama-data:
   weaviate-data:
+  guardial-data:
+  planner-data:
+  observer-data:
 
 networks:
   abi-network:
     driver: bridge
-  # OPA Policy Engine for Guardian Agent
-  abi-opa:
-    build:
-      context: ./agents/abi-llm-base/opa
-    ports:
-      - 8181:8181
-    environment:
-      - OPA_LOG_LEVEL=info
-    networks:
-      - abi-network
-    restart: "unless-stopped"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
