@@ -191,6 +191,14 @@ services:
   #  networks:
   #    - abi-network
 
+ # mcp-neo4j:
+  #  image: mcp/server:neo4j-memory
+  # ports:
+  #    - "7687:7687"
+  #    - "7474:7474"
+  # networks:
+  #   - abi-network
+
 volumes:
   ollama-data:
   weaviate-data:
