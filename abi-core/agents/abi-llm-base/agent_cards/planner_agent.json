@@ -1,24 +1,54 @@
 {
-  "@context": [
-    "https://raw.githubusercontent.com/GoogleCloudPlatform/a2a-llm/main/a2a/ontology/a2a_context.jsonld"
-  ],
-  "@type": "Agent",
-  "id": "agent://planner",
-  "name": "Planner Agent",
-  "description": "Plans the full execution chain of agents based on the user's query, using semantic reasoning and workflow composition.",
-  "contentType": "text/plain",
-  "supportedTasks": [
-    "plan_agent_workflow",
-    "decompose_query",
-    "suggest_agent_sequence"
-  ],
-  "llmConfig": {
-    "provider": "ollama",
-    "model": "mixtral:8x22b",
-    "temperature": 0.0
+  "name": " Abi Planner Agent",
+  "description": "Plans and decomposes complex user queries into structured execution workflows. Uses semantic reasoning to create optimal agent sequences and task dependencies for efficient workflow orchestration.",
+  "url": "https://abi-planner:11437",
+  "version": "1.0.0",
+
+  "capabilities": {
+    "streaming": "True",
+    "pushNotifications": "True",
+    "stateTransitionHistory": "False"
   },
-  "tools": [],
-  "functions": [],
-  "embedding": false,
-  "prompt": "You are a semantic planner that receives user queries and transforms them into a logical agent execution plan. Given a natural language query, decompose it into a sequence of tasks, each mapped to a potential agent type. Return a structured plan using JSON with the following fields: task_id, description, required_agent_type, dependencies (optional). Make sure your reasoning follows the user’s intention and respects temporal or causal dependencies between tasks."
+
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+
+  "skills": [
+    {
+      "id": "decompose_query",
+      "name": "Query Decomposition",
+      "description": "Break down complex user queries into manageable, sequential tasks.",
+      "tags": ["planning", "decomposition", "analysis"],
+      "examples": ["Split 'analyze market trends and create report' into data collection + analysis + reporting"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "sequence_tasks",
+      "name": "Task Sequencing",
+      "description": "Organize tasks in optimal execution order considering dependencies.",
+      "tags": ["sequencing", "dependencies", "optimization"],
+      "examples": ["Ensure data collection happens before analysis"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "map_agents",
+      "name": "Agent Mapping",
+      "description": "Match each task to the most appropriate agent type based on capabilities.",
+      "tags": ["mapping", "agent-selection", "capabilities"],
+      "examples": ["Map data extraction task to Actor agent, analysis to specialized agent"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "validate_plan",
+      "name": "Plan Validation",
+      "description": "Verify that the execution plan is feasible and complete.",
+      "tags": ["validation", "verification", "completeness"],
+      "examples": ["Check that all user requirements are covered in the plan"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    }
+  ]
 }

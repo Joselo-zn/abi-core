@@ -133,7 +133,21 @@ async def secure_startup():
         # STEP 6: Start the main server (security is now validated)
         logger.info("✅ Security validation complete - Starting Guardian server...")
         logger.info(f"📊 Dashboard available at: http://{dashboard_host}:{dashboard_port}")
-        start_server("0.0.0.0", 8003, agent_card_dir, guardian_factory)
+        
+        # Start server in a separate thread to avoid event loop conflicts
+        server_thread = threading.Thread(
+            target=start_server,
+            args=("0.0.0.0", 8003, agent_card_dir, guardian_factory),
+            daemon=False
+        )
+        server_thread.start()
+        
+        # Keep the main thread alive
+        try:
+            server_thread.join()
+        except KeyboardInterrupt:
+            logger.info("Received interrupt signal, shutting down...")
+            return
         
     except Exception as e:
         logger.error(f"🚨 CRITICAL: Secure startup failed: {e}")
@@ -155,5 +169,85 @@ async def secure_startup():
         raise
 
 if __name__ == '__main__':
+
+    from opa.config import get_opa_config
+    from opa.policy_loader import PolicyLoader
+    from opa.policy_loader_v2 import PolicyLoaderV2, get_policy_loader
+    from opa.core_policies import CorePolicyGenerator, get_core_policy_generator
+
+    # CRITICAL: Initialize core policy generation BEFORE startup
+    logger.info("🔒 Pre-startup security initialization...")
+    
+    # Set the correct policy path for the container environment
+    policy_base_path = os.getenv('ABI_POLICY_PATH', '/app/common/opa')
+    logger.info(f"🔍 Using policy base path: {policy_base_path}")
+    
+    # Check if directory exists and create if needed
+    from pathlib import Path
+    policy_dir = Path(policy_base_path)
+    if not policy_dir.exists():
+        logger.info(f"📁 Creating policy directory: {policy_base_path}")
+        try:
+            policy_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"✅ Policy directory created successfully")
+        except Exception as e:
+            logger.error(f"🚨 CRITICAL: Failed to create policy directory: {e}")
+            exit(1)
+    else:
+        logger.info(f"📁 Policy directory exists: {policy_base_path}")
+    
+    # List contents of the directory for debugging
+    try:
+        contents = list(policy_dir.iterdir())
+        logger.info(f"📋 Policy directory contents: {[str(p) for p in contents]}")
+    except Exception as e:
+        logger.warning(f"Could not list directory contents: {e}")
+    
+    config = get_opa_config()
+    
+    # Override config with container-specific path
+    config.set('policies.base_path', policy_base_path)
+    
+    # Get policy loader and ensure system security
+    policy_loader = get_policy_loader(policy_base_path)
+    
+    # CRITICAL: Ensure core policies exist before starting
+    logger.info("🔐 Starting core policy generation...")
+    if not policy_loader.ensure_system_security():
+        logger.error("🚨 CRITICAL: Core policies could not be generated - SYSTEM BLOCKED")
+        logger.error("🚨 GUARDIAN AGENT STARTUP BLOCKED")
+        
+        # Additional debugging info
+        try:
+            contents_after = list(policy_dir.iterdir())
+            logger.error(f"📋 Policy directory contents after failure: {[str(p) for p in contents_after]}")
+        except Exception as e:
+            logger.error(f"Could not list directory contents after failure: {e}")
+        
+        exit(1)
+    
+    logger.info("✅ Core policies validated - proceeding with secure startup")
+
     # Run secure startup sequence
-    asyncio.run(secure_startup())
+    def run_startup():
+        """Run startup in a new event loop"""
+        try:
+            # Create a new event loop for this thread
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            
+            # Run the startup sequence
+            new_loop.run_until_complete(secure_startup())
+            
+        except Exception as e:
+            logger.error(f"Startup failed: {e}")
+            raise
+        finally:
+            # Clean up the loop
+            try:
+                new_loop.close()
+            except:
+                pass
+    
+    # Run startup in the main thread
+    run_startup()

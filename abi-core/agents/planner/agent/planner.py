@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = os.getenv('MODEL_NAME', 'tinyllama:latest')
 memory = MemorySaver()
 
-class AbiPlanner(AbiAgent):
+class AbiPlannerAgent(AbiAgent):
     """Planner devide a Big Plan y small executable actions/task"""
     def __init__(self, instructions):
         super().__init__(
-            aget_name='Abi Planner Agent',
+            aget_name='Planner Agent',
             description='Devide a Big Plan y small executable actions/task',
             content_type=['text', 'text/plain']
         )

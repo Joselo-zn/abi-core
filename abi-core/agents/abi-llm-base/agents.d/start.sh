@@ -10,7 +10,12 @@ START_OLLAMA="${START_OLLAMA:-true}"
 pids=()
 
 if [ "$START_OLLAMA" = "true" ]; then
-  echo "🧠 Starting Ollama..."
+
+  BOLD="$(_safe_tput bold)"
+  RESET="$(_safe_tput sgr0)"
+  ROLE="${ABI_ROLE:-Generic}"
+
+  echo "🧠 Starting Ollama ${BOLD}${ROLE}${RESET}..."
   ollama serve &
   pids+=($!)
   # Waits to /api/tags answer (máx 60s)

@@ -50,11 +50,14 @@ class MetricsCollector:
         self.decision_counts: Dict[str, int] = defaultdict(int)
         self.risk_scores: deque = deque(maxlen=1000)
         
-        # Start cleanup task
-        asyncio.create_task(self._cleanup_old_metrics())
+        # Cleanup task will be started when needed
+        self._cleanup_task = None
     
     def record_evaluation_latency(self, latency_ms: float, labels: Optional[Dict[str, str]] = None):
         """Record evaluation latency metric"""
+        # Start cleanup task if not already running
+        self._ensure_cleanup_task()
+        
         self.evaluation_times.append(latency_ms)
         self._add_metric("evaluation_latency_ms", latency_ms, labels or {})
         
@@ -388,6 +391,15 @@ class MetricsCollector:
             
         except Exception as e:
             logger.error(f"Failed to send alert cleared notification: {e}")
+    
+    def _ensure_cleanup_task(self):
+        """Ensure cleanup task is running"""
+        if self._cleanup_task is None or self._cleanup_task.done():
+            try:
+                self._cleanup_task = asyncio.create_task(self._cleanup_old_metrics())
+            except RuntimeError:
+                # No event loop running, skip for now
+                pass
     
     async def _cleanup_old_metrics(self):
         """Cleanup old metrics periodically"""

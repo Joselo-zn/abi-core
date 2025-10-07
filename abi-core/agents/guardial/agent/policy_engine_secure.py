@@ -4,10 +4,11 @@ import httpx
 import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from pathlib import Path
 from pydantic import BaseModel
 
-from abi_llm_base.opa.config import get_opa_config
-from abi_llm_base.opa.policy_loader_v2 import get_policy_loader
+from opa.config import get_opa_config
+from opa.policy_loader_v2 import get_policy_loader
 
 logger = logging.getLogger(__name__)
 
@@ -88,34 +89,50 @@ class SecurePolicyEngine:
                 raise RuntimeError(f"Security initialization failed: {e}")
     
     async def _upload_policies_to_opa(self, policies: Dict[str, str]):
-        """Upload policies to OPA server with security validation"""
+        """Upload policies to OPA server using individual policy endpoints"""
         opa_url = self.config.get('opa.url')
-        bundle_name = self.config.get('policies.bundle_name', 'abi')
         
         try:
             # Verify core policies are included
             core_policy_found = any('abi_policies' in name for name in policies.keys())
             if not core_policy_found:
-                raise RuntimeError("CRITICAL: Core policies missing from upload bundle")
+                raise RuntimeError("CRITICAL: Core policies missing from upload")
             
-            # Create policy bundle with security manifest
-            manifest = self.policy_loader.get_policy_manifest()
-            bundle = {
-                'manifest': manifest,
-                'data': {},
-                'policies': policies,
-                'security_validated': True,
-                'core_policies_included': core_policy_found
-            }
+            logger.info(f"📤 Uploading {len(policies)} policies to OPA at {opa_url}")
             
-            # Upload to OPA
-            response = await self.client.put(
-                f"{opa_url}/v1/bundles/{bundle_name}",
-                json=bundle
-            )
-            response.raise_for_status()
+            # Upload each policy individually using the /v1/policies endpoint
+            uploaded_count = 0
+            for policy_name, policy_content in policies.items():
+                try:
+                    # Clean policy name for OPA (replace special characters)
+                    clean_name = policy_name.replace('/', '_').replace('.', '_')
+                    
+                    # Debug logging for policy content
+                    logger.info(f"🔍 Uploading policy '{clean_name}' with content length: {len(policy_content)}")
+                    logger.debug(f"📄 Policy content preview (first 200 chars): {policy_content[:200]}...")
+                    
+                    # Upload policy to OPA
+                    response = await self.client.put(
+                        f"{opa_url}/v1/policies/{clean_name}",
+                        data=policy_content,
+                        headers={'Content-Type': 'text/plain'}
+                    )
+                    response.raise_for_status()
+                    
+                    uploaded_count += 1
+                    logger.info(f"✅ Uploaded policy: {clean_name}")
+                    
+                except Exception as e:
+                    logger.error(f"🚨 Failed to upload policy {policy_name}: {e}")
+                    if 'abi_policies' in policy_name:  # Core policies are critical
+                        raise RuntimeError(f"CRITICAL: Failed to upload core policy {policy_name}: {e}")
+                    # Non-core policies can fail without blocking startup
+                    logger.warning(f"⚠️ Continuing without policy {policy_name}")
             
-            logger.info(f"✅ Successfully uploaded {len(policies)} policies to OPA (including core security policies)")
+            logger.info(f"✅ Successfully uploaded {uploaded_count}/{len(policies)} policies to OPA")
+            
+            if uploaded_count == 0:
+                raise RuntimeError("CRITICAL: No policies were uploaded successfully")
             
         except Exception as e:
             logger.error(f"🚨 CRITICAL: Failed to upload policies to OPA: {e}")

@@ -81,7 +81,7 @@ services:
       - PYTHONPATH=/app
     volumes:
       - ollama-data:/root/.ollama
-      - ./agents/orchestrator/agent:/app/agent
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
     networks:
       - abi-network
     restart: "unless-stopped"
@@ -92,14 +92,16 @@ services:
     depends_on:
       - abi-orchestrator
     ports:
-      - 11438:11438
+      - 11438:8003
     environment:
       - AGENT_HOST=0.0.0.0
       - AGENT_BASE=https://abi-guardial:11438
+      - AGENT_CARD=/app/agent_cards/guardial_agent.json
       - ABI_ROLE=Guardial Agent
       - ABI_NODE=ABI AGENT
     volumes:
       - ollama-data:/root/.ollama
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
     networks:
       - abi-network
     restart: "unless-stopped"
@@ -114,10 +116,12 @@ services:
     environment:
       - AGENT_HOST=0.0.0.0
       - AGENT_BASE=https://abi-planner:11437
+      - AGENT_CARD=/app/agent_cards/planner_agent.json
       - ABI_ROLE=Planner Agent
       - ABI_NODE=ABI AGENT
     volumes:
-      - planner-data:/root/.app
+      - ollama-data:/root/.ollama
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
     networks:
       - abi-network
     restart: "unless-stopped"
@@ -140,7 +144,7 @@ services:
       - PYTHONPATH=/app
     volumes:
       - ollama-data:/root/.ollama
-      - ./agents/worker_actor/agent:/app/agent
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
     networks:
       - abi-network
     restart: "unless-stopped"
@@ -154,6 +158,8 @@ services:
       - 8181:8181
     environment:
       - OPA_LOG_LEVEL=info
+      - OPA_HOST=0.0.0.0
+      - OPA_BASE=http://abi-opa:8181
     networks:
       - abi-network
     restart: "unless-stopped"
@@ -190,14 +196,6 @@ services:
   #  entrypoint: ["sh", "/etc/profile.d/model-loader.sh"]
   #  networks:
   #    - abi-network
-
- # mcp-neo4j:
-  #  image: mcp/server:neo4j-memory
-  # ports:
-  #    - "7687:7687"
-  #    - "7474:7474"
-  # networks:
-  #   - abi-network
 
 volumes:
   ollama-data:

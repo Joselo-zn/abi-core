@@ -44,7 +44,7 @@ class TestOPAMigration:
     def test_old_imports_fail(self):
         """Test that old import paths no longer work."""
         with pytest.raises(ImportError):
-            from common.opa.config import get_opa_config
+            from opa.config import get_opa_config
     
     def test_opa_directory_structure(self):
         """Test that OPA directory has correct structure."""

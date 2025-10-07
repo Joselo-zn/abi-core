@@ -32,55 +32,153 @@ class CorePolicyGenerator:
 
 package abi.core
 
-import rego.v1
-
 # =============================================================================
 # CRITICAL SECURITY POLICIES - CANNOT BE OVERRIDDEN
 # =============================================================================
 
 # Default deny - EVERYTHING must be explicitly allowed
 default allow := false
-default deny := false
 default risk_score := 1.0
 
 # =============================================================================
-# FUNDAMENTAL SECURITY RULES
+# SYSTEM CONFIGURATION (must be defined first)
+# =============================================================================
+
+# Valid agents that can communicate
+valid_agents := {{
+    "orchestrator",
+    "planner",
+    "actor", 
+    "observer",
+    "guardial",
+    "semantic_layer"
+}}
+
+# Safe resources for read operations
+safe_read_resources := {{
+    "document",
+    "agent_card",
+    "public_config",
+    "log",
+    "cache",
+    "temp_file"
+}}
+
+# Allowed network endpoints
+allowed_endpoints := {{
+    "localhost",
+    "127.0.0.1",
+    "abi-llm-base",
+    "abi-weaviate", 
+    "semantic-layer",
+    "abi-orchestrator",
+    "abi-planner",
+    "abi-actor",
+    "abi-observer"
+}}
+
+# Action risk base scores
+action_risk_scores := {{
+    "read": 0.1,
+    "write": 0.4,
+    "delete": 0.8,
+    "execute": 0.7,
+    "modify": 0.6,
+    "network_request": 0.5,
+    "agent_communication": 0.2,
+    "create_agent": 1.0,
+    "spawn_process": 1.0,
+    "system": 1.0
+}}
+
+# Resource risk multipliers
+resource_risk_multipliers := {{
+    "document": 1.0,
+    "temp_file": 0.8,
+    "log": 0.6,
+    "cache": 0.7,
+    "config": 1.5,
+    "agent_card": 1.2,
+    "system_config": 3.0,
+    "policy": 3.0,
+    "credentials": 3.0,
+    "keys": 3.0,
+    "certificates": 3.0,
+    "system": 3.0
+}}
+
+# =============================================================================
+# SECURITY DETECTION FUNCTIONS
+# =============================================================================
+
+# Detect sensitive data patterns - SSN
+contains_sensitive_data(content) if {{
+    regex.match(`\\b\\d{{3}}-\\d{{2}}-\\d{{4}}\\b`, content)
+}}
+
+# Detect sensitive data patterns - API Keys
+contains_sensitive_data(content) if {{
+    regex.match(`(?i)(api[_-]?key|token|secret|password)["\\s]*[:=]["\\s]*[a-zA-Z0-9]{{20,}}`, content)
+}}
+
+# Detect sensitive data patterns - Credit Cards
+contains_sensitive_data(content) if {{
+    regex.match(`\\b\\d{{4}}[\\s-]?\\d{{4}}[\\s-]?\\d{{4}}[\\s-]?\\d{{4}}\\b`, content)
+}}
+
+# Detect sensitive data patterns - Emails
+contains_sensitive_data(content) if {{
+    regex.match(`\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{{2,}}\\b`, content)
+}}
+
+# Detect malicious patterns - Commands
+contains_malicious_patterns(content) if {{
+    regex.match(`(?i)(rm\\s+-rf|del\\s+/|format\\s+c:|shutdown|reboot)`, content)
+}}
+
+# Detect malicious patterns - SQL
+contains_malicious_patterns(content) if {{
+    regex.match(`(?i)(drop\\s+table|delete\\s+from|truncate|alter\\s+table)`, content)
+}}
+
+# Detect malicious patterns - Scripts
+contains_malicious_patterns(content) if {{
+    regex.match(`(?i)(<script|javascript:|eval\\(|exec\\()`, content)
+}}
+
+# =============================================================================
+# FUNDAMENTAL SECURITY RULES - DENY RULES
 # =============================================================================
 
 # CRITICAL: Block all self-replication attempts
-deny if {{
+deny contains "CRITICAL_VIOLATION: Self-replication blocked" if {{
     input.action in ["create_agent", "spawn_process", "replicate", "fork", "clone"]
-    reason := "CRITICAL_VIOLATION: Self-replication blocked"
 }}
 
 # CRITICAL: Block policy modification by agents
-deny if {{
+deny contains "CRITICAL_VIOLATION: Policy modification blocked" if {{
     input.action in ["write", "delete", "modify"]
     input.resource_type in ["policy", "opa_config", "security_config"]
     input.source_agent != "human_operator"
-    reason := "CRITICAL_VIOLATION: Policy modification blocked"
 }}
 
 # CRITICAL: Block system-level access
-deny if {{
+deny contains "CRITICAL_VIOLATION: System access blocked" if {{
     input.action in ["execute", "shell", "system"]
     input.resource_type in ["system", "os", "kernel", "root"]
-    reason := "CRITICAL_VIOLATION: System access blocked"
 }}
 
 # CRITICAL: Block network access to unauthorized endpoints
-deny if {{
+deny contains "CRITICAL_VIOLATION: Unauthorized network access" if {{
     input.action == "network_request"
     not input.destination in allowed_endpoints
-    reason := "CRITICAL_VIOLATION: Unauthorized network access"
 }}
 
 # CRITICAL: Block access to sensitive system files
-deny if {{
+deny contains "CRITICAL_VIOLATION: Sensitive file access blocked" if {{
     input.action in ["read", "write", "delete"]
     input.resource_type in ["system_config", "credentials", "keys", "certificates"]
     input.source_agent != "authorized_system_agent"
-    reason := "CRITICAL_VIOLATION: Sensitive file access blocked"
 }}
 
 # =============================================================================
@@ -120,208 +218,183 @@ allow if {{
 # RISK SCORING SYSTEM
 # =============================================================================
 
-calculated_risk_score := score if {{
-    base_score := action_risk_scores[input.action]
-    resource_multiplier := resource_risk_multipliers[input.resource_type]
-    context_modifier := context_risk_modifier
-    sensitive_data_penalty := sensitive_data_risk_penalty
-    
-    score := base_score * resource_multiplier * context_modifier + sensitive_data_penalty
+# Calculate base action risk
+base_action_risk = score if {{
+    score := action_risk_scores[input.action]
 }}
 
-# Action risk base scores
-action_risk_scores := {{
-    "read": 0.1,
-    "write": 0.4,
-    "delete": 0.8,
-    "execute": 0.7,
-    "modify": 0.6,
-    "network_request": 0.5,
-    "agent_communication": 0.2,
-    "create_agent": 1.0,
-    "spawn_process": 1.0,
-    "system": 1.0
+base_action_risk = 1.0 if {{
+    not action_risk_scores[input.action]
 }}
 
-# Resource risk multipliers
-resource_risk_multipliers := {{
-    "document": 1.0,
-    "temp_file": 0.8,
-    "log": 0.6,
-    "cache": 0.7,
-    "config": 1.5,
-    "agent_card": 1.2,
-    "system_config": 3.0,
-    "policy": 3.0,
-    "credentials": 3.0,
-    "keys": 3.0,
-    "certificates": 3.0,
-    "system": 3.0
+# Calculate resource multiplier
+resource_multiplier = mult if {{
+    mult := resource_risk_multipliers[input.resource_type]
 }}
 
-# Context-based risk modification
-context_risk_modifier := modifier if {{
+resource_multiplier = 1.0 if {{
+    not resource_risk_multipliers[input.resource_type]
+}}
+
+# Calculate off-hours multiplier
+off_hours_multiplier = 1.3 if {{
     hour := time.clock(time.now_ns())[0]
+    hour < 8
+}}
+
+off_hours_multiplier = 1.3 if {{
+    hour := time.clock(time.now_ns())[0]
+    hour > 18
+}}
+
+off_hours_multiplier = 1.0 if {{
+    hour := time.clock(time.now_ns())[0]
+    hour >= 8
+    hour <= 18
+}}
+
+# Emergency multiplier
+emergency_multiplier = 1.5 if {{
+    input.metadata.emergency == true
+}}
+
+emergency_multiplier = 1.0 if {{
+    not input.metadata.emergency
+}}
+
+emergency_multiplier = 1.0 if {{
+    not input.metadata
+}}
+
+# External source multiplier
+external_multiplier = 1.4 if {{
+    input.metadata.external_source == true
+}}
+
+external_multiplier = 1.0 if {{
+    not input.metadata.external_source
+}}
+
+external_multiplier = 1.0 if {{
+    not input.metadata
+}}
+
+# Sensitive data penalty
+sensitive_data_penalty = 0.5 if {{
+    input.content
+    contains_sensitive_data(input.content)
+}}
+
+sensitive_data_penalty = 0.0 if {{
+    input.content
+    not contains_sensitive_data(input.content)
+}}
+
+sensitive_data_penalty = 0.0 if {{
+    not input.content
+}}
+
+# Calculate final risk score
+calculated_risk_score = score if {{
+    base := base_action_risk
+    resource := resource_multiplier
+    off_hours := off_hours_multiplier
+    emergency := emergency_multiplier
+    external := external_multiplier
+    sensitive := sensitive_data_penalty
     
-    # Higher risk during off-hours
-    off_hours_multiplier := 1.3 if (hour < 8 or hour > 18) else 1.0
-    
-    # Higher risk for emergency operations
-    emergency_multiplier := 1.5 if input.metadata.emergency else 1.0
-    
-    # Higher risk for external requests
-    external_multiplier := 1.4 if input.metadata.external_source else 1.0
-    
-    modifier := off_hours_multiplier * emergency_multiplier * external_multiplier
-}}
-
-# Sensitive data risk penalty
-sensitive_data_risk_penalty := penalty if {{
-    penalty := 0.5 if contains_sensitive_data(input.content) else 0.0
-}}
-
-# =============================================================================
-# SECURITY DETECTION FUNCTIONS
-# =============================================================================
-
-# Detect sensitive data patterns
-contains_sensitive_data(content) if {{
-    # Social Security Numbers
-    regex.match(`\\b\\d{{3}}-\\d{{2}}-\\d{{4}}\\b`, content)
-}}
-
-contains_sensitive_data(content) if {{
-    # API Keys and tokens
-    regex.match(`(?i)(api[_-]?key|token|secret|password)[\"\\s]*[:=][\"\\s]*[a-zA-Z0-9]{{20,}}`, content)
-}}
-
-contains_sensitive_data(content) if {{
-    # Credit card numbers
-    regex.match(`\\b\\d{{4}}[\\s-]?\\d{{4}}[\\s-]?\\d{{4}}[\\s-]?\\d{{4}}\\b`, content)
-}}
-
-contains_sensitive_data(content) if {{
-    # Email addresses (potential PII)
-    regex.match(`\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{{2,}}\\b`, content)
-}}
-
-# Detect malicious patterns
-contains_malicious_patterns(content) if {{
-    # Command injection patterns
-    regex.match(`(?i)(rm\\s+-rf|del\\s+/|format\\s+c:|shutdown|reboot)`, content)
-}}
-
-contains_malicious_patterns(content) if {{
-    # SQL injection patterns
-    regex.match(`(?i)(drop\\s+table|delete\\s+from|truncate|alter\\s+table)`, content)
-}}
-
-contains_malicious_patterns(content) if {{
-    # Script injection patterns
-    regex.match(`(?i)(<script|javascript:|eval\\(|exec\\()`, content)
-}}
-
-# =============================================================================
-# SYSTEM CONFIGURATION
-# =============================================================================
-
-# Valid agents that can communicate
-valid_agents := {{
-    "orchestrator",
-    "planner",
-    "actor", 
-    "observer",
-    "guardial",
-    "semantic_layer"
-}}
-
-# Safe resources for read operations
-safe_read_resources := {{
-    "document",
-    "agent_card",
-    "public_config",
-    "log",
-    "cache",
-    "temp_file"
-}}
-
-# Allowed network endpoints
-allowed_endpoints := {{
-    "localhost",
-    "127.0.0.1",
-    "abi-llm-base",
-    "abi-weaviate", 
-    "semantic-layer",
-    "abi-orchestrator",
-    "abi-planner",
-    "abi-actor",
-    "abi-observer"
+    score := (base * resource * off_hours * emergency * external) + sensitive
 }}
 
 # =============================================================================
 # AUDIT AND COMPLIANCE
 # =============================================================================
 
-# Generate audit log for every decision
-audit_log := {{
+# Track evaluated rules
+evaluated_rules contains rule if {{
+    input.action in ["create_agent", "spawn_process", "replicate", "fork", "clone"]
+    rule := "core_self_replication_block"
+}}
+
+evaluated_rules contains rule if {{
+    input.action in ["write", "delete", "modify"]
+    input.resource_type in ["policy", "opa_config", "security_config"]
+    rule := "core_policy_protection"
+}}
+
+evaluated_rules contains rule if {{
+    input.action in ["execute", "shell", "system"]
+    input.resource_type in ["system", "os", "kernel", "root"]
+    rule := "core_system_protection"
+}}
+
+evaluated_rules contains rule if {{
+    input.action == "network_request"
+    rule := "core_network_protection"
+}}
+
+evaluated_rules contains rule if {{
+    input.action in ["read", "write", "delete"]
+    input.resource_type in ["system_config", "credentials", "keys", "certificates"]
+    rule := "core_sensitive_file_protection"
+}}
+
+# Security violations tracking
+security_violations contains violation if {{
+    input.action in ["create_agent", "spawn_process", "replicate", "fork", "clone"]
+    violation := {{
+        "type": "self_replication_attempt",
+        "severity": "CRITICAL",
+        "action": input.action,
+        "timestamp": time.now_ns()
+    }}
+}}
+
+security_violations contains violation if {{
+    input.action in ["write", "delete", "modify"]
+    input.resource_type in ["policy", "opa_config", "security_config"]
+    violation := {{
+        "type": "policy_modification_attempt",
+        "severity": "CRITICAL",
+        "resource": input.resource_type,
+        "timestamp": time.now_ns()
+    }}
+}}
+
+security_violations contains violation if {{
+    input.content
+    contains_sensitive_data(input.content)
+    violation := {{
+        "type": "sensitive_data_exposure",
+        "severity": "HIGH",
+        "timestamp": time.now_ns()
+    }}
+}}
+
+security_violations contains violation if {{
+    input.content
+    contains_malicious_patterns(input.content)
+    violation := {{
+        "type": "malicious_pattern_detected",
+        "severity": "HIGH",
+        "timestamp": time.now_ns()
+    }}
+}}
+
+# Audit log generation
+audit_log = {{
     "timestamp": time.now_ns(),
     "decision": {{
         "allow": allow,
-        "deny": deny,
+        "deny": count(deny) > 0,
+        "deny_reasons": [r | deny[r]],
         "risk_score": calculated_risk_score
     }},
     "input": input,
     "policy_version": "{version}",
-    "core_policies": true,
-    "rules_evaluated": rules_evaluated,
-    "security_violations": security_violations
+    "evaluated_rules": [r | evaluated_rules[r]],
+    "security_violations": [v | security_violations[v]]
 }}
-
-# Track which rules were evaluated
-rules_evaluated := [rule |
-    rule := "core_self_replication_block"
-    input.action in ["create_agent", "spawn_process", "replicate"]
-]
-
-rules_evaluated := [rule |
-    rule := "core_policy_protection"
-    input.action in ["write", "delete", "modify"]
-    input.resource_type in ["policy", "opa_config"]
-]
-
-rules_evaluated := [rule |
-    rule := "core_system_protection"
-    input.action in ["execute", "shell", "system"]
-]
-
-# Track security violations
-security_violations := [violation |
-    violation := {{
-        "type": "self_replication_attempt",
-        "severity": "CRITICAL",
-        "action": input.action
-    }}
-    input.action in ["create_agent", "spawn_process", "replicate"]
-]
-
-security_violations := [violation |
-    violation := {{
-        "type": "policy_modification_attempt", 
-        "severity": "CRITICAL",
-        "resource": input.resource_type
-    }}
-    input.action in ["write", "delete", "modify"]
-    input.resource_type in ["policy", "opa_config"]
-]
-
-security_violations := [violation |
-    violation := {{
-        "type": "sensitive_data_exposure",
-        "severity": "HIGH", 
-        "content_length": count(input.content)
-    }}
-    contains_sensitive_data(input.content)
-]
 '''
 
     def __init__(self):
@@ -356,19 +429,36 @@ security_violations := [violation |
             True if successful, False otherwise
         """
         try:
+            logger.info(f"📝 Writing core policies to: {output_path}")
             output_file = Path(output_path)
+            
+            # Ensure parent directory exists
+            logger.info(f"📁 Ensuring parent directory exists: {output_file.parent}")
             output_file.parent.mkdir(parents=True, exist_ok=True)
             
+            # Generate policy content
+            logger.info("🔧 Generating core policy content...")
             policy_content = self.generate_core_policies()
+            logger.info(f"📊 Generated policy content length: {len(policy_content)} characters")
             
+            # Write to file
+            logger.info(f"💾 Writing to file: {output_file}")
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(policy_content)
             
-            logger.info(f"Core policies generated successfully: {output_path}")
-            return True
+            # Verify file was written
+            if output_file.exists():
+                file_size = output_file.stat().st_size
+                logger.info(f"✅ Core policies written successfully: {output_path} ({file_size} bytes)")
+                return True
+            else:
+                logger.error(f"🚨 File was not created: {output_path}")
+                return False
             
         except Exception as e:
-            logger.error(f"Failed to generate core policies: {e}")
+            logger.error(f"🚨 Failed to generate core policies: {e}")
+            import traceback
+            logger.error(f"🚨 Traceback: {traceback.format_exc()}")
             return False
     
     def validate_core_policies_exist(self, policy_path: str) -> bool:
@@ -402,7 +492,7 @@ security_violations := [violation |
             
             for element in required_elements:
                 if element not in content:
-                    logger.error(f"CRITICAL: Core policy missing required element: {element}")
+                    logger.error(f"CRITICAL: Core policy missing required element: {content}")
                     return False
             
             logger.info("Core policies validation passed")
@@ -422,40 +512,52 @@ security_violations := [violation |
         Returns:
             True if core policies are available, False if system should not start
         """
+        logger.info(f"🔐 Ensuring core policies in directory: {policy_directory}")
         policy_file = Path(policy_directory) / "abi_policies.rego"
+        logger.info(f"🔍 Looking for core policy file: {policy_file}")
         
         # Load existing integrity state
+        logger.info("📋 Loading existing integrity state...")
         self.load_integrity_state(policy_directory)
         
         # Check if policies exist
         if not policy_file.exists():
-            logger.warning("Core policies missing, generating...")
+            logger.warning("⚠️ Core policies missing, generating...")
             success = self.write_core_policies(str(policy_file))
             
             if not success:
-                logger.error("CRITICAL: Failed to generate core policies - SYSTEM CANNOT START")
+                logger.error("🚨 CRITICAL: Failed to generate core policies - SYSTEM CANNOT START")
                 return False
+            logger.info("✅ Core policies generated successfully")
+        else:
+            logger.info("📄 Core policy file exists, validating...")
         
         # Validate policy integrity
+        logger.info("🔍 Validating policy integrity...")
         if not self.validate_policy_integrity(str(policy_file)):
-            logger.error("CRITICAL: Core policy integrity validation failed")
+            logger.error("🚨 CRITICAL: Core policy integrity validation failed")
             
             # Attempt automatic regeneration
+            logger.warning("🔄 Attempting automatic policy regeneration...")
             if not self.regenerate_corrupted_policies(policy_directory):
-                logger.error("CRITICAL: Failed to regenerate corrupted policies - SYSTEM CANNOT START")
+                logger.error("🚨 CRITICAL: Failed to regenerate corrupted policies - SYSTEM CANNOT START")
                 return False
             
-            logger.info("Core policies successfully regenerated after corruption detection")
+            logger.info("✅ Core policies successfully regenerated after corruption detection")
+        else:
+            logger.info("✅ Policy integrity validation passed")
         
         # Final validation check
+        logger.info("🔍 Performing final policy validation...")
         if not self.validate_core_policies_exist(policy_directory):
-            logger.error("CRITICAL: Final policy validation failed - SYSTEM CANNOT START")
+            logger.error("🚨 CRITICAL: Final policy validation failed - SYSTEM CANNOT START")
             return False
         
         # Save integrity state
+        logger.info("💾 Saving integrity state...")
         self.save_integrity_state(policy_directory)
         
-        logger.info("Core policies validated and integrity confirmed")
+        logger.info("✅ Core policies validated and integrity confirmed")
         return True
     
     def calculate_policy_checksum(self, policy_content: str) -> str:

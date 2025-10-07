@@ -78,8 +78,8 @@ class AlertingSystem:
         # Setup default templates
         self._setup_default_templates()
         
-        # Start background tasks
-        asyncio.create_task(self._process_escalations())
+        # Background task will be started when needed
+        self._escalation_task = None
         
         logger.info("🔔 Alerting system initialized")
     
@@ -247,6 +247,13 @@ This is an automated emergency alert from the Guardial Security System.
     async def send_alert(self, alert_data: Dict[str, Any], template_name: str = "security_alert"):
         """Send alert through configured channels"""
         try:
+            # Start escalation processing task if not already running
+            if self._escalation_task is None or self._escalation_task.done():
+                try:
+                    self._escalation_task = asyncio.create_task(self._process_escalations())
+                except RuntimeError:
+                    # Event loop not running, skip background task for now
+                    pass
             # Get template
             template = self.templates.get(template_name)
             if not template:
@@ -267,13 +274,15 @@ This is an automated emergency alert from the Guardial Security System.
             body = template.body_template.format(**alert_data)
             html_body = template.html_template.format(**alert_data) if template.html_template else None
             
+            # Get alert severity once for all channels
+            alert_severity = alert_data.get("severity", "info")
+            
             # Send through each channel
             for channel_name, channel in self.channels.items():
                 if not channel.enabled:
                     continue
                 
                 # Check severity filter
-                alert_severity = alert_data.get("severity", "info")
                 if alert_severity not in channel.severity_filter:
                     continue
                 

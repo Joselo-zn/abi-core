@@ -57,6 +57,7 @@ class AbiGuardianSecure(AbiAgent):
         
         self.abi_guardial = create_react_agent(
             self.llm,
+            tools=[],  # Empty tools list for now - Guardian uses OPA for policy decisions
             checkpointer=memory,
             prompt=prompts.GUARDIAL_COT_INSTRUCTIONS,
             response_format=GuardialResponse

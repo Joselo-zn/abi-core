@@ -26,6 +26,7 @@ COPY shared/abi-motd.sh  /etc/profile.d/abi-motd.sh
 COPY agent /app/agent
 COPY agent_cards /app/agent_cards
 COPY common /app/common
+COPY opa /app/opa
 COPY mcp /app/mcp
 
 RUN chmod +x /etc/profile.d/abi-motd.sh
