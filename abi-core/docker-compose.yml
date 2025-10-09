@@ -169,23 +169,65 @@ services:
       timeout: 5s
       retries: 3
 
-  # abi-observer:
-  #   build:
-  #     context: ./agents/worker-observer
-  #   depends_on:
-  #     - abi-guardial
-  #   ports:
-  #     - 11439:11439
-  #   environment:
-  #     - AGENT_HOST=0.0.0.0
-  #     - AGENT_BASE=https://abi-observer:11439
-  #     - ABI_ROLE=Observer Agent
-  #     - ABI_NODE=ABI AGENT
-  #   volumes:
-  #     - observer-data:/root/.app
-  #   networks:
-  #     - abi-network
-  #   restart: "unless-stopped"
+  abi-observer:
+    build:
+      context: ./agents/worker-observer
+    depends_on:
+      - abi-guardial
+    ports:
+      - 11439:8004  # Agent A2A protocol
+      - 8085:8080   # Observer API & Metrics
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-observer:8004
+      - AGENT_CARD=/app/agent_cards/observer_agent.json
+      - ABI_ROLE=Observer Agent
+      - ABI_NODE=ABI AGENT
+      - PYTHONPATH=/app
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
+  prometheus:
+    image: prom/prometheus:latest
+    depends_on:
+      - abi-observer
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - abi-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - abi-network
+    restart: unless-stopped
 
   #model-loader:
   #  image: curlimages/curl:latest
@@ -203,6 +245,8 @@ volumes:
   guardial-data:
   planner-data:
   observer-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   abi-network:

@@ -1,24 +1,63 @@
 {
-  "id": "observer-agent",
-  "name": "Observer Agent",
-  "description": "Monitors the actions and messages between agents, recording important events and semantic context.",
+  "name": "Abi Observer Agent",
+  "description": "Monitors and analyzes agent interactions, system performance, and detects anomalies in real-time. Provides comprehensive observation reports and health metrics.",
+  "url": "https://abi-observer:8004",
   "version": "1.0.0",
-  "author": "ABI Framework",
-  "agent_type": "observer",
-  "content_types": ["text/plain", "application/json", "text/markdown"],
-  "entrypoint": "observer.main:app",
-  "communication_protocol": "A2A-Protocol",
-  "requires_context_id": true,
-  "inputs": [
-    "event_stream",
-    "semantic_annotations",
-    "agent_interactions"
-  ],
-  "outputs": [
-    "observation_log",
-    "semantic_index",
-    "timeline_data"
-  ],
-  "prompt_reference": "prompts.OBSERVER_COT_INSTRUCTIONS",
-  "tags": ["abi", "observer", "monitoring", "events", "semantics"]
+
+  "capabilities": {
+    "streaming": "True",
+    "pushNotifications": "True",
+    "stateTransitionHistory": "True"
+  },
+
+  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultOutputModes": ["application/json", "text/plain"],
+
+  "skills": [
+    {
+      "id": "system_monitoring",
+      "name": "System Health Monitoring",
+      "description": "Monitor overall system health and performance metrics across all agents.",
+      "tags": ["monitoring", "health", "performance"],
+      "examples": ["Monitor system performance and detect bottlenecks"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "anomaly_detection",
+      "name": "Anomaly Detection",
+      "description": "Detect unusual patterns, failures, and performance degradation in agent behavior.",
+      "tags": ["anomaly", "detection", "analysis"],
+      "examples": ["Detect repeated task failures or agent inactivity"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "event_tracking",
+      "name": "Event Stream Analysis",
+      "description": "Track and analyze events from agent interactions and task executions.",
+      "tags": ["events", "tracking", "analysis"],
+      "examples": ["Analyze task completion patterns and agent interactions"],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "performance_analysis",
+      "name": "Performance Analysis",
+      "description": "Analyze agent performance metrics and generate optimization recommendations.",
+      "tags": ["performance", "optimization", "metrics"],
+      "examples": ["Generate performance reports and improvement suggestions"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["application/json", "text/plain"]
+    },
+    {
+      "id": "observation_reporting",
+      "name": "Observation Reporting",
+      "description": "Generate comprehensive observation reports with insights and recommendations.",
+      "tags": ["reporting", "insights", "recommendations"],
+      "examples": ["Create detailed system observation reports"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["application/json", "text/plain"]
+    }
+  ]
 }

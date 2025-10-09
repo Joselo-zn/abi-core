@@ -316,7 +316,7 @@ Use the following structured reasoning process to analyze the observed logs and 
 *Reasoning:* Your output will be consumed by humans or other agents to assess health and efficiency.
 
 ## Input Observations:
-```{agent_events_or_logs}```
+```{observation_data}```
 
 ## Instructions:
 
