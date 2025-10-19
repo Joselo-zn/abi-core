@@ -16,7 +16,7 @@ from a2a.types import (
 from common import prompts
 from agent.agent import AbiAgent
 
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langchain.schema.messages import HumanMessage
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +24,7 @@ import uvicorn
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = os.getenv('MODEL_NAME', 'tinyllama:latest')
+MODEL_NAME = os.getenv('MODEL_NAME', 'llama3.2:3b')
 
 @dataclass
 class ObservationEvent:
@@ -73,7 +73,7 @@ class AbiObserverAgent(AbiAgent):
         )
         
         # Initialize LLM for analysis
-        self.llm = ChatOllama(model_name=MODEL_NAME, temperature=0.0)
+        self.llm = ChatOllama(model=MODEL_NAME, temperature=0.0)
         
         # Observation storage
         self.events: deque = deque(maxlen=1000)  # Keep last 1000 events

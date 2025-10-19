@@ -74,7 +74,7 @@ class PlannerResponse(BaseModel):
     ok: bool = True
     status: Literal['input_required', 'completed', 'error'] = 'input_required'
     status_code: Optional[int] = Field(None, description="HTTP/semántico Code if applicable.")
-    question: str = Field(
+    question: Optional[str] = Field(
         description='Input needed from the user to generate the plan'
     )
 

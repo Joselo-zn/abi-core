@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ----------------------------
 ABI_LLM_BASE  = os.getenv("ABI_LLM_BASE", "http://abi-llm-base:11434").rstrip("/")
-EMBED_MODEL = os.getenv("EMBEDDING_MODEL", "jina/jina-embeddings-v2-base-es")
+EMBED_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text:v1.5")
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "60"))
 
 _EMBED_URL = f"{ABI_LLM_BASE}/api/embeddings"
@@ -70,7 +70,7 @@ def load_agent_cards() -> Tuple[List[str], List[dict]]:
         - Skips unreadable or malformed JSON files with a warning.
         - Returns empty lists if no Agent Cards are found.
     """
-    AGENT_CARDS_DIR = os.getenv("AGENT_CARDS_BASE", "agent_cards")
+    AGENT_CARDS_DIR = os.getenv("AGENT_CARDS_BASE", "/app/agent_cards")
     dir_path = Path(AGENT_CARDS_DIR)
 
     if not dir_path.is_dir():
@@ -115,7 +115,6 @@ def build_agent_card_embeddings(force_reload: bool = False) -> Optional[pd.DataF
     global _agent_cards_df_cache
 
     if _agent_cards_df_cache is not None and not force_reload:
-        logger.debug("[*] Returning cached Agent Card embeddings")
         return _agent_cards_df_cache
 
     card_uris, agent_cards = load_agent_cards()
@@ -123,8 +122,6 @@ def build_agent_card_embeddings(force_reload: bool = False) -> Optional[pd.DataF
     if not agent_cards:
         logger.warning("[!] No Agent Cards found. Cannot generate embeddings.")
         return None
-
-    logger.info("[*] Generating embeddings for loaded Agent Cards (MVP mode)")
     try:
         df = pd.DataFrame({
             'card_uri': card_uris,
@@ -275,4 +272,4 @@ def clear_caches() -> None:
     except Exception:
         # por si cambiaron la ref en runtime; ser tolerante
         pass
-    logger.info("[embeddings] caches cleared")
+

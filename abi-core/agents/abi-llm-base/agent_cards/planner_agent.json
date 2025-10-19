@@ -1,7 +1,7 @@
 {
   "name": " Abi Planner Agent",
   "description": "Plans and decomposes complex user queries into structured execution workflows. Uses semantic reasoning to create optimal agent sequences and task dependencies for efficient workflow orchestration.",
-  "url": "https://abi-planner:11437",
+  "url": "http://abi-planner:11437",
   "version": "1.0.0",
 
   "capabilities": {

@@ -16,7 +16,7 @@
   ],
   "llmConfig": {
     "provider": "ollama",
-    "model": "mixtral:8x22b",
+    "model": "llama3.2:3b",
     "temperature": 0.0
   },
   "tools": [],

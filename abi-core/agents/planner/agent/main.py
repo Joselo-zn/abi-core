@@ -16,12 +16,25 @@ def planner_factory(agent_card_dir: AgentCard):
     with Path.open(agent_card_dir) as file:
         data = json.load(file)
         agent_card = AgentCard(**data)
-    if agent_card.name != "Planner Agent":
+    if agent_card.name.strip() != "Abi Planner Agent":
         logger.error(f'[!] Unexpected AgentCard name: {agent_card.name!r}')
-        raise ValueError(f"Unexpected Agentagent_card name: {agent_card.name!r}")
+        raise ValueError(f"Unexpected agent_card name: {agent_card.name!r}")
     return AbiPlannerAgent()
 
 
 if __name__ == "__main__":
     
-    start_server("0.0.0.0", 8002, agent_card_dir, planner_factory)
+    logger.info(f"Starting planner with agent_card_dir: {agent_card_dir}")
+    
+    # Create the agent instance using the factory
+    try:
+        agent_instance = planner_factory(agent_card_dir)
+        logger.info(f"Created agent instance: {type(agent_instance)} - {agent_instance}")
+        logger.info(f"Agent has agent_name: {hasattr(agent_instance, 'agent_name')}")
+        if hasattr(agent_instance, 'agent_name'):
+            logger.info(f"Agent name: {agent_instance.agent_name}")
+    except Exception as e:
+        logger.error(f"Failed to create agent instance: {e}")
+        raise
+    
+    start_server("0.0.0.0", 11437, agent_card_dir, agent_instance)

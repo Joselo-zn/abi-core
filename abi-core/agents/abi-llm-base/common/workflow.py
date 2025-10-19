@@ -11,7 +11,7 @@ import networkx as nx
 
 from a2a.client import A2AClient
 from common.utils import get_mcp_server_config
-from mcp import client
+from abi_mcp import client
 from a2a.types import (
     AgentCard,
     MessageSendParams,
@@ -63,10 +63,19 @@ class WorkflowNode:
             config.host, config.port, config.transport
         ) as session:
             response = await client.find_resource(
-                session, 
+                session, 'resource://agent_cards/planner_agent'
             )
-            data = json.load(response.content[0].text)
-            return AgentCard(**data['agent_card'][0])
+            # ReadResourceResult has 'contents' attribute, not 'content'
+            if hasattr(response, 'contents') and response.contents:
+                data = json.loads(response.contents[0].text)
+                if 'agent_card' in data and data['agent_card'] and len(data['agent_card']) > 0:
+                    return AgentCard(**data['agent_card'][0])
+                else:
+                    logger.error(f"No agent_card found in response data: {data}")
+                    return None
+            else:
+                logger.error("No content found in resource response")
+                return None
 
     async def find_agent_for_task(self) -> AgentCard | None:
         logger.info(f'Find agent for task - {self.task}')
@@ -77,9 +86,24 @@ class WorkflowNode:
             config.transport
         ) as session:
             result = await client.find_agent(session, self.task)
-            agent_card_json = json.loads(result.content[0].text)
-            logger.debug(f'Found Agent {agent_card_json} for task {self.task}')
-            return AgentCard(**agent_card_json)
+            # CallToolsResult has 'content' attribute with different structure
+            if hasattr(result, 'content') and result.content:
+                try:
+                    if isinstance(result.content, list) and result.content:
+                        agent_card_json = json.loads(result.content[0].text)
+                    else:
+                        agent_card_json = result.content
+                    
+                    if agent_card_json:
+                        return AgentCard(**agent_card_json)
+                    else:
+                        return None
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    logger.error(f"Error parsing agent card data: {e}")
+                    return None
+            else:
+                logger.error("No content found in tool result")
+                return None
 
     async def run_node(
         self,
@@ -88,13 +112,22 @@ class WorkflowNode:
         context_id: str,
     ) -> AsyncIterable[dict[str, any]]:
         logger.info(f'Execute node {self.id}')
+        logger.info(f'Node key: {self.node_key}')
         agent_card = None
         if self.node_key ==  'planner':
-            agent_card = self.get_planner_resource()
+            logger.info('Getting planner resource...')
+            agent_card = await self.get_planner_resource()
+            logger.info(f'Planner agent card: {agent_card}')
         else:
+            logger.info('Finding agent for task...')
             agent_card = await self.find_agent_for_task()
-        async with httpx.AsyncClient() as httpx_client:
+            logger.info(f'Task agent card: {agent_card}')
+        timeout_config = httpx.Timeout(timeout=180.0, read=180.0, write=30.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout_config) as httpx_client:
+            logger.info(f"Agent card: {agent_card}")
+            logger.info(f"Agent card URL: {agent_card.url if hasattr(agent_card, 'url') else 'No URL found'}")
             client = A2AClient(httpx_client, agent_card)
+            logger.info(f"A2AClient methods: {[method for method in dir(client) if not method.startswith('_')]}")
 
             payload: dict[str, any] = {
                 'message': {
@@ -107,22 +140,56 @@ class WorkflowNode:
             request = SendStreamingMessageRequest(
                 id=str(uuid4()), params=MessageSendParams(**payload)
             )
-            response_stream = client.send_message_stream(request)
-            async for chunk in response_stream:
-                if isinstance(
-                    chunk.root,
-                    SendStreamingMessageSuccessResponse,
-                ) and (isinstance(chunk.root.result, TaskArtifactUpdateEvent)):
-                    artifact = chunk.root.result.artifact
-                    self.result = artifact
-                yield chunk
+            # Try to find the correct method name
+            available_methods = [method for method in dir(client) if 'send' in method.lower() or 'stream' in method.lower()]
+            logger.info(f"Available send/stream methods: {available_methods}")
+            
+            # Try common method names
+            response_stream = None
+            if hasattr(client, 'send_message_stream'):
+                response_stream = client.send_message_stream(request)
+            elif hasattr(client, 'send_streaming_message'):
+                response_stream = client.send_streaming_message(request)
+            elif hasattr(client, 'stream_message'):
+                response_stream = client.stream_message(request)
+            elif hasattr(client, 'send_message'):
+                response_stream = client.send_message(request)
+            else:
+                logger.error(f"No suitable streaming method found. Available methods: {dir(client)}")
+                raise AttributeError("No suitable streaming method found in A2AClient")
+            
+            # Check if response_stream is a coroutine or async iterator
+            import inspect
+            if inspect.iscoroutine(response_stream):
+                logger.info("Response is a coroutine, awaiting it...")
+                response = await response_stream
+                # If it's a single response, yield it and return
+                if hasattr(response, 'root'):
+                    yield response
+                    return
+                else:
+                    logger.error(f"Unexpected response type: {type(response)}")
+                    return
+            elif hasattr(response_stream, '__aiter__'):
+                logger.info("Response is an async iterator, iterating...")
+                async for chunk in response_stream:
+                    if isinstance(
+                        chunk.root,
+                        SendStreamingMessageSuccessResponse,
+                    ) and (isinstance(chunk.root.result, TaskArtifactUpdateEvent)):
+                        artifact = chunk.root.result.artifact
+                        self.result = artifact
+                    yield chunk
+            else:
+                logger.error(f"Response stream is neither coroutine nor async iterator: {type(response_stream)}")
+                return
 
 class WorkflowGraph:
     """Representation of Graph for a workflow node"""
 
     def __init__(self):
         self.graph = nx.DiGraph()
-        self.node = {}
+        self.nodes = {}
         self.lates_node = None
         self.node_type = None
         self.state = Status.INITIALIZED
@@ -160,9 +227,10 @@ class WorkflowGraph:
         for node_id in sub_graph:
             node = self.nodes[node_id]
             node.state = self.state.RUNNING
-            query = self.nodes[node_id].get('query')
-            task_id = self.node[node_id].get('task_id')
-            context_id = self.nodes[node_id].get('context_id')
+            node_attrs = self.graph.nodes[node_id]
+            query = node_attrs.get('query', '')
+            task_id = node_attrs.get('task_id', '')
+            context_id = node_attrs.get('context_id', '')
 
             async for chunk in node.run_node(query, task_id, context_id):
                 if node.state != Status.PAUSED:

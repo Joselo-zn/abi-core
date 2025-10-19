@@ -21,7 +21,7 @@ services:
   abi-weaviate:
     image: semitechnologies/weaviate:1.32.4
     depends_on:
-      - abi-llm-base
+      - abi-observer
     ports:
       - 8080:8080
       #- 8081:8081 Prometeus metric Optional
@@ -41,7 +41,7 @@ services:
     networks:
       - abi-network
 
-  semantic-layer:
+  abi-semantic-layer:
     build:
       context: ./semantic_layer
       dockerfile: Dockerfile
@@ -50,15 +50,15 @@ services:
     ports:
       - "10100:10100"
     environment:
-      AGENT_CARDS_BASE: "/app/layer/mcp_server/agent_cards"
-      MODEL: "jina/jina-embeddings-v2-base-es"
+      AGENT_CARDS_BASE: "/app/agent_cards"
+      MODEL: "nomic-embed-text:v1.5"
       SQLLITE_DB: "abi_context.db"
       ABI_ROLE: "MCP Server"
       ABI_NODE: "ABI Node"
       OLLAMA_HOST: "http://abi-llm-base:11434"
       WEAVIATE_URL: "http://abi-weaviate:8080"
     volumes:
-      - ./mcp/mcp_server:/app/mcp_server:ro
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
     networks:
       - abi-network
     restart: unless-stopped
@@ -70,15 +70,18 @@ services:
       - abi-llm-base
     ports:
       - 11435:11434
-      - 8082:8002
+      - 8082:8002  # A2A Protocol
+      - 8083:8083  # Web Interface
     environment:
       - AGENT_HOST=0.0.0.0
       - AGENT_BASE=https://abi-orchestrator:8002
       - AGENT_CARD=/app/agent_cards/orchestrator_agent.json
-      - MODEL_NAME=tinyllama:latest
+      - MODEL_NAME=llama3.2:3b
       - ABI_ROLE=Orchestrator Agent
       - ABI_NODE=ABI AGENT
       - PYTHONPATH=/app
+      - ABI_SETTINGS_LOGGING_DEBUG=True
+      - PYTHONUNBUFFERED=1
     volumes:
       - ollama-data:/root/.ollama
       - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
@@ -119,6 +122,8 @@ services:
       - AGENT_CARD=/app/agent_cards/planner_agent.json
       - ABI_ROLE=Planner Agent
       - ABI_NODE=ABI AGENT
+      - ABI_SETTINGS_LOGGING_DEBUG=True
+      - PYTHONUNBUFFERED=1
     volumes:
       - ollama-data:/root/.ollama
       - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
@@ -133,12 +138,12 @@ services:
       - abi-planner
     ports:
       - 11436:11434
-      - 8083:8002
+      - 8084:8002
     environment:
       - AGENT_HOST=0.0.0.0
       - AGENT_BASE=https://abi-actor:8002
       - AGENT_CARD=/app/agent_cards/actor_agent.json
-      - MODEL_NAME=tinyllama:latest
+      - MODEL_NAME=llama3.2:3b
       - ABI_ROLE=Actor Agent
       - ABI_NODE=ABI AGENT
       - PYTHONPATH=/app
@@ -191,43 +196,7 @@ services:
       - abi-network
     restart: "unless-stopped"
 
-  prometheus:
-    image: prom/prometheus:latest
-    depends_on:
-      - abi-observer
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    networks:
-      - abi-network
-    restart: unless-stopped
 
-  grafana:
-    image: grafana/grafana:latest
-    depends_on:
-      - prometheus
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    networks:
-      - abi-network
-    restart: unless-stopped
 
   #model-loader:
   #  image: curlimages/curl:latest
@@ -245,8 +214,6 @@ volumes:
   guardial-data:
   planner-data:
   observer-data:
-  prometheus-data:
-  grafana-data:
 
 networks:
   abi-network:

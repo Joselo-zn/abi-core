@@ -5,10 +5,10 @@ set -euo pipefail
 # Powered by ABI
 # Developed by Jose Luis Martinez
 # ==============================
-# Model quick test: tinyllama:latest
+# Model test: llama3.2:3b
 
-MODEL_NAME="${MODEL_NAME:-mixtral:8x22b}"
-EMBEDDING_MODEL="${EMBEDDING_MODEL:-jina/jina-embeddings-v2-base-es:latest}"
+MODEL_NAME="${MODEL_NAME:-llama3.2:3b}"
+EMBEDDING_MODEL="${EMBEDDING_MODEL:-nomic-embed-text:v1.5}"
 
 HOSTS="${HOSTS:-http://abi-orchestrator:11434 http://abi-auditor:11435 http://abi-verifier:11437 http://abi-observer:11439 http://abi-actor:11438}"
 

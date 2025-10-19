@@ -21,13 +21,13 @@ from agent.policy_engine_secure import get_secure_policy_engine, PolicyDecision
 from agent.mcp_interface import get_guardial_mcp_tool
 
 from langchain_core.messages import AIMessage
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = os.getenv('MODEL_NAME', 'tinyllama:latest')
+MODEL_NAME = os.getenv('MODEL_NAME', 'llama3.2:3b')
 memory = MemorySaver()
 
 class AbiGuardianSecure(AbiAgent):
@@ -50,7 +50,7 @@ class AbiGuardianSecure(AbiAgent):
 
         self.policy_engine = get_secure_policy_engine()
         self.mcp_tool = get_guardial_mcp_tool()
-        self.llm = ChatOllama(model_name=MODEL_NAME, temperature=0.0)
+        self.llm = ChatOllama(model=MODEL_NAME, temperature=0.0)
         self.system_secure = False
         
         logger.info(f'🛡️ Starting ABI Guardian Agent with Secure OPA')

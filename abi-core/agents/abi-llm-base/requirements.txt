@@ -1,5 +1,7 @@
 langchain
+langchain-ollama
 fastapi
+fastmcp
 mcp
 mcp-toolbox
 a2a-sdk
@@ -15,3 +17,4 @@ jinja2
 aiohttp
 psutil
 pyyaml
+ag-ui-protocol

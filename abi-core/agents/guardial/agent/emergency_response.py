@@ -465,7 +465,7 @@ class EmergencyResponseSystem:
                 "planner", 
                 "worker_actor",
                 "worker_observer",
-                "semantic_layer"
+                "abi_semantic_layer"
             ]
             
             for agent in simulated_agents:

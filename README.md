@@ -158,7 +158,7 @@ curl -X POST http://localhost:8082/stream \
 ### Environment Variables
 ```bash
 # LLM Configuration
-MODEL_NAME=tinyllama:latest
+MODEL_NAME=llama3.2:3b
 OLLAMA_HOST=http://abi-llm-base:11434
 
 # Database Configuration

@@ -39,7 +39,7 @@ graph TD
 
 ### Environment Variables
 ```bash
-MODEL_NAME=tinyllama:latest
+MODEL_NAME=llama3.2:3b
 AGENT_HOST=0.0.0.0
 AGENT_BASE=https://abi-planner:11437
 ABI_ROLE=Planner Agent

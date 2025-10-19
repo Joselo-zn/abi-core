@@ -14,13 +14,13 @@ from agent.agent import AbiAgent
 from agent.models.agent_models import WorkerResponse
 
 from langchain_core.messages import AIMessage
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = os.getenv('MODEL_NAME', 'tinyllama:latest')
+MODEL_NAME = os.getenv('MODEL_NAME', 'llama3.2:3b')
 memory = MemorySaver()
 
 class AbiWorkerActor(AbiAgent):
@@ -33,7 +33,7 @@ class AbiWorkerActor(AbiAgent):
         )
 
         self.instructions = instructions
-        self.llm = ChatOllama(model_name=MODEL_NAME, temperature=0.0)
+        self.llm = ChatOllama(model=MODEL_NAME, temperature=0.0)
         logger.info(f'[🚀] Starting ABI Worker Actor Agent')
         self.abi_actor = create_react_agent(
             self.llm,

@@ -40,9 +40,8 @@ class SecurityDashboard:
         # Setup static files and templates
         self._setup_static_files()
         
-        # Start background tasks
-        asyncio.create_task(self._broadcast_metrics())
-        asyncio.create_task(self._check_alerts())
+        # Background tasks will be started when the event loop is running
+        self._background_tasks_started = False
     
     def _setup_routes(self):
         """Setup FastAPI routes"""
@@ -924,6 +923,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 logger.error(f"Alert checking failed: {e}")
                 await asyncio.sleep(60)
     
+    async def start_background_tasks(self):
+        """Start background tasks when event loop is available"""
+        if not self._background_tasks_started:
+            asyncio.create_task(self._broadcast_metrics())
+            asyncio.create_task(self._check_alerts())
+            self._background_tasks_started = True
+            logger.info("🔄 Background tasks started")
+    
     def start(self):
         """Start the dashboard server"""
         logger.info(f"🚀 Starting Guardial Security Dashboard on {self.host}:{self.port}")
@@ -942,5 +949,19 @@ def get_security_dashboard(host: str = "0.0.0.0", port: int = 8080) -> SecurityD
 
 def start_dashboard_server(host: str = "0.0.0.0", port: int = 8080):
     """Start the security dashboard server"""
-    dashboard = get_security_dashboard(host, port)
-    dashboard.start()
+    # Create a new event loop for this thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        dashboard = get_security_dashboard(host, port)
+        
+        # Start background tasks in the event loop
+        loop.run_until_complete(dashboard.start_background_tasks())
+        
+        # Start the server
+        dashboard.start()
+    except Exception as e:
+        logger.error(f"Failed to start dashboard server: {e}")
+    finally:
+        loop.close()

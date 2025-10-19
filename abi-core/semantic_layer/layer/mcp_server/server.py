@@ -1,5 +1,5 @@
 import os
-
+import logging
 import numpy as np
 
 from typing import Optional
@@ -7,13 +7,12 @@ from typing import Optional
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 from fastmcp import FastMCP
-from fastmcp.utilities.logging import get_logger
 
 from layer.embedding_mesh.api import attach_embedding_mesh_routes
 from layer.embedding_mesh.embeddings_abi import embed_one, build_agent_card_embeddings
 
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 MODEL = os.getenv("MODEL")
 
@@ -84,7 +83,14 @@ def serve(host, port, transport):
         """
         resources = {}
         logger.info('[*] Starting to read resources')
-        resources['agent_cards'] = df['card_uri'].to_list()
+        # Convert file paths to resource URIs for consistency
+        resource_uris = []
+        for uri in df['card_uri'].to_list():
+            # Extract filename and convert to resource URI
+            filename = uri.split('/')[-1].replace('.json', '')
+            resource_uris.append(f'resource://agent_cards/{filename}')
+        
+        resources['agent_cards'] = resource_uris
         return resources
     
     @mcp.resource(
@@ -99,11 +105,28 @@ def serve(host, port, transport):
         """
         resource = {}
         logger.info(f'[*] Starting to read resource {card_name}')
-        resource['agent_card'] = (df.loc[
-            df['card_uri'] == f'resource://agent_cards/{card_name}',
+        logger.info(f'[*] Available card_uris: {df["card_uri"].tolist()}')
+        
+        # The card_uri in DataFrame contains file paths, not resource URIs
+        # So we need to match by filename instead
+        matching_cards = df.loc[
+            df['card_uri'].str.contains(f'{card_name}.json', na=False),
             'agent_card'
-        ]).to_list()
-
+        ].to_list()
+        
+        resource['agent_card'] = matching_cards
+        logger.info(f'[*] Found {len(matching_cards)} matching cards for {card_name}')
+        
+        if len(matching_cards) == 0:
+            logger.warning(f'[!] No cards found for {card_name}. Trying exact filename match...')
+            # Try exact filename match
+            exact_matches = df.loc[
+                df['card_uri'].str.endswith(f'{card_name}.json'),
+                'agent_card'
+            ].to_list()
+            resource['agent_card'] = exact_matches
+            logger.info(f'[*] Exact match found {len(exact_matches)} cards for {card_name}')
+        
         return resource
     
     @mcp.custom_route("/health", methods=["GET"])

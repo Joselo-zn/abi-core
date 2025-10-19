@@ -27,7 +27,7 @@ COPY agent /app/agent
 COPY agent_cards /app/agent_cards
 COPY common /app/common
 COPY opa /app/opa
-COPY mcp /app/mcp
+COPY abi_mcp /app/abi_mcp
 
 RUN chmod +x /etc/profile.d/abi-motd.sh
 RUN chmod +x /opt/abi/agents.d/abi-base.sh

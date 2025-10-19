@@ -2,17 +2,17 @@ import asyncio
 import json
 import os
 import click
+import logging
 
-from contextlib import asynccontexmanager
-from fastmcp.utilities.logging import get_logger
+from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
-from mcp.types import CallToolsResult, ReadResourceResult
+from mcp.types import CallToolResult, ReadResourceResult
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
-@asynccontexmanager
+@asynccontextmanager
 async def init_session(host, port, transport):
     """Initializes and manages an MCP ClientSession based on the specified transport.
 
@@ -37,7 +37,7 @@ async def init_session(host, port, transport):
     """
 
     if transport == 'sse':
-        url = f'http:// {host}:{port}/sse'
+        url = f'http://{host}:{port}/sse'
         async with sse_client(url) as (read_stream, write_stream):
             async with ClientSession(
                 read_stream=read_stream,
@@ -53,7 +53,7 @@ async def init_session(host, port, transport):
             f"Unsupported transport type: {transport}. Must be 'sse'"
         )
 
-async def find_agent(session: ClientSession, query) -> CallToolsResult:
+async def find_agent(session: ClientSession, query) -> CallToolResult:
     """Call the tool 'find_agent' tool on the connected MCP server.
 
     Args:

@@ -1,7 +1,7 @@
 {
   "name": "Abi Observer Agent",
   "description": "Monitors and analyzes agent interactions, system performance, and detects anomalies in real-time. Provides comprehensive observation reports and health metrics.",
-  "url": "https://abi-observer:8004",
+  "url": "http://abi-observer:8004",
   "version": "1.0.0",
 
   "capabilities": {

@@ -51,7 +51,7 @@ valid_agents := {{
     "actor", 
     "observer",
     "guardial",
-    "semantic_layer"
+    "abi_semantic_layer"
 }}
 
 # Safe resources for read operations
@@ -70,7 +70,7 @@ allowed_endpoints := {{
     "127.0.0.1",
     "abi-llm-base",
     "abi-weaviate", 
-    "semantic-layer",
+    "abi-semantic-layer",
     "abi-orchestrator",
     "abi-planner",
     "abi-actor",

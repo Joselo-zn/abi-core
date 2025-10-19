@@ -1,7 +1,7 @@
 {
   "name": "Abi Orchestrator Agent",
   "description": "Coordinates and controls the execution flow of agents by navigating the semantic workflow graph. Ensures correct delegation, result aggregation and context continuity.",
-  "url": "https://abi-orchestrator:8002",
+  "url": "http://abi-orchestrator:8002",
   "version": "1.0.0",
 
   "capabilities": {
