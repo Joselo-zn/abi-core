@@ -1,13 +1,39 @@
-# 🗺️ **ABI Roadmap – 2025**
+🗺️ ABI Roadmap – 2025
 
 > **🎉 HITO ALCANZADO:** Sistema **ABI-Core completamente operativo (Octubre 2025)**  
 > Todos los servicios funcionando, errores críticos resueltos, arquitectura estable y modular.
 
 * * *
 
-## ✅ **Completado (Julio – Octubre 2025)**
 
-*(Se conserva íntegramente la sección original del historial de logros y baseline técnico.)*
+## ✅ Completado (Julio - Octubre 2025)
+
+| Componente | Tarea | Estado |
+|------------|-------|--------|
+| **Fundación** | 🔹 Publicación del Manifiesto y Whitepaper en GitHub | ✅ Liberado |
+| | 🔹 Setup inicial del repositorio y licencia | ✅ Liberado |
+| | 🔹 Diseño del MVP (diagrama de agentes, A2A, supervisión) | ✅ Liberado |
+| **Arquitectura** | 🔹 Stack tecnológico definido (FastAPI, Weaviate, Ollama, MCP) | ✅ Liberado |
+| | 🔹 Arquitectura multi-agente implementada | ✅ Liberado |
+| | 🔹 Docker Compose para orquestación completa | ✅ Liberado |
+| **Agentes Core** | 🔹 BaseAgent y AbiAgent con políticas integradas | ✅ Liberado |
+| | 🔹 Orchestrator Agent con workflow management | ✅ Liberado |
+| | 🔹 Planner Agent con descomposición de tareas | ✅ Liberado |
+| | 🔹 Actor Agent con ejecución de herramientas | ✅ Liberado |
+| | 🔹 Guardian Agent con OPA avanzado | ✅ Liberado |
+| **Comunicación** | 🔹 Protocolo A2A completamente implementado | ✅ Liberado |
+| | 🔹 MCP Server con semantic agent discovery | ✅ Liberado |
+| | 🔹 Streaming real-time entre agentes | ✅ Liberado |
+| **Semántica** | 🔹 Weaviate integration para embeddings | ✅ Liberado |
+| | 🔹 Agent Cards con capacidades semánticas | ✅ Liberado |
+| | 🔹 Búsqueda semántica de agentes por tarea | ✅ Liberado |
+| **Workflows** | 🔹 NetworkX para grafos de workflow | ✅ Liberado |
+| | 🔹 Context preservation cross-agent | ✅ Liberado |
+| | 🔹 Pauses/Resume mechanisms | ✅ Liberado |
+| **Seguridad** | 🔹 OPA Policy Engine con políticas inmutables | ✅ Liberado |
+| | 🔹 Sistema de puntuación de riesgo | ✅ Liberado |
+| | 🔹 Fail-safe mechanisms y emergency shutdown | ✅ Liberado |
+
 
 * * *
 
