@@ -1,0 +1,16 @@
+# OPA Server Configuration for Bundle Management
+# This enables the /v1/bundles/* endpoints for dynamic policy loading
+
+# Decision logging
+decision_logs:
+  console: true
+
+# Status reporting
+status:
+  console: true
+
+# Default authorization decision
+default_authorization_decision: "/abi/allow"
+
+# Default decision (fallback)
+default_decision: "/abi/allow"

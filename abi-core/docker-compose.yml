@@ -1,0 +1,220 @@
+services:
+
+  abi-llm-base:
+    build:
+      context: ./agents/abi-llm-base
+    image: abi-llm-base
+    ports:
+      - 11434:11434
+      - 8081:8001
+    environment:
+      - BASELLM_HOST=0.0.0.0
+      - ABI_LLM_BASE=https://abi-llmbase:8000
+      - ABI_ROLE=LLM Base
+      - ABI_NODE=ABI Node
+      - PYTHONPATH=/app
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - abi-network
+
+  abi-weaviate:
+    image: semitechnologies/weaviate:1.32.4
+    depends_on:
+      - abi-observer
+    ports:
+      - 8080:8080
+      #- 8081:8081 Prometeus metric Optional
+    environment:
+      QUERY_DEFAULT_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: 'var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 
+      CLUSTER_HOSTNAME: 'node1'
+    volumes:
+      - weaviate-data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - abi-network
+
+  abi-semantic-layer:
+    build:
+      context: ./semantic_layer
+      dockerfile: Dockerfile
+    depends_on:
+      - abi-weaviate
+    ports:
+      - "10100:10100"
+    environment:
+      AGENT_CARDS_BASE: "/app/agent_cards"
+      MODEL: "nomic-embed-text:v1.5"
+      SQLLITE_DB: "abi_context.db"
+      ABI_ROLE: "MCP Server"
+      ABI_NODE: "ABI Node"
+      OLLAMA_HOST: "http://abi-llm-base:11434"
+      WEAVIATE_URL: "http://abi-weaviate:8080"
+    volumes:
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
+    networks:
+      - abi-network
+    restart: unless-stopped
+
+  abi-orchestrator:
+    build:
+      context: ./agents/orchestrator
+    depends_on:
+      - abi-llm-base
+    ports:
+      - 11435:11434
+      - 8082:8002  # A2A Protocol
+      - 8083:8083  # Web Interface
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-orchestrator:8002
+      - AGENT_CARD=/app/agent_cards/orchestrator_agent.json
+      - MODEL_NAME=llama3.2:3b
+      - ABI_ROLE=Orchestrator Agent
+      - ABI_NODE=ABI AGENT
+      - PYTHONPATH=/app
+      - ABI_SETTINGS_LOGGING_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
+  abi-guardial:
+    build:
+      context: ./agents/guardial
+    depends_on:
+      - abi-orchestrator
+    ports:
+      - 11438:8003
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-guardial:11438
+      - AGENT_CARD=/app/agent_cards/guardial_agent.json
+      - ABI_ROLE=Guardial Agent
+      - ABI_NODE=ABI AGENT
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
+  abi-planner:
+    build:
+      context: ./agents/planner
+    depends_on:
+      - abi-orchestrator
+    ports:
+      - 11437:11437
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-planner:11437
+      - AGENT_CARD=/app/agent_cards/planner_agent.json
+      - ABI_ROLE=Planner Agent
+      - ABI_NODE=ABI AGENT
+      - ABI_SETTINGS_LOGGING_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
+  abi-actor:
+    build:
+      context: ./agents/worker_actor
+    depends_on:
+      - abi-planner
+    ports:
+      - 11436:11434
+      - 8084:8002
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-actor:8002
+      - AGENT_CARD=/app/agent_cards/actor_agent.json
+      - MODEL_NAME=llama3.2:3b
+      - ABI_ROLE=Actor Agent
+      - ABI_NODE=ABI AGENT
+      - PYTHONPATH=/app
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
+  abi-opa:
+    build:
+      context: ./agents/guardial/opa
+    depends_on:
+      - abi-guardial
+    ports:
+      - 8181:8181
+    environment:
+      - OPA_LOG_LEVEL=info
+      - OPA_HOST=0.0.0.0
+      - OPA_BASE=http://abi-opa:8181
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  abi-observer:
+    build:
+      context: ./agents/worker-observer
+    depends_on:
+      - abi-guardial
+    ports:
+      - 11439:8004  # Agent A2A protocol
+      - 8085:8080   # Observer API & Metrics
+    environment:
+      - AGENT_HOST=0.0.0.0
+      - AGENT_BASE=https://abi-observer:8004
+      - AGENT_CARD=/app/agent_cards/observer_agent.json
+      - ABI_ROLE=Observer Agent
+      - ABI_NODE=ABI AGENT
+      - PYTHONPATH=/app
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./agents/abi-llm-base/agent_cards:/app/agent_cards:ro
+    networks:
+      - abi-network
+    restart: "unless-stopped"
+
+
+
+  #model-loader:
+  #  image: curlimages/curl:latest
+  #  depends_on:
+  #    - abi-actor
+  #  volumes:
+  #    - ./agents/abi-llm-base/model-loader.sh:/model-loader.sh
+  #  entrypoint: ["sh", "/etc/profile.d/model-loader.sh"]
+  #  networks:
+  #    - abi-network
+
+volumes:
+  ollama-data:
+  weaviate-data:
+  guardial-data:
+  planner-data:
+  observer-data:
+
+networks:
+  abi-network:
+    driver: bridge

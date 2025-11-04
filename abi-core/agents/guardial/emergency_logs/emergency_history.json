@@ -1,0 +1,133 @@
+{
+  "emergency_events": [
+    {
+      "event_id": "990c2f195c4cf383",
+      "timestamp": "2025-09-24T01:28:48.877101+00:00",
+      "emergency_type": "manual_shutdown",
+      "emergency_level": "high",
+      "initiated_by": "TEST_SCRIPT",
+      "reason": "Testing emergency mode functionality",
+      "system_state_before": "normal",
+      "system_state_after": "emergency_mode",
+      "affected_agents": [
+        "ALL_AGENTS"
+      ],
+      "additional_context": {
+        "emergency_mode": true,
+        "duration_hours": 1,
+        "auto_exit": true
+      },
+      "signature": "ad162f9a951c9648ea2c8b69cd1b0354118f182c159b72ef909409de4d4a6a14c76459c07d08e27d6f90cc4c6a48aeaeeed3b57c05a4471d705fff31108e06235982f8d2be5e4d1545b2a51b30d6f5bff37a11c48c9c040f0ebd54d56665fa7d3ea045693a5d6811e7d557cfb43a6e24c3d53b27eecc27c4751b4d38c1c5b16524fb61343e9a931cc8fd8e1e51c8d6414cb752dbab278b7dfe2085f8e0b69d70520aaaf676a2142ddd0f02a6d08b59da99866f612c19020d0e9a616f880521f5ee6922481115acc23da7f311c5b0ac7fd57786e5598168b3efbca8a6bebad543622dcee3d8ba60ab38304eb28c3e9b05351f2fe53e58bd7f021bc4bf9cc16ab5"
+    },
+    {
+      "event_id": "override_3d9d1800dbbcd4ed",
+      "timestamp": "2025-09-24T01:28:48.882285+00:00",
+      "emergency_type": "administrative_override",
+      "emergency_level": "high",
+      "initiated_by": "TEST_ADMIN",
+      "reason": "Administrative Override: Testing administrative override functionality",
+      "system_state_before": "emergency_mode",
+      "system_state_after": "emergency_mode",
+      "affected_agents": [],
+      "additional_context": {
+        "override_id": "3d9d1800dbbcd4ed",
+        "original_decision": {
+          "allow": false,
+          "deny": true,
+          "risk_score": 0.9
+        },
+        "override_decision": {
+          "allow": true,
+          "deny": false,
+          "risk_score": 0.1
+        },
+        "approval_chain": [
+          "TEST_ADMIN",
+          "TEST_SUPERVISOR"
+        ]
+      },
+      "signature": "5ff08d761912a28bd00d693a5e64d24c2205568213e4ec631e1c4d6c9dd62ccf7dccbc34ba098e973b88cde567d4717e5cbbc484514fb4009145c9248cdbf84b6a6785ab558110007dd255a21d67dc7effa4d2bcdfbfbc3436fec47f6dff05f76420b2258640ad7aab4be52f6a3139aeee7f344e192055f56ede5f174bd80c9842f32a5ce186daa0e96b3799899cf67d3807216c62b9013002b8eae4be935bb1eca59ba95a8581ce5427d6c4e3274787185bcc66ad0b732eb9f52d98d000277243596287a595276ed066fbafbc3eba1be699d370660badea4c75f20da2017f2e02ea6aa1cc4887adaae7a5fc75265a24026e43dff3f059a97e190bb15ef55ddc"
+    },
+    {
+      "event_id": "065a6ef1280829a2",
+      "timestamp": "2025-09-24T01:28:48.884373+00:00",
+      "emergency_type": "manual_shutdown",
+      "emergency_level": "medium",
+      "initiated_by": "TEST_SCRIPT",
+      "reason": "EXIT EMERGENCY MODE: Testing completed successfully",
+      "system_state_before": "emergency_mode",
+      "system_state_after": "normal",
+      "affected_agents": [
+        "ALL_AGENTS"
+      ],
+      "additional_context": {
+        "emergency_mode_exit": true,
+        "returning_to_normal": true
+      },
+      "signature": "65c9cb3829062dadf3e601b2135757562406195d057abb8e1e4a3a6da942d301b90aba936e1583a9cd22c1b52317afa70743892f2ef9485342f02349d16eb50f78cc03f60b846b54618ca4ee5b30b7d19835bbe7877127a98fbc04b59abda1768a45299f63b0a6d2781c098e6bab13f7910ddc1c4aa8bfe0b9b1bce1c5b733046f1053ccc33c31f68bc2bfacb10285697ea9e14c3a13b92cbd64bf22f9b672e73f8fca7b9e3c7e0746351f424fb65f34c61f5a95d4b4d75570ffc650892f2353e24b2ef37c2ac9b1b949885c302eecf625927fc7c657776dd639a020977a81838fd5afa30594d9b09401b4878b2e64c4a7b9cbc98084ac8a6399c8d0acf88cc7"
+    },
+    {
+      "event_id": "7bb878ac74fb664f",
+      "timestamp": "2025-09-24T01:28:48.886292+00:00",
+      "emergency_type": "manual_shutdown",
+      "emergency_level": "high",
+      "initiated_by": "TEST_SCRIPT",
+      "reason": "Testing emergency shutdown functionality",
+      "system_state_before": "normal",
+      "system_state_after": "shutdown",
+      "affected_agents": [
+        "ALL_AGENTS"
+      ],
+      "additional_context": {
+        "shutdown_method": "emergency_shutdown",
+        "immediate_effect": true,
+        "fail_safe_triggered": true
+      },
+      "signature": "3f678b91d5bb579edc57f1d4706ffaa125c15761d8d85e007f3b4cd2a7046455c4d3bfbace461239ae5c5ab8d888cc78c6338b6b1f0173e6a51beafe680903ed6ea27d6c906eef5be4cde628d98695441763c900f2a393066ac2412ac826b49648ab3a2d7c6f632d0becd3c592074c81a849bd05f8323012f2866a751589af25862e2b7d36ad575861d6881ea2d7c77dd06db76df7f38015aa8329e872997497c92be59c842347a23ea611857cfa031f358d756d96cfb0c1b5882786b53843753286a50459fa8370dd2f2dc84e98a84b14e7e90fab639e1e3fb8140e0219913d502f8a2182992c683662be7279d2eb0d02ed3ea000ccef697211783277e0cd1e"
+    },
+    {
+      "event_id": "dbe6193c0ac6e3b5",
+      "timestamp": "2025-09-24T01:28:49.394953+00:00",
+      "emergency_type": "manual_shutdown",
+      "emergency_level": "medium",
+      "initiated_by": "CALLBACK_TEST",
+      "reason": "Testing shutdown callbacks",
+      "system_state_before": "shutdown",
+      "system_state_after": "shutdown",
+      "affected_agents": [
+        "ALL_AGENTS"
+      ],
+      "additional_context": {
+        "shutdown_method": "emergency_shutdown",
+        "immediate_effect": true,
+        "fail_safe_triggered": true
+      },
+      "signature": "147dbd48dbb3c3c1be8003401c3e6509b3bfcee50de8025ca874ce1f203ddd87a3c26ae12b43535843dffa5a4ab3cd5aa51376590f2a787230fb0c207afe31f66db9dd857ac26ee110ffec85d01cb0a01909a4995f15bd558de2606c0a386e7a7493ec04a7b271a664d07936ae99092220c370b299e192e68e793ebd935c7b40c8c6d7bd63c3ca5250b53bece25ade5231b70122785079a00a38f46ce8c62182ff7e84f3eb0c2c41888731263923460cf9ecb6e962e565ae4e7c0d7a24a725ba92310cfa005822bd50e9669f6aff4969a48e6a4573c548193800af5685036d3b01ecacca9a9ed504f22f0913ca31c9633678980c180ab325f96e7b9fda1cb4ca"
+    }
+  ],
+  "admin_overrides": [
+    {
+      "override_id": "3d9d1800dbbcd4ed",
+      "timestamp": "2025-09-24T01:28:48.880842+00:00",
+      "admin_id": "TEST_ADMIN",
+      "override_reason": "Testing administrative override functionality",
+      "original_decision": {
+        "allow": false,
+        "deny": true,
+        "risk_score": 0.9
+      },
+      "override_decision": {
+        "allow": true,
+        "deny": false,
+        "risk_score": 0.1
+      },
+      "justification": "Override for testing purposes - demonstrating emergency capabilities",
+      "approval_chain": [
+        "TEST_ADMIN",
+        "TEST_SUPERVISOR"
+      ],
+      "signature": "311907e369d24253d9d187b06f36dad76fc09840c7df281f6b7440e1864b39655663a70d06a49f896684601de9d6a55195874da18d156de75b8ecb76a9ee9d285d85b6e6b0dcb7838cd7f944651fce54cd00d0224d374f1e601ce75b8da9185b24e4f48d384c97b8292dbb61d0ae8d107d9ebece768ac703dcf4d98942cb080e090490af77c67bc4fe5be6533385d7a7c3a0f04e6dd0cb33b749253e3d42e6193970689e9c05338a17ce135175cef39c77f63e9f25f2ec0732f23de933086027f8cb095eb91ee15abce86f33c5d4acc91a0fd733b123cf15285767a72afa97526f0b11737218afa504096c26d8937fefa3cd544df438efda45a721883439f064"
+    }
+  ],
+  "last_updated": "2025-09-24T01:28:49.900565+00:00"
+}

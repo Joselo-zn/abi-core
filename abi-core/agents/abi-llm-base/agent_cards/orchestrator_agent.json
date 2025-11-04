@@ -1,0 +1,54 @@
+{
+  "name": "Abi Orchestrator Agent",
+  "description": "Coordinates and controls the execution flow of agents by navigating the semantic workflow graph. Ensures correct delegation, result aggregation and context continuity.",
+  "url": "http://abi-orchestrator:8002",
+  "version": "1.0.0",
+
+  "capabilities": {
+    "streaming": "True",
+    "pushNotifications": "True",
+    "stateTransitionHistory": "False"
+  },
+
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+
+  "skills": [
+    {
+      "id": "plan_workflow",
+      "name": "Workflow Planning",
+      "description": "Plan a multi‑agent workflow based on the user request and context.",
+      "tags": ["planning", "workflow", "orchestration"],
+      "examples": ["Break down an R&D task into agent steps"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "select_agent",
+      "name": "Agent Routing",
+      "description": "Choose the best downstream agent for a given task.",
+      "tags": ["routing", "selection", "policy"],
+      "examples": ["Pick the right agent for data extraction"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "track_state",
+      "name": "State Tracking",
+      "description": "Maintain and update shared workflow state across tasks.",
+      "tags": ["state", "context", "memory"],
+      "examples": ["Persist intermediate results during execution"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "summarize_outputs",
+      "name": "Result Summarization",
+      "description": "Aggregate artifacts and produce a final concise summary.",
+      "tags": ["aggregation", "summary", "report"],
+      "examples": ["Summarize outputs from multiple agents"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    }
+  ]
+}

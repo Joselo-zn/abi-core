@@ -1,0 +1,26 @@
+{
+  "@context": [
+    "https://raw.githubusercontent.com/GoogleCloudPlatform/a2a-llm/main/a2a/ontology/a2a_context.jsonld"
+  ],
+  "@type": "Agent",
+  "id": "agent://orchestrator",
+  "name": "Orchestrator Agent",
+  "description": "Coordinates and controls the execution flow of agents by navigating the semantic workflow graph. Ensures correct delegation, result aggregation and context continuity.",
+  "contentType": "text/plain",
+  "supportedTasks": [
+    "execute_graph",
+    "resume_workflow",
+    "route_to_agent",
+    "aggregate_artifacts",
+    "generate_summary"
+  ],
+  "llmConfig": {
+    "provider": "ollama",
+    "model": "llama3.2:3b",
+    "temperature": 0.0
+  },
+  "tools": [],
+  "functions": [],
+  "embedding": false,
+  "prompt": "You are a high-level orchestrator responsible for managing workflows between agents. Given a workflow graph and task context, you must decide which agent should handle each task. Track context across queries, resume paused executions, and produce a final output summary. Maintain semantic alignment throughout the workflow."
+}

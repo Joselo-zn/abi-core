@@ -1,0 +1,54 @@
+{
+  "name": " Abi Planner Agent",
+  "description": "Plans and decomposes complex user queries into structured execution workflows. Uses semantic reasoning to create optimal agent sequences and task dependencies for efficient workflow orchestration.",
+  "url": "http://abi-planner:11437",
+  "version": "1.0.0",
+
+  "capabilities": {
+    "streaming": "True",
+    "pushNotifications": "True",
+    "stateTransitionHistory": "False"
+  },
+
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+
+  "skills": [
+    {
+      "id": "decompose_query",
+      "name": "Query Decomposition",
+      "description": "Break down complex user queries into manageable, sequential tasks.",
+      "tags": ["planning", "decomposition", "analysis"],
+      "examples": ["Split 'analyze market trends and create report' into data collection + analysis + reporting"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "sequence_tasks",
+      "name": "Task Sequencing",
+      "description": "Organize tasks in optimal execution order considering dependencies.",
+      "tags": ["sequencing", "dependencies", "optimization"],
+      "examples": ["Ensure data collection happens before analysis"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "map_agents",
+      "name": "Agent Mapping",
+      "description": "Match each task to the most appropriate agent type based on capabilities.",
+      "tags": ["mapping", "agent-selection", "capabilities"],
+      "examples": ["Map data extraction task to Actor agent, analysis to specialized agent"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "validate_plan",
+      "name": "Plan Validation",
+      "description": "Verify that the execution plan is feasible and complete.",
+      "tags": ["validation", "verification", "completeness"],
+      "examples": ["Check that all user requirements are covered in the plan"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    }
+  ]
+}
