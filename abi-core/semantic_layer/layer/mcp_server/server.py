@@ -10,7 +10,7 @@ from fastmcp import FastMCP
 
 from layer.embedding_mesh.api import attach_embedding_mesh_routes
 from layer.embedding_mesh.embeddings_abi import embed_one, build_agent_card_embeddings
-
+from layer.mcp_server.semantic_access_validator import validate_semantic_access, with_agent_context
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,8 @@ def serve(host, port, transport):
         name='find_agent',
         description='Finds the most adecuate agent cards base in natural laguage query string.'
     )
-    def find_agent(query: str) -> Optional[dict]:
+    @validate_semantic_access
+    def find_agent(query: str, _request_context: dict = None) -> Optional[dict]:
         """Finds the most relevant Agent Card based on semantic similarity with a natural language query.
         
         Args:
@@ -69,12 +70,14 @@ def serve(host, port, transport):
         best_match = df.iloc[best_match_index]['agent_card']
 
         logger.debug(f"[*] Best match index: {best_match_index}, similarity: {dot_products[best_match_index]}")
+        logger.info(f"✅ Access validated - returning agent: {best_match.get('name', 'Unknown')}")
         return best_match
     
     #@TODO Implement more tools to enhance the system
     
-    @mcp.resource('resource://agent_card/list', mime_type='application/json')
-    def get_agent_cards() -> dict:
+    @mcp.resource('resource://agent_card/{card_id}', mime_type='application/json')
+    @validate_semantic_access
+    def get_agent_cards(card_id: str = "list", _request_context: dict = None) -> dict:
         """Retrives all loaded Agents Cards as a JSON dictionary for the MCP resource endpoint
 
         Returns: JSON Dictionary. 
@@ -96,7 +99,8 @@ def serve(host, port, transport):
     @mcp.resource(
         'resource://agent_cards/{card_name}', mime_type='applicacion/json'
     )
-    def get_agent_card(card_name: str) ->dict:
+    @validate_semantic_access
+    def get_agent_card(card_name: str, _request_context: dict = None) ->dict:
         """Retrieves an specific Agent Card as a JSON dictionary for the MCP resource endpoint
 
         Returns: JSON Dictionary.

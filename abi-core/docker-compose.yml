@@ -21,7 +21,7 @@ services:
   abi-weaviate:
     image: semitechnologies/weaviate:1.32.4
     depends_on:
-      - abi-observer
+      - abi-llm-base
     ports:
       - 8080:8080
       #- 8081:8081 Prometeus metric Optional
@@ -93,7 +93,7 @@ services:
     build:
       context: ./agents/guardial
     depends_on:
-      - abi-orchestrator
+      - abi-semantic-layer
     ports:
       - 11438:8003
     environment:
