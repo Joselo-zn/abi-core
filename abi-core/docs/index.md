@@ -15,51 +15,25 @@ getting-started/concepts
 :maxdepth: 2
 :caption: User Guide
 
-user-guide/creating-projects
-user-guide/agents
 user-guide/models
-user-guide/semantic-layer
-user-guide/security
-user-guide/deployment
 ```
 
 ```{toctree}
 :maxdepth: 2
-:caption: Architecture
+:caption: Architecture & Design
 
-architecture/overview
-architecture/agent-system
-architecture/semantic-layer
-architecture/security
-architecture/communication
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: API Reference
-
-api/cli
-api/agents
-api/common
-api/semantic
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Development
-
-development/contributing
-development/testing
-development/architecture-decisions
+architecture
+agent_protocols
+gobernance
 ```
 
 ```{toctree}
 :maxdepth: 1
 :caption: Additional Resources
 
+faq
 changelog
 roadmap
-faq
 ```
 
 ## What is ABI-Core?
