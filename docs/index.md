@@ -1,0 +1,132 @@
+# ABI-Core Documentation
+
+Welcome to the **ABI-Core** documentation! ABI-Core is a comprehensive framework for building, deploying, and managing AI agent systems with semantic layers, orchestration, and security policies.
+
+```{toctree}
+:maxdepth: 2
+:caption: Getting Started
+
+getting-started/installation
+getting-started/quickstart
+getting-started/concepts
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: User Guide
+
+user-guide/creating-projects
+user-guide/agents
+user-guide/models
+user-guide/semantic-layer
+user-guide/security
+user-guide/deployment
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Architecture
+
+architecture/overview
+architecture/agent-system
+architecture/semantic-layer
+architecture/security
+architecture/communication
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: API Reference
+
+api/cli
+api/agents
+api/common
+api/semantic
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Development
+
+development/contributing
+development/testing
+development/architecture-decisions
+```
+
+```{toctree}
+:maxdepth: 1
+:caption: Additional Resources
+
+changelog
+roadmap
+faq
+```
+
+## What is ABI-Core?
+
+**ABI-Core** (Agent-Based Infrastructure Core) is a production-ready framework that combines:
+
+- 🤖 **AI Agents** — LangChain-powered agents with A2A (Agent-to-Agent) communication
+- 🧠 **Semantic Layer** — Vector embeddings and distributed knowledge management
+- 🔒 **Security** — OPA-based policy enforcement and access control
+- 🌐 **Web Interfaces** — FastAPI-based REST APIs and real-time dashboards
+- 📦 **Containerization** — Docker-ready deployments with orchestration
+
+## Quick Links
+
+::::{grid} 2
+:gutter: 3
+
+:::{grid-item-card} 🚀 Quick Start
+:link: getting-started/quickstart
+:link-type: doc
+
+Get up and running with ABI-Core in minutes
+:::
+
+:::{grid-item-card} 📚 User Guide
+:link: user-guide/creating-projects
+:link-type: doc
+
+Learn how to build agent systems
+:::
+
+:::{grid-item-card} 🏗️ Architecture
+:link: architecture/overview
+:link-type: doc
+
+Understand the system design
+:::
+
+:::{grid-item-card} 🔧 API Reference
+:link: api/cli
+:link-type: doc
+
+Detailed API documentation
+:::
+
+::::
+
+## Features
+
+### Multi-Agent Architecture
+Create specialized agents for different tasks with built-in A2A communication protocol.
+
+### Semantic Discovery
+MCP-based agent finding and routing with vector storage for semantic search.
+
+### Security & Governance
+Open Policy Agent (OPA) integration with fine-grained permissions and audit logging.
+
+### Production Ready
+Docker-ready deployments with health checks, monitoring, and scalability.
+
+## Community
+
+- **GitHub**: [github.com/Joselo-zn/abi-core](https://github.com/Joselo-zn/abi-core)
+- **Issues**: [Report bugs or request features](https://github.com/Joselo-zn/abi-core/issues)
+- **Discussions**: [Join the conversation](https://github.com/Joselo-zn/abi-core/discussions)
+
+## License
+
+ABI-Core is released under the Apache 2.0 License. See [LICENSE](https://github.com/Joselo-zn/abi-core/blob/main/LICENSE) for details.
