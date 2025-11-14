@@ -341,3 +341,5 @@ poetry.toml
 pyrightconfig.json
 
 frontend/public/script.js
+
+../.vscode/
