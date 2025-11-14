@@ -55,7 +55,6 @@ myst_enable_extensions = [
 # -- Options for intersphinx extension ---------------------------------------
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
-    'langchain': ('https://python.langchain.com/docs/', None),
 }
 
 # -- Options for autodoc extension -------------------------------------------
