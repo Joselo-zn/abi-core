@@ -2,9 +2,9 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-import os
-import sys
-sys.path.insert(0, os.path.abspath('..'))
+# import os
+# import sys
+# sys.path.insert(0, os.path.abspath('..'))
 
 # -- Project information -----------------------------------------------------
 project = 'ABI-Core'
@@ -14,13 +14,10 @@ release = '0.1.0'
 
 # -- General configuration ---------------------------------------------------
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.viewcode',
+    # 'sphinx.ext.autodoc',  # Disabled - not using API docs from code
+    # 'sphinx.ext.napoleon',  # Disabled - not using API docs from code
+    # 'sphinx.ext.viewcode',  # Disabled - not using API docs from code
     'sphinx.ext.intersphinx',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
-    'sphinx.ext.ifconfig',
     'myst_parser',
     'sphinx_copybutton',
     'sphinx_design',
@@ -58,7 +55,6 @@ myst_enable_extensions = [
 # -- Options for intersphinx extension ---------------------------------------
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
-    'langchain': ('https://python.langchain.com/docs/', None),
 }
 
 # -- Options for autodoc extension -------------------------------------------
