@@ -51,67 +51,50 @@ ABI-Core uses **qwen2.5:3b** as the default model for all agents.
 
 ### Automatic Installation
 
+Models are automatically downloaded when you run:
+
 ```bash
-# Automatically installed with provision-models
+# Automatically downloads and configures models
 abi-core provision-models
 ```
 
-### Manual Installation
+**Note:** You don't need to manually install models. The `provision-models` command handles everything automatically.
 
-```bash
-ollama pull qwen2.5:3b
-```
-
-## Recommended Models
+## Available Models
 
 ### For Production
 
 #### qwen2.5:3b (Default)
-```bash
-ollama pull qwen2.5:3b
-```
 - **Best for:** General agent workflows
 - **Size:** ~2 GB
 - **RAM:** ~4 GB
-- **Tool calling:** Excellent
+- **Tool calling:** ⭐⭐⭐⭐⭐ Excellent
 
 #### mistral:7b
-```bash
-ollama pull mistral:7b
-```
 - **Best for:** Complex reasoning tasks
 - **Size:** ~4.1 GB
 - **RAM:** ~8 GB
-- **Tool calling:** Excellent
+- **Tool calling:** ⭐⭐⭐⭐⭐ Excellent
 
 #### llama3.1:8b
-```bash
-ollama pull llama3.1:8b
-```
 - **Best for:** High-quality responses
 - **Size:** ~4.7 GB
 - **RAM:** ~8 GB
-- **Tool calling:** Very good
+- **Tool calling:** ⭐⭐⭐⭐ Very good
 
 ### For Development
 
 #### phi3:mini
-```bash
-ollama pull phi3:mini
-```
 - **Best for:** Quick testing
 - **Size:** ~2.3 GB
 - **RAM:** ~4 GB
-- **Tool calling:** Good
+- **Tool calling:** ⭐⭐⭐ Good
 
 #### gemma2:2b
-```bash
-ollama pull gemma2:2b
-```
 - **Best for:** Resource-constrained environments
 - **Size:** ~1.6 GB
 - **RAM:** ~3 GB
-- **Tool calling:** Basic
+- **Tool calling:** ⭐⭐ Basic
 
 ## Model Requirements
 
@@ -125,21 +108,10 @@ Agents rely on tools to:
 - Call external APIs
 - Interact with other agents
 
-### Verify Tool Support
-
-Test if a model supports tools:
-
-```bash
-# Pull the model
-ollama pull <model-name>
-
-# Test with a simple tool call
-curl http://localhost:11434/api/generate -d '{
-  "model": "<model-name>",
-  "prompt": "Use the calculator tool to compute 2+2",
-  "tools": [{"name": "calculator", "description": "Performs calculations"}]
-}'
-```
+**Recommended models with excellent tool support:**
+- ✅ qwen2.5:3b (default)
+- ✅ mistral:7b
+- ✅ llama3.1:8b
 
 ## Changing Models
 

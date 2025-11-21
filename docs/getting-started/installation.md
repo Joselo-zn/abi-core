@@ -4,7 +4,6 @@
 
 - Python 3.11 or higher
 - Docker and Docker Compose (for containerized deployments)
-- Ollama (for LLM model serving)
 
 ## Install from PyPI
 
@@ -36,34 +35,21 @@ abi-core --version
 abi-core --help
 ```
 
-## Install Ollama
+## Install Docker
 
-ABI-Core uses Ollama for LLM model serving. Install it from [ollama.ai](https://ollama.ai):
+ABI-Core uses Docker for running agents and services. Install Docker Desktop:
 
-```bash
-# macOS
-brew install ollama
+- **macOS/Windows**: [Download Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- **Linux**: Follow [official Docker installation guide](https://docs.docker.com/engine/install/)
 
-# Linux
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Windows
-# Download from https://ollama.ai/download
-```
-
-Start Ollama:
+Verify Docker installation:
 
 ```bash
-ollama serve
+docker --version
+docker-compose --version
 ```
 
-Pull the default model (recommended for agents):
-
-```bash
-ollama pull qwen2.5:3b
-```
-
-This model has excellent tool/function calling support, which is essential for agent workflows.
+**Note:** Ollama and LLM models are automatically managed by ABI-Core through Docker. You don't need to install Ollama separately.
 
 ## Next Steps
 

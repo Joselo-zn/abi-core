@@ -16,6 +16,20 @@ getting-started/concepts
 :caption: User Guide
 
 user-guide/models
+user-guide/complete-example
+user-guide/agent-development
+user-guide/semantic-enrichment
+user-guide/extending-semantic-layer
+user-guide/policy-development
+user-guide/cli-reference
+user-guide/troubleshooting
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: API Reference
+
+api/common-library
 ```
 
 ```{toctree}
@@ -59,21 +73,21 @@ Get up and running with ABI-Core in minutes
 :::
 
 :::{grid-item-card} 📚 User Guide
-:link: user-guide/creating-projects
+:link: user-guide/models
 :link-type: doc
 
 Learn how to build agent systems
 :::
 
 :::{grid-item-card} 🏗️ Architecture
-:link: architecture/overview
+:link: architecture
 :link-type: doc
 
 Understand the system design
 :::
 
 :::{grid-item-card} 🔧 API Reference
-:link: api/cli
+:link: api/common-library
 :link-type: doc
 
 Detailed API documentation
