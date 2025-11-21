@@ -19,8 +19,17 @@ user-guide/models
 user-guide/complete-example
 user-guide/agent-development
 user-guide/semantic-enrichment
+user-guide/extending-semantic-layer
 user-guide/policy-development
+user-guide/cli-reference
 user-guide/troubleshooting
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: API Reference
+
+api/common-library
 ```
 
 ```{toctree}
