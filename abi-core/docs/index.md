@@ -16,6 +16,11 @@ getting-started/concepts
 :caption: User Guide
 
 user-guide/models
+user-guide/complete-example
+user-guide/agent-development
+user-guide/semantic-enrichment
+user-guide/policy-development
+user-guide/troubleshooting
 ```
 
 ```{toctree}
