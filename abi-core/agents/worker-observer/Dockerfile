@@ -19,8 +19,8 @@ RUN chmod +x /app/agent/cli_reporter.py
 # Expose ports
 EXPOSE 8004 8080
 
-RUN chmod +x /opt/abi/agents.d/start.sh
+RUN chmod +x /opt/abi/agents.d/abi-entrypoint.sh
 
 WORKDIR /app
 
-ENTRYPOINT ["/opt/abi/agents.d/start.sh"]
+ENTRYPOINT ["/opt/abi/agents.d/abi-entrypoint.sh"]
