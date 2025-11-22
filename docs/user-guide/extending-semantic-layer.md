@@ -19,35 +19,173 @@ services/semantic_layer/
         └── weaviate_store.py   # Vector storage
 ```
 
-## Built-in Tools
+## Available Semantic Tools
 
-The semantic layer comes with these tools out of the box:
+The semantic layer provides these MCP tools for agent discovery and coordination:
 
-### 1. `find_agent`
-Finds the best matching agent by natural language query using semantic search.
+### 1. `find_agent` - Agent Discovery
+Finds the best matching agent by natural language query using semantic search with Weaviate.
 
-### 2. `recommend_agents` ✨ NEW
-Recommends multiple agents for complex tasks with relevance scores.
+**Usage:**
+```python
+from abi_core.common.semantic_tools import tool_find_agent
 
-### 3. `check_agent_capability` ✨ NEW
+agent = await tool_find_agent("agent for data analysis")
+print(f"Found: {agent.name}")
+```
+
+**Features:**
+- Semantic search using embeddings
+- Returns single best match
+- Includes relevance score
+
+### 2. `recommend_agents` - Multi-Agent Recommendations
+Recommends multiple agents for complex tasks with relevance scores and confidence levels.
+
+**Usage:**
+```python
+from abi_core.common.semantic_tools import tool_recommend_agents
+
+recommendations = await tool_recommend_agents(
+    task_description="Process financial data and generate reports",
+    max_agents=3
+)
+
+for rec in recommendations:
+    print(f"{rec['agent']['name']}: {rec['relevance_score']:.2f} ({rec['confidence']})")
+```
+
+**Features:**
+- Returns multiple agents ranked by relevance
+- Confidence levels: high (>0.8), medium (>0.5), low
+- Configurable max results
+
+### 3. `check_agent_capability` - Capability Verification
 Checks if an agent has specific capabilities/tasks.
 
-### 4. `check_agent_health` ✨ NEW
-Checks if an agent is online and responding (with response time).
+**Usage:**
+```python
+from abi_core.common.semantic_tools import tool_check_agent_capability
 
-### 5. `get_agent_cards` (resource)
-Retrieves all agent cards.
+result = await tool_check_agent_capability(
+    agent_name="data_processor",
+    required_tasks=["analyze data", "generate reports"]
+)
 
-### 6. `get_agent_card` (resource)
-Retrieves a specific agent card.
+print(f"Has all capabilities: {result['has_all_capabilities']}")
+print(f"Coverage: {result['capability_coverage']:.0%}")
+print(f"Missing: {result['missing_tasks']}")
+```
+
+**Features:**
+- Validates task support
+- Returns coverage percentage
+- Lists missing capabilities
+
+### 4. `check_agent_health` - Health Monitoring
+Checks if an agent is online and responding with response time metrics.
+
+**Usage:**
+```python
+from abi_core.common.semantic_tools import tool_check_agent_health
+
+health = await tool_check_agent_health("data_processor")
+
+print(f"Status: {health['status']}")
+print(f"Response time: {health['response_time_ms']}ms")
+```
+
+**Features:**
+- HTTP health check with timeout (5s)
+- Response time measurement
+- Status codes: healthy, unhealthy, timeout, error
+
+### 5. `register_agent` ✨ NEW - Dynamic Registration
+Registers a new agent in the semantic layer dynamically.
+
+**Usage:**
+```python
+from abi_core.common.semantic_tools import tool_register_agent
+
+new_agent = {
+    "id": "agent://mission_controller",
+    "name": "mission_controller",
+    "description": "Controls and assigns missions",
+    "auth": {
+        "method": "hmac_sha256",
+        "key_id": "agent://mission_controller-default",
+        "shared_secret": "your_secret_key"
+    },
+    "supportedTasks": ["assign missions", "track status"],
+    "skills": [...],
+    "url": "http://mission-controller:8000",
+    "version": "1.0.0"
+}
+
+result = await tool_register_agent(new_agent)
+
+if result['success']:
+    print(f"✅ Registered: {result['agent_name']}")
+else:
+    print(f"❌ Failed: {result['error']}")
+```
+
+**Security:**
+- **Authentication:** HMAC SHA256 signature verification
+- **Authorization:** OPA policy evaluation
+- Only trusted agents can register new agents
+
+**Authorized Agents:**
+- `orchestrator`
+- `planner`
+- `observer`
+- Or agents with `"permissions": ["register_agents"]`
+
+### 6. `list_agents` - List All Agents
+Lists all registered agents (via MCP resource).
+
+**Usage:**
+```python
+from abi_core.common.semantic_tools import tool_list_agents
+
+agents = await tool_list_agents("all")
+for agent in agents:
+    print(f"- {agent.name}: {agent.description}")
+```
 
 ## Built-in Features
 
-### Multi-Field Embeddings ✨ NEW
+### Multi-Field Embeddings
 Agent cards are embedded using multiple fields for richer semantic matching:
 - Agent name
 - Agent description
 - Supported tasks
+- Skills descriptions
+
+### Intelligent Upsert ✨ NEW
+The semantic layer now performs intelligent upserts:
+- Checks existing agent cards in Weaviate
+- Only inserts new or updated cards
+- Skips duplicates on restart
+- Idempotent operations
+
+**Logs:**
+```
+[📊] Found 3 existing agent cards in Weaviate
+[📤] Upserting 1 new agent cards to Weaviate...
+[✅] Successfully upserted 1 agent cards
+[⏭️] Skipped 3 existing agent cards
+```
+
+### Deterministic UUIDs
+Agent cards use deterministic UUIDs based on their URI:
+```python
+card_uuid = uuid.uuid5(uuid.NAMESPACE_URL, card_uri)
+```
+This ensures:
+- Same card always gets same UUID
+- No duplicates across restarts
+- Predictable identifiers
 - Skills descriptions
 
 This is enabled by default and provides better agent discovery accuracy.
@@ -838,6 +976,132 @@ def my_tool(query: str, _request_context: dict = None) -> dict:
     pass
 ```
 
+## Security and Authorization ✨ NEW
+
+### Authentication with HMAC
+
+All MCP tools use HMAC SHA256 authentication via agent cards:
+
+```python
+# Agent card with auth
+{
+    "id": "agent://my_agent",
+    "name": "my_agent",
+    "auth": {
+        "method": "hmac_sha256",
+        "key_id": "agent://my_agent-default",
+        "shared_secret": "your_secret_key_here"
+    }
+}
+```
+
+**How it works:**
+1. Agent builds request context with `build_semantic_context_from_card()`
+2. Context includes HMAC signature of payload
+3. `@validate_semantic_access` decorator verifies signature
+4. If valid, request proceeds; if invalid, denied
+
+### Authorization with OPA
+
+OPA policies control what agents can do:
+
+**Policy Location:** `services/guardian/opa/policies/semantic_access.rego`
+
+**Key Rules:**
+
+```rego
+# Allow if agent is registered and authorized
+allow if {
+    agent_registered
+    not agent_blacklisted
+    not rate_limit_exceeded
+}
+
+# Allow agent registration only for trusted agents
+allow if {
+    input.request_metadata.mcp_tool == "register_agent"
+    agent_can_register
+}
+
+agent_can_register if {
+    input.source_agent in trusted_agents  # orchestrator, planner, observer
+}
+
+agent_can_register if {
+    "register_agents" in input.agent_card.permissions
+}
+```
+
+**Risk Scoring:**
+
+OPA calculates risk scores based on:
+- **Base risk** (0.1-0.8): Action type (find_agent=0.1, register_agent=0.6)
+- **IP risk** (0.0-0.2): Source IP (unknown=0.2, internal=0.0)
+- **Time risk** (0.0-0.1): Time of day (22:00-06:00=0.1)
+- **Tool risk** (0.0-0.4): MCP tool being called
+- **Agent risk** (0.0-0.2): Agent trust level
+
+**Total risk = base + ip + time + tool + agent (max 1.0)**
+
+### Granting Registration Permission
+
+To allow an agent to register new agents:
+
+**Option 1: Add to trusted agents**
+```rego
+# In semantic_access.rego
+trusted_agents := {
+    "orchestrator",
+    "planner",
+    "observer",
+    "my_trusted_agent"  # Add here
+}
+```
+
+**Option 2: Add permission to agent card**
+```json
+{
+    "id": "agent://my_agent",
+    "name": "my_agent",
+    "permissions": ["register_agents"],
+    ...
+}
+```
+
+### Security Best Practices
+
+1. **Rotate secrets regularly**
+```bash
+# Generate new secret
+openssl rand -base64 32
+
+# Update agent card
+# Restart agent
+```
+
+2. **Use environment variables**
+```python
+# Don't hardcode secrets
+shared_secret = os.getenv("AGENT_SECRET")
+```
+
+3. **Monitor failed attempts**
+```bash
+# Check OPA logs
+docker logs abi_one-opa | grep "deny"
+
+# Check semantic layer logs
+docker logs abi_one-semantic-layer | grep "denied"
+```
+
+4. **Implement rate limiting**
+```rego
+# In OPA policy
+rate_limit_exceeded if {
+    agent_request_count > data.rate_limits.requests_per_minute
+}
+```
+
 ## Deployment
 
 After adding extensions, rebuild and restart:
@@ -849,8 +1113,48 @@ docker-compose build semantic-layer
 # Restart service
 docker-compose restart semantic-layer
 
+# Restart OPA (if policies changed)
+docker-compose restart opa
+
 # Check logs
 docker-compose logs -f semantic-layer
+docker-compose logs -f opa
+```
+
+## Troubleshooting
+
+### Agent Registration Fails
+
+**Error:** `"Agent not authorized to register new agents"`
+
+**Solution:**
+1. Check if agent is in trusted list
+2. Or add `"permissions": ["register_agents"]` to agent card
+3. Restart OPA after policy changes
+
+### Signature Verification Fails
+
+**Error:** `"Invalid agent signature"`
+
+**Solution:**
+1. Verify `shared_secret` matches in agent card
+2. Check payload is correctly signed
+3. Ensure timestamp is recent (not expired)
+
+### Weaviate Connection Issues
+
+**Error:** `"Failed to connect to Weaviate"`
+
+**Solution:**
+```bash
+# Check Weaviate is running
+docker ps | grep weaviate
+
+# Check logs
+docker logs abi_one-weaviate
+
+# Verify network
+docker network inspect abi_one_default
 ```
 
 ## Next Steps
@@ -858,9 +1162,11 @@ docker-compose logs -f semantic-layer
 - [Complete Example](complete-example.md) - See semantic layer in action
 - [Agent Development](agent-development.md) - Build agents that use custom tools
 - [Policy Development](policy-development.md) - Add access policies
+- [Troubleshooting](troubleshooting.md) - Common issues and solutions
 
 ## Resources
 
 - [FastMCP Documentation](https://github.com/jlowin/fastmcp)
 - [MCP Protocol](https://modelcontextprotocol.io/)
 - [Weaviate Documentation](https://weaviate.io/developers/weaviate)
+- [OPA Documentation](https://www.openpolicyagent.org/docs/latest/)
