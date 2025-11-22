@@ -30,6 +30,7 @@ user-guide/troubleshooting
 :caption: API Reference
 
 api/common-library
+api/semantic-tools
 ```
 
 ```{toctree}
