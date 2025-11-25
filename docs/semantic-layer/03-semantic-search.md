@@ -1,42 +1,42 @@
-# Búsqueda Semántica
+# Semantic Search
 
-La búsqueda semántica encuentra agentes por significado, no solo por palabras exactas.
+Semantic search finds agents by meaning, not just exact words.
 
-## Búsqueda por Palabras vs Semántica
+## Word Search vs Semantic
 
-### Búsqueda por Palabras
+### Word Search
 ```
-Buscar: "analizar ventas"
-Encuentra: Solo agentes con "analizar" Y "ventas"
-```
-
-### Búsqueda Semántica
-```
-Buscar: "examinar ingresos"
-Encuentra: Agente de análisis de ventas
-(Entiende que "examinar" ≈ "analizar" e "ingresos" ≈ "ventas")
+Search: "analyze sales"
+Finds: Only agents with "analyze" AND "sales"
 ```
 
-## Cómo Funciona
+### Semantic Search
+```
+Search: "examine revenue"
+Finds: Sales analysis agent
+(Understands "examine" ≈ "analyze" and "revenue" ≈ "sales")
+```
 
-1. Texto → Embeddings (vectores numéricos)
-2. Búsqueda por similitud vectorial
-3. Retorna agentes más relevantes
+## How It Works
 
-## Usar Búsqueda Semántica
+1. Text → Embeddings (numerical vectors)
+2. Search by vector similarity
+3. Returns most relevant agents
+
+## Use Semantic Search
 
 ```python
-# Diferentes formas de pedir lo mismo
-await client.find_agent(session, "analizar datos de ventas")
-await client.find_agent(session, "examinar información de ingresos")
-await client.find_agent(session, "revisar estadísticas comerciales")
-# Todos encuentran el mismo agente
+# Different ways to ask for the same thing
+await client.find_agent(session, "analyze sales data")
+await client.find_agent(session, "examine revenue information")
+await client.find_agent(session, "review commercial statistics")
+# All find the same agent
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Extender capa semántica](04-extending-semantic-layer.md)
+- [Extend semantic layer](04-extending-semantic-layer.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

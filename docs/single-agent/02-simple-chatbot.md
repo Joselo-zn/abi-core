@@ -1,34 +1,34 @@
-# Chatbot Simple
+# Simple Chatbot
 
-Aprende a crear un chatbot interactivo con interfaz web.
+Learn to create an interactive chatbot with a web interface.
 
-## Lo Que Vas a Construir
+## What You'll Build
 
-Un chatbot que:
-- Responde preguntas en tiempo real
-- Tiene interfaz web
-- Mantiene contexto de conversación
+A chatbot that:
+- Responds to questions in real-time
+- Has a web interface
+- Maintains conversation context
 
-## Paso 1: Crear el Agente con Interfaz Web
+## Step 1: Create Agent with Web Interface
 
 ```bash
 abi-core add agent chatbot \
-  --description "Chatbot interactivo" \
+  --description "Interactive chatbot" \
   --with-web-interface
 ```
 
-Esto crea archivos adicionales:
+This creates additional files:
 ```
 agents/chatbot/
 ├── agent_chatbot.py
 ├── main.py
-├── web_interface.py    # ← Interfaz web
+├── web_interface.py    # ← Web interface
 └── ...
 ```
 
-## Paso 2: Código del Chatbot
+## Step 2: Chatbot Code
 
-Edita `agents/chatbot/agent_chatbot.py`:
+Edit `agents/chatbot/agent_chatbot.py`:
 
 ```python
 from abi_core.agent.agent import AbiAgent
@@ -40,7 +40,7 @@ class ChatbotAgent(AbiAgent):
     def __init__(self):
         super().__init__(
             agent_name='chatbot',
-            description='Chatbot interactivo amigable'
+            description='Friendly interactive chatbot'
         )
         self.setup_llm()
     
@@ -51,12 +51,12 @@ class ChatbotAgent(AbiAgent):
             temperature=0.7
         )
         
-        # Prompt del sistema
+        # System prompt
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", 
-             "Eres un asistente amigable y servicial. "
-             "Respondes de forma clara y concisa. "
-             "Si no sabes algo, lo admites honestamente."),
+             "You are a friendly and helpful assistant. "
+             "Respond clearly and concisely. "
+             "If you don't know something, admit it honestly."),
             ("human", "{input}")
         ])
         
@@ -72,121 +72,94 @@ class ChatbotAgent(AbiAgent):
         }
 ```
 
-## Paso 3: Interfaz Web
-
-El archivo `web_interface.py` ya está creado:
-
-```python
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-
-app = FastAPI(title="Chatbot API")
-
-class Query(BaseModel):
-    query: str
-    context_id: str
-    task_id: str
-
-@app.post("/stream")
-async def stream_response(query: Query):
-    """Endpoint para consultas en streaming"""
-    # El agente procesa y responde
-    pass
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
-```
-
-## Paso 4: Iniciar el Chatbot
+## Step 3: Start the Chatbot
 
 ```bash
 docker-compose up -d chatbot-agent
 ```
 
-## Paso 5: Probar el Chatbot
+## Step 4: Test the Chatbot
 
-### Interfaz Swagger
+### Swagger Interface
 
-Abre en tu navegador:
+Open in your browser:
 ```
 http://localhost:8000/docs
 ```
 
-Verás una interfaz interactiva donde puedes:
-1. Expandir `/stream`
-2. Click en "Try it out"
-3. Ingresar tu consulta
-4. Ver la respuesta
+You'll see an interactive interface where you can:
+1. Expand `/stream`
+2. Click "Try it out"
+3. Enter your query
+4. See the response
 
-### Con curl
+### With curl
 
 ```bash
 curl -X POST http://localhost:8000/stream \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "Hola, ¿cómo estás?",
+    "query": "Hello, how are you?",
     "context_id": "chat-001",
     "task_id": "msg-001"
   }'
 ```
 
-### Cliente Python Simple
+### Simple Python Client
 
 ```python
 import requests
 import json
 
-def chat(mensaje):
+def chat(message):
     response = requests.post(
         "http://localhost:8000/stream",
         json={
-            "query": mensaje,
+            "query": message,
             "context_id": "chat-001",
-            "task_id": f"msg-{hash(mensaje)}"
+            "task_id": f"msg-{hash(message)}"
         }
     )
     
     return response.json()['content']
 
-# Usar el chatbot
-print("Chatbot: Hola, ¿en qué puedo ayudarte?")
+# Use the chatbot
+print("Chatbot: Hello, how can I help you?")
 
 while True:
-    user_input = input("Tú: ")
-    if user_input.lower() in ['salir', 'exit', 'quit']:
+    user_input = input("You: ")
+    if user_input.lower() in ['exit', 'quit', 'bye']:
         break
     
-    respuesta = chat(user_input)
-    print(f"Chatbot: {respuesta}")
+    response = chat(user_input)
+    print(f"Chatbot: {response}")
 ```
 
-## Personalizar el Chatbot
+## Customize the Chatbot
 
-### Cambiar la Personalidad
+### Change Personality
 
 ```python
 self.prompt = ChatPromptTemplate.from_messages([
     ("system", 
-     "Eres un experto en tecnología con sentido del humor. "
-     "Usas analogías divertidas para explicar conceptos complejos. "
-     "Siempre terminas con un emoji relevante."),
+     "You are a tech expert with a sense of humor. "
+     "Use funny analogies to explain complex concepts. "
+     "Always end with a relevant emoji."),
     ("human", "{input}")
 ])
 ```
 
-### Agregar Respuestas Predefinidas
+### Add Quick Responses
 
 ```python
 def process(self, enriched_input):
     query = enriched_input['query'].lower()
     
-    # Respuestas rápidas
+    # Quick responses
     quick_responses = {
-        'hola': '¡Hola! 👋 ¿En qué puedo ayudarte hoy?',
-        'adiós': '¡Hasta luego! 👋 Que tengas un gran día.',
-        'gracias': '¡De nada! 😊 Estoy aquí para ayudar.'
+        'hello': '👋 Hello! How can I help you today?',
+        'bye': '👋 Goodbye! Have a great day.',
+        'thanks': '😊 You're welcome! I'm here to help.'
     }
     
     if query in quick_responses:
@@ -196,7 +169,7 @@ def process(self, enriched_input):
             'quick_response': True
         }
     
-    # Respuesta normal con LLM
+    # Normal LLM response
     response = self.chain.invoke({"input": query})
     
     return {
@@ -206,11 +179,11 @@ def process(self, enriched_input):
     }
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Agregar herramientas](03-agents-with-tools.md)
-- [Agregar memoria](04-agents-with-memory.md)
+- [Add tools](03-agents-with-tools.md)
+- [Add memory](04-agents-with-memory.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

@@ -1,34 +1,34 @@
-# Políticas con OPA
+# OPA Policies
 
-OPA (Open Policy Agent) evalúa políticas de seguridad en tiempo real.
+OPA (Open Policy Agent) evaluates security policies in real-time.
 
-## ¿Qué es OPA?
+## What is OPA?
 
-OPA es un motor de políticas que decide:
-- ¿Puede este agente hacer esta acción?
-- ¿Cumple con las reglas de negocio?
-- ¿Es seguro proceder?
+OPA is a policy engine that decides:
+- Can this agent do this action?
+- Does it comply with business rules?
+- Is it safe to proceed?
 
-## Ejemplo de Política
+## Policy Example
 
 ```rego
 package abi.custom
 
-# Permitir solo en horario laboral
+# Allow only during business hours
 allow if {
     input.action == "execute_trade"
     time.now_ns() >= business_hours_start
     time.now_ns() <= business_hours_end
 }
 
-# Denegar transacciones grandes
-deny["Monto excede límite"] if {
+# Deny large transactions
+deny["Amount exceeds limit"] if {
     input.action == "execute_trade"
     input.amount > 10000
 }
 ```
 
-## Probar Política
+## Test Policy
 
 ```bash
 curl -X POST http://localhost:8181/v1/data/abi/custom \
@@ -40,10 +40,10 @@ curl -X POST http://localhost:8181/v1/data/abi/custom \
   }'
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Desarrollo de políticas](03-policy-development.md)
+- [Policy development](03-policy-development.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

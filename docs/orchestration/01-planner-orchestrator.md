@@ -1,51 +1,51 @@
-# Planner y Orchestrator
+# Planner and Orchestrator
 
-El Planner y Orchestrator coordinan workflows complejos con múltiples agentes.
+The Planner and Orchestrator coordinate complex workflows with multiple agents.
 
-## ¿Qué Hacen?
+## What They Do
 
 ### Planner
-- Divide tareas complejas en subtareas
-- Encuentra agentes apropiados
-- Crea plan de ejecución
+- Divides complex tasks into subtasks
+- Finds appropriate agents
+- Creates execution plan
 
 ### Orchestrator
-- Ejecuta el plan
-- Coordina agentes
-- Sintetiza resultados
+- Executes the plan
+- Coordinates agents
+- Synthesizes results
 
-## Agregar Orchestration Layer
+## Add Orchestration Layer
 
 ```bash
 abi-core add agentic-orchestration-layer
 ```
 
-Esto crea:
-- Planner Agent (puerto 11437)
-- Orchestrator Agent (puerto 8002)
+This creates:
+- Planner Agent (port 11437)
+- Orchestrator Agent (port 8002)
 
-## Usar el Sistema
+## Use the System
 
 ```bash
-# Enviar consulta compleja al Orchestrator
+# Send complex query to Orchestrator
 curl -X POST http://localhost:8083/stream \
   -d '{
-    "query": "Analiza ventas del último mes y genera reporte",
+    "query": "Analyze last month sales and generate report",
     "context_id": "session-001",
     "task_id": "task-001"
   }'
 ```
 
-El Orchestrator:
-1. Envía consulta al Planner
-2. Planner crea plan con subtareas
-3. Orchestrator ejecuta cada subtarea
-4. Combina resultados
+The Orchestrator:
+1. Sends query to Planner
+2. Planner creates plan with subtasks
+3. Orchestrator executes each subtask
+4. Combines results
 
-## Próximos Pasos
+## Next Steps
 
-- [Workflows multi-agente](02-multi-agent-workflows.md)
+- [Multi-agent workflows](02-multi-agent-workflows.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

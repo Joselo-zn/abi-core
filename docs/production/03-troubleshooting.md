@@ -1,81 +1,81 @@
 # Troubleshooting
 
-Soluciones a problemas comunes.
+Solutions to common problems.
 
-## Agente No Responde
+## Agent Not Responding
 
-**Síntoma**: Timeout al llamar agente
+**Symptom**: Timeout when calling agent
 
-**Soluciones**:
+**Solutions**:
 ```bash
-# 1. Verificar que está corriendo
+# 1. Verify it's running
 docker-compose ps
 
-# 2. Ver logs
-docker-compose logs mi-agente-agent
+# 2. View logs
+docker-compose logs my-agent-agent
 
-# 3. Reiniciar
-docker-compose restart mi-agente-agent
+# 3. Restart
+docker-compose restart my-agent-agent
 ```
 
-## Puerto en Uso
+## Port in Use
 
-**Síntoma**: "Port already in use"
+**Symptom**: "Port already in use"
 
-**Solución**: Cambiar puerto en `compose.yaml`:
+**Solution**: Change port in `compose.yaml`:
 ```yaml
 ports:
-  - "9000:8000"  # Usar 9000 en lugar de 8000
+  - "9000:8000"  # Use 9000 instead of 8000
 ```
 
-## Modelo No Encontrado
+## Model Not Found
 
-**Síntoma**: "Model not found"
+**Symptom**: "Model not found"
 
-**Solución**:
+**Solution**:
 ```bash
-# Descargar modelo
-docker exec mi-proyecto-ollama ollama pull qwen2.5:3b
+# Download model
+docker exec my-project-ollama ollama pull qwen2.5:3b
 
-# O reprovisionar
+# Or reprovision
 abi-core provision-models
 ```
 
-## Agente Lento
+## Slow Agent
 
-**Causas**:
-- Modelo muy grande
-- Poco RAM
-- CPU lento
+**Causes**:
+- Model too large
+- Low RAM
+- Slow CPU
 
-**Soluciones**:
+**Solutions**:
 ```bash
-# Usar modelo más pequeño
-docker exec mi-proyecto-ollama ollama pull phi3:mini
+# Use smaller model
+docker exec my-project-ollama ollama pull phi3:mini
 
-# Actualizar configuración
-# Editar .abi/runtime.yaml:
+# Update configuration
+# Edit .abi/runtime.yaml:
 # model: phi3:mini
 ```
 
-## Semantic Layer No Encuentra Agentes
+## Semantic Layer Not Finding Agents
 
-**Soluciones**:
+**Solutions**:
 ```bash
-# 1. Verificar agent cards existen
+# 1. Verify agent cards exist
 ls services/semantic_layer/layer/mcp_server/agent_cards/
 
-# 2. Reiniciar semantic layer
+# 2. Restart semantic layer
 docker-compose restart semantic-layer
 
-# 3. Ver logs
+# 3. View logs
 docker-compose logs semantic-layer
 ```
 
-## Próximos Pasos
+## Next Steps
 
 - [Deployment](04-deployment.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

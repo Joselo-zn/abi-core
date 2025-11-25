@@ -1,26 +1,26 @@
-# Agentes con Memoria
+# Agents with Memory
 
-Aprende a crear agentes que recuerdan conversaciones anteriores.
+Learn to create agents that remember previous conversations.
 
-## ¿Por Qué Memoria?
+## Why Memory?
 
-Sin memoria:
+Without memory:
 ```
-Usuario: "Mi nombre es Ana"
-Agente: "Hola Ana"
-Usuario: "¿Cuál es mi nombre?"
-Agente: "No lo sé"  ❌
-```
-
-Con memoria:
-```
-Usuario: "Mi nombre es Ana"
-Agente: "Hola Ana"
-Usuario: "¿Cuál es mi nombre?"
-Agente: "Tu nombre es Ana"  ✅
+User: "My name is Ana"
+Agent: "Hello Ana"
+User: "What's my name?"
+Agent: "I don't know"  ❌
 ```
 
-## Implementar Memoria
+With memory:
+```
+User: "My name is Ana"
+Agent: "Hello Ana"
+User: "What's my name?"
+Agent: "Your name is Ana"  ✅
+```
+
+## Implement Memory
 
 ```python
 from abi_core.agent.agent import AbiAgent
@@ -33,9 +33,9 @@ class MemoryAgent(AbiAgent):
     def __init__(self):
         super().__init__(
             agent_name='memory-agent',
-            description='Agente con memoria conversacional'
+            description='Agent with conversational memory'
         )
-        self.conversations = {}  # Memoria por context_id
+        self.conversations = {}  # Memory by context_id
         self.setup_llm()
     
     def setup_llm(self):
@@ -46,7 +46,7 @@ class MemoryAgent(AbiAgent):
         )
     
     def get_conversation(self, context_id: str):
-        """Obtiene o crea conversación para un contexto"""
+        """Get or create conversation for a context"""
         if context_id not in self.conversations:
             memory = ConversationBufferMemory()
             self.conversations[context_id] = ConversationChain(
@@ -57,7 +57,7 @@ class MemoryAgent(AbiAgent):
         return self.conversations[context_id]
     
     async def stream(self, query: str, context_id: str, task_id: str):
-        """Responde con memoria"""
+        """Respond with memory"""
         conversation = self.get_conversation(context_id)
         response = conversation.predict(input=query)
         
@@ -68,37 +68,37 @@ class MemoryAgent(AbiAgent):
         }
 ```
 
-## Probar Memoria
+## Test Memory
 
 ```python
 import requests
 
-def chat(mensaje, context_id="conv-001"):
+def chat(message, context_id="conv-001"):
     response = requests.post(
         "http://localhost:8000/stream",
         json={
-            "query": mensaje,
+            "query": message,
             "context_id": context_id,
-            "task_id": f"msg-{hash(mensaje)}"
+            "task_id": f"msg-{hash(message)}"
         }
     )
     return response.json()['content']
 
-# Conversación con memoria
-print(chat("Mi nombre es Carlos"))
-# "Hola Carlos, ¿en qué puedo ayudarte?"
+# Conversation with memory
+print(chat("My name is Carlos"))
+# "Hello Carlos, how can I help you?"
 
-print(chat("¿Cuál es mi nombre?"))
-# "Tu nombre es Carlos"
+print(chat("What's my name?"))
+# "Your name is Carlos"
 
-print(chat("Tengo 30 años"))
-# "Entendido, tienes 30 años"
+print(chat("I'm 30 years old"))
+# "Understood, you're 30 years old"
 
-print(chat("¿Cuántos años tengo?"))
-# "Tienes 30 años"
+print(chat("How old am I?"))
+# "You're 30 years old"
 ```
 
-## Tipos de Memoria
+## Memory Types
 
 ### Buffer Memory (Simple)
 ```python
@@ -106,23 +106,23 @@ from langchain.memory import ConversationBufferMemory
 memory = ConversationBufferMemory()
 ```
 
-### Window Memory (Últimos N mensajes)
+### Window Memory (Last N messages)
 ```python
 from langchain.memory import ConversationBufferWindowMemory
-memory = ConversationBufferWindowMemory(k=5)  # Últimos 5 mensajes
+memory = ConversationBufferWindowMemory(k=5)  # Last 5 messages
 ```
 
-### Summary Memory (Resumen)
+### Summary Memory (Summary)
 ```python
 from langchain.memory import ConversationSummaryMemory
 memory = ConversationSummaryMemory(llm=llm)
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Probar agentes](05-testing-agents.md)
-- [Múltiples agentes](../multi-agent-basics/01-why-multiple-agents.md)
+- [Test agents](05-testing-agents.md)
+- [Multiple agents](../multi-agent-basics/01-why-multiple-agents.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

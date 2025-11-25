@@ -1,54 +1,54 @@
-# Tu Primer Agente
+# Your First Agent
 
-Ya creaste tu primer proyecto. Ahora aprenderás a crear y personalizar agentes de IA desde cero.
+You've already created your first project. Now you'll learn to create and customize AI agents from scratch.
 
-## ¿Qué es un Agente?
+## What is an Agent?
 
-Un **agente** es un programa que:
-- Entiende lenguaje natural
-- Genera respuestas inteligentes
-- Puede usar herramientas
-- Aprende del contexto
+An **agent** is a program that:
+- Understands natural language
+- Generates intelligent responses
+- Can use tools
+- Learns from context
 
-## Crear un Agente Básico
+## Create a Basic Agent
 
-### Paso 1: Crear el Agente
+### Step 1: Create the Agent
 
 ```bash
-abi-core add agent mi-agente --description "Mi agente personalizado"
+abi-core add agent my-agent --description "My custom agent"
 ```
 
-Esto crea:
+This creates:
 ```
-agents/mi-agente/
-├── agent_mi_agente.py    # Código principal
-├── main.py               # Punto de entrada
-├── models.py             # Modelos de datos
+agents/my-agent/
+├── agent_my_agent.py    # Main code
+├── main.py               # Entry point
+├── models.py             # Data models
 ├── Dockerfile
 └── requirements.txt
 ```
 
-### Paso 2: Entender el Código
+### Step 2: Understand the Code
 
-Abre `agents/mi-agente/agent_mi_agente.py`:
+Open `agents/my-agent/agent_my_agent.py`:
 
 ```python
 from abi_core.agent.agent import AbiAgent
 from abi_core.common.utils import abi_logging
 
-class MiAgenteAgent(AbiAgent):
-    """Mi agente personalizado"""
+class MyAgentAgent(AbiAgent):
+    """My custom agent"""
     
     def __init__(self):
         super().__init__(
-            agent_name='mi-agente',
-            description='Mi agente personalizado',
+            agent_name='my-agent',
+            description='My custom agent',
             content_types=['text/plain']
         )
         self.setup_llm()
     
     def setup_llm(self):
-        """Configura el modelo de lenguaje"""
+        """Configure the language model"""
         from langchain_ollama import ChatOllama
         import os
         
@@ -62,12 +62,12 @@ class MiAgenteAgent(AbiAgent):
         )
     
     def process(self, enriched_input):
-        """Procesa la entrada del usuario"""
+        """Process user input"""
         query = enriched_input['query']
         
-        abi_logging(f"Procesando: {query}")
+        abi_logging(f"Processing: {query}")
         
-        # Usa el LLM para generar respuesta
+        # Use LLM to generate response
         response = self.llm.invoke(query)
         
         return {
@@ -76,7 +76,7 @@ class MiAgenteAgent(AbiAgent):
         }
     
     async def stream(self, query: str, context_id: str, task_id: str):
-        """Responde en streaming"""
+        """Respond in streaming mode"""
         result = self.handle_input(query)
         
         yield {
@@ -87,28 +87,28 @@ class MiAgenteAgent(AbiAgent):
         }
 ```
 
-## Personalizar Tu Agente
+## Customize Your Agent
 
-### Cambiar la Temperatura
+### Change Temperature
 
-La temperatura controla la creatividad:
+Temperature controls creativity:
 
 ```python
 def setup_llm(self):
     self.llm = ChatOllama(
         model='qwen2.5:3b',
         base_url=ollama_host,
-        temperature=0.1  # Más preciso y determinista
-        # temperature=0.9  # Más creativo y variado
+        temperature=0.1  # More precise and deterministic
+        # temperature=0.9  # More creative and varied
     )
 ```
 
-**Ejemplos**:
-- `temperature=0.1`: Para respuestas técnicas precisas
-- `temperature=0.5`: Balance entre precisión y creatividad
-- `temperature=0.9`: Para contenido creativo
+**Examples**:
+- `temperature=0.1`: For precise technical responses
+- `temperature=0.5`: Balance between precision and creativity
+- `temperature=0.9`: For creative content
 
-### Agregar un Prompt del Sistema
+### Add a System Prompt
 
 ```python
 def setup_llm(self):
@@ -120,10 +120,10 @@ def setup_llm(self):
         temperature=0.7
     )
     
-    # Definir comportamiento del agente
+    # Define agent behavior
     self.prompt = ChatPromptTemplate.from_messages([
-        ("system", "Eres un asistente experto en Python. "
-                   "Siempre respondes con ejemplos de código."),
+        ("system", "You are a Python expert assistant. "
+                   "Always respond with code examples."),
         ("human", "{input}")
     ])
     
@@ -132,7 +132,7 @@ def setup_llm(self):
 def process(self, enriched_input):
     query = enriched_input['query']
     
-    # Usa el chain con el prompt
+    # Use chain with prompt
     response = self.chain.invoke({"input": query})
     
     return {
@@ -141,28 +141,28 @@ def process(self, enriched_input):
     }
 ```
 
-### Agregar Validación de Entrada
+### Add Input Validation
 
 ```python
 def process(self, enriched_input):
     query = enriched_input['query']
     
-    # Validar entrada
+    # Validate input
     if not query or len(query) < 3:
         return {
-            'result': 'Por favor, proporciona una consulta más específica.',
+            'result': 'Please provide a more specific query.',
             'query': query,
             'error': 'Query too short'
         }
     
     if len(query) > 1000:
         return {
-            'result': 'La consulta es demasiado larga. Máximo 1000 caracteres.',
+            'result': 'Query is too long. Maximum 1000 characters.',
             'query': query,
             'error': 'Query too long'
         }
     
-    # Procesar normalmente
+    # Process normally
     response = self.llm.invoke(query)
     
     return {
@@ -171,64 +171,32 @@ def process(self, enriched_input):
     }
 ```
 
-### Agregar Logging Detallado
+## Test Your Agent
 
-```python
-def process(self, enriched_input):
-    query = enriched_input['query']
-    
-    abi_logging(f"[INICIO] Procesando consulta")
-    abi_logging(f"[QUERY] {query}")
-    
-    try:
-        response = self.llm.invoke(query)
-        
-        abi_logging(f"[RESPUESTA] {response.content[:100]}...")
-        abi_logging(f"[ÉXITO] Consulta procesada correctamente")
-        
-        return {
-            'result': response.content,
-            'query': query,
-            'status': 'success'
-        }
-    
-    except Exception as e:
-        abi_logging(f"[ERROR] {str(e)}")
-        
-        return {
-            'result': 'Lo siento, ocurrió un error al procesar tu consulta.',
-            'query': query,
-            'status': 'error',
-            'error': str(e)
-        }
-```
-
-## Probar Tu Agente
-
-### Iniciar el Agente
+### Start the Agent
 
 ```bash
-docker-compose up -d mi-agente-agent
+docker-compose up -d my-agent-agent
 ```
 
-### Probar con curl
+### Test with curl
 
 ```bash
 curl -X POST http://localhost:8000/stream \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "¿Qué es Python?",
+    "query": "What is Python?",
     "context_id": "test-001",
     "task_id": "task-001"
   }'
 ```
 
-### Probar con Python
+### Test with Python
 
 ```python
 import requests
 
-def probar_agente(query):
+def test_agent(query):
     response = requests.post(
         "http://localhost:8000/stream",
         json={
@@ -239,26 +207,26 @@ def probar_agente(query):
     )
     
     result = response.json()
-    print(f"Pregunta: {query}")
-    print(f"Respuesta: {result['content']}")
+    print(f"Question: {query}")
+    print(f"Answer: {result['content']}")
     print("-" * 50)
 
-# Probar varias consultas
-probar_agente("¿Qué es Python?")
-probar_agente("Dame un ejemplo de función")
-probar_agente("¿Cómo se usa un diccionario?")
+# Test multiple queries
+test_agent("What is Python?")
+test_agent("Give me a function example")
+test_agent("How to use a dictionary?")
 ```
 
-## Ejemplos de Agentes Especializados
+## Specialized Agent Examples
 
-### Agente de Matemáticas
+### Math Agent
 
 ```python
 class MathAgent(AbiAgent):
     def __init__(self):
         super().__init__(
             agent_name='math-agent',
-            description='Resuelve problemas matemáticos'
+            description='Solves math problems'
         )
         self.setup_llm()
     
@@ -268,77 +236,28 @@ class MathAgent(AbiAgent):
         
         self.llm = ChatOllama(
             model='qwen2.5:3b',
-            temperature=0.1  # Precisión matemática
+            temperature=0.1  # Mathematical precision
         )
         
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", 
-             "Eres un experto en matemáticas. "
-             "Explica paso a paso cómo resolver cada problema. "
-             "Muestra todos los cálculos."),
+             "You are a math expert. "
+             "Explain step by step how to solve each problem. "
+             "Show all calculations."),
             ("human", "{input}")
         ])
         
         self.chain = self.prompt | self.llm
-    
-    def process(self, enriched_input):
-        query = enriched_input['query']
-        response = self.chain.invoke({"input": query})
-        
-        return {
-            'result': response.content,
-            'query': query
-        }
 ```
 
-### Agente de Traducción
-
-```python
-class TranslatorAgent(AbiAgent):
-    def __init__(self):
-        super().__init__(
-            agent_name='translator',
-            description='Traduce entre idiomas'
-        )
-        self.setup_llm()
-    
-    def setup_llm(self):
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_ollama import ChatOllama
-        
-        self.llm = ChatOllama(
-            model='qwen2.5:3b',
-            temperature=0.3
-        )
-        
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system",
-             "Eres un traductor profesional. "
-             "Traduce el texto manteniendo el significado y tono original. "
-             "Si no especifican el idioma destino, traduce al inglés."),
-            ("human", "{input}")
-        ])
-        
-        self.chain = self.prompt | self.llm
-    
-    def process(self, enriched_input):
-        query = enriched_input['query']
-        response = self.chain.invoke({"input": query})
-        
-        return {
-            'result': response.content,
-            'query': query
-        }
-```
-
-### Agente de Código
+### Code Agent
 
 ```python
 class CodeAgent(AbiAgent):
     def __init__(self):
         super().__init__(
             agent_name='code-agent',
-            description='Genera y explica código'
+            description='Generates and explains code'
         )
         self.setup_llm()
     
@@ -353,95 +272,86 @@ class CodeAgent(AbiAgent):
         
         self.prompt = ChatPromptTemplate.from_messages([
             ("system",
-             "Eres un programador experto. "
-             "Genera código limpio, bien documentado y siguiendo mejores prácticas. "
-             "Incluye comentarios explicativos. "
-             "Si hay errores, explica cómo corregirlos."),
+             "You are an expert programmer. "
+             "Generate clean, well-documented code following best practices. "
+             "Include explanatory comments. "
+             "If there are errors, explain how to fix them."),
             ("human", "{input}")
         ])
         
         self.chain = self.prompt | self.llm
-    
-    def process(self, enriched_input):
-        query = enriched_input['query']
-        response = self.chain.invoke({"input": query})
-        
-        return {
-            'result': response.content,
-            'query': query
-        }
 ```
 
-## Depuración
+## Debugging
 
-### Ver Logs en Tiempo Real
+### View Logs in Real-Time
 
 ```bash
-docker-compose logs -f mi-agente-agent
+docker-compose logs -f my-agent-agent
 ```
 
-### Agregar Puntos de Depuración
+### Add Debug Points
 
 ```python
 def process(self, enriched_input):
     import json
     
-    # Log de entrada
+    # Log input
     abi_logging(f"INPUT: {json.dumps(enriched_input, indent=2)}")
     
     query = enriched_input['query']
     
-    # Log antes de LLM
-    abi_logging(f"Enviando a LLM: {query}")
+    # Log before LLM
+    abi_logging(f"Sending to LLM: {query}")
     
     response = self.llm.invoke(query)
     
-    # Log de respuesta
-    abi_logging(f"Respuesta LLM: {response.content}")
+    # Log response
+    abi_logging(f"LLM Response: {response.content}")
     
     result = {
         'result': response.content,
         'query': query
     }
     
-    # Log de salida
+    # Log output
     abi_logging(f"OUTPUT: {json.dumps(result, indent=2)}")
     
     return result
 ```
 
-### Probar Localmente (Sin Docker)
+### Test Locally (Without Docker)
 
 ```python
 # test_local.py
-from agents.mi_agente.agent_mi_agente import MiAgenteAgent
+from agents.my_agent.agent_my_agent import MyAgentAgent
 import os
 
-# Configurar variables de entorno
+# Configure environment variables
 os.environ['MODEL_NAME'] = 'qwen2.5:3b'
 os.environ['OLLAMA_HOST'] = 'http://localhost:11434'
 
-# Crear agente
-agent = MiAgenteAgent()
+# Create agent
+agent = MyAgentAgent()
 
-# Probar
-result = agent.handle_input("Hola, ¿cómo estás?")
+# Test
+result = agent.handle_input("Hello, how are you?")
 print(result)
 ```
 
-Ejecutar:
+Run:
 ```bash
 python test_local.py
 ```
 
-## Próximos Pasos
+## Next Steps
 
-Ahora que sabes crear agentes básicos:
+Now that you know how to create basic agents:
 
-1. [Crear un chatbot con interfaz](02-simple-chatbot.md)
-2. [Agregar herramientas a tu agente](03-agents-with-tools.md)
-3. [Agregar memoria conversacional](04-agents-with-memory.md)
+1. [Create a chatbot with interface](02-simple-chatbot.md)
+2. [Add tools to your agent](03-agents-with-tools.md)
+3. [Add conversational memory](04-agents-with-memory.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

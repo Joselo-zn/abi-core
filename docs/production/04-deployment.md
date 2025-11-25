@@ -1,52 +1,52 @@
 # Deployment
 
-Despliega tu sistema de agentes en producción.
+Deploy your agent system to production.
 
 ## Docker Compose (Simple)
 
 ```bash
-# Iniciar en producción
+# Start in production
 docker-compose up -d
 
-# Escalar agentes
-docker-compose up -d --scale mi-agente=3
+# Scale agents
+docker-compose up -d --scale my-agent=3
 ```
 
 ## Docker Swarm (Cluster)
 
 ```bash
-# Inicializar swarm
+# Initialize swarm
 docker swarm init
 
-# Desplegar stack
-docker stack deploy -c compose.yaml mi-sistema
+# Deploy stack
+docker stack deploy -c compose.yaml my-system
 
-# Ver servicios
+# View services
 docker service ls
 
-# Escalar
-docker service scale mi-sistema_mi-agente=5
+# Scale
+docker service scale my-system_my-agent=5
 ```
 
-## Kubernetes (Avanzado)
+## Kubernetes (Advanced)
 
 ```bash
-# Generar manifiestos
+# Generate manifests
 kompose convert -f compose.yaml
 
-# Aplicar
+# Apply
 kubectl apply -f .
 
-# Ver pods
+# View pods
 kubectl get pods
 
-# Escalar
-kubectl scale deployment mi-agente --replicas=3
+# Scale
+kubectl scale deployment my-agent --replicas=3
 ```
 
-## Variables de Entorno
+## Environment Variables
 
-Configura en producción:
+Configure in production:
 
 ```bash
 # .env
@@ -56,30 +56,30 @@ LOG_LEVEL=INFO
 ENVIRONMENT=production
 ```
 
-## Seguridad en Producción
+## Production Security
 
-1. **Usar HTTPS**
-2. **Configurar firewalls**
-3. **Rotar secrets**
-4. **Habilitar autenticación**
-5. **Monitorear logs**
+1. **Use HTTPS**
+2. **Configure firewalls**
+3. **Rotate secrets**
+4. **Enable authentication**
+5. **Monitor logs**
 
 ## Backup
 
 ```bash
-# Backup de volúmenes
-docker run --rm -v mi-proyecto_ollama_data:/data \
+# Backup volumes
+docker run --rm -v my-project_ollama_data:/data \
   -v $(pwd):/backup alpine \
   tar czf /backup/ollama-backup.tar.gz /data
 
-# Backup de configuración
+# Backup configuration
 tar czf config-backup.tar.gz .abi/ services/
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Referencia CLI](../reference/cli-reference.md)
+- [CLI Reference](../reference/cli-reference.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

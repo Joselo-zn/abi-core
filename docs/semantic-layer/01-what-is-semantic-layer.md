@@ -1,88 +1,88 @@
-# ¿Qué es la Capa Semántica?
+# What is the Semantic Layer?
 
-La capa semántica es el "directorio inteligente" que permite descubrir agentes automáticamente.
+The semantic layer is the "intelligent directory" that enables automatic agent discovery.
 
-## El Problema Sin Capa Semántica
-
-```python
-# Tienes que saber exactamente qué agente llamar
-llamar_agente("http://analista:8000", "analiza datos")
-llamar_agente("http://reportero:8001", "genera reporte")
-# ¿Qué pasa si cambias las URLs?
-# ¿Qué pasa si agregas nuevos agentes?
-```
-
-## La Solución: Capa Semántica
+## The Problem Without Semantic Layer
 
 ```python
-# Busca automáticamente el agente correcto
-agente = buscar_agente("necesito analizar datos")
-# Retorna: Agente Analista
-
-agente = buscar_agente("necesito generar un reporte")
-# Retorna: Agente Reportero
+# You have to know exactly which agent to call
+call_agent("http://analyst:8000", "analyze data")
+call_agent("http://reporter:8001", "generate report")
+# What if URLs change?
+# What if you add new agents?
 ```
 
-## Componentes
+## The Solution: Semantic Layer
+
+```python
+# Automatically finds the right agent
+agent = find_agent("I need to analyze data")
+# Returns: Analyst Agent
+
+agent = find_agent("I need to generate a report")
+# Returns: Reporter Agent
+```
+
+## Components
 
 ### 1. MCP Server
-Servidor que gestiona agent cards y búsquedas.
+Server that manages agent cards and searches.
 
 ### 2. Weaviate
-Base de datos vectorial para búsqueda semántica.
+Vector database for semantic search.
 
 ### 3. Agent Cards
-Metadatos de cada agente.
+Metadata for each agent.
 
-## Agregar Capa Semántica
+## Add Semantic Layer
 
 ```bash
 abi-core add semantic-layer
 ```
 
-Esto crea:
+This creates:
 ```
 services/semantic_layer/
 ├── layer/
-│   ├── mcp_server/        # Servidor MCP
-│   │   └── agent_cards/   # Tarjetas de agentes
+│   ├── mcp_server/        # MCP server
+│   │   └── agent_cards/   # Agent cards
 │   └── embedding_mesh/    # Embeddings
 ├── Dockerfile
 └── requirements.txt
 ```
 
-## Usar la Capa Semántica
+## Use the Semantic Layer
 
-### Buscar Agente
+### Search for Agent
 
 ```python
 from abi_core.abi_mcp import client
 from abi_core.common.utils import get_mcp_server_config
 
-async def buscar(descripcion):
+async def search(description):
     config = get_mcp_server_config()
     
     async with client.init_session(
         config.host, config.port, config.transport
     ) as session:
-        result = await client.find_agent(session, descripcion)
+        result = await client.find_agent(session, description)
         return result
 
-# Buscar
-agente = await buscar("agente que analiza ventas")
+# Search
+agent = await search("agent that analyzes sales")
 ```
 
-### Listar Agentes
+### List Agents
 
 ```bash
 curl http://localhost:10100/v1/agents
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Descubrimiento de agentes](02-agent-discovery.md)
-- [Búsqueda semántica](03-semantic-search.md)
+- [Agent discovery](02-agent-discovery.md)
+- [Semantic search](03-semantic-search.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

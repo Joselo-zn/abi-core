@@ -1,61 +1,61 @@
 # Model Serving
 
-ABI-Core soporta dos estrategias de servicio de modelos.
+ABI-Core supports two model serving strategies.
 
-## Centralizado (Recomendado para Producción)
+## Centralized (Recommended for Production)
 
-Un solo Ollama sirve a todos los agentes:
+One Ollama serves all agents:
 
 ```bash
-abi-core create project mi-app --model-serving centralized
+abi-core create project my-app --model-serving centralized
 ```
 
-**Ventajas**:
-- ✅ Menos recursos
-- ✅ Gestión centralizada
-- ✅ Inicio más rápido
+**Advantages**:
+- ✅ Less resources
+- ✅ Centralized management
+- ✅ Faster startup
 
-**Arquitectura**:
+**Architecture**:
 ```
-Ollama Central
+Central Ollama
   ↑
-  ├─ Agente 1
-  ├─ Agente 2
-  └─ Agente 3
+  ├─ Agent 1
+  ├─ Agent 2
+  └─ Agent 3
 ```
 
-## Distribuido (Desarrollo)
+## Distributed (Development)
 
-Cada agente tiene su propio Ollama:
+Each agent has its own Ollama:
 
 ```bash
-abi-core create project mi-app --model-serving distributed
+abi-core create project my-app --model-serving distributed
 ```
 
-**Ventajas**:
-- ✅ Aislamiento completo
-- ✅ Versiones independientes
+**Advantages**:
+- ✅ Complete isolation
+- ✅ Independent versions
 
-**Arquitectura**:
+**Architecture**:
 ```
-Agente 1 ← Ollama 1
-Agente 2 ← Ollama 2
-Agente 3 ← Ollama 3
+Agent 1 ← Ollama 1
+Agent 2 ← Ollama 2
+Agent 3 ← Ollama 3
 ```
 
-## Cambiar Estrategia
+## Change Strategy
 
-Edita `.abi/runtime.yaml`:
+Edit `.abi/runtime.yaml`:
 
 ```yaml
 project:
-  model_serving: centralized  # o distributed
+  model_serving: centralized  # or distributed
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Monitoreo y logs](02-monitoring-logs.md)
+- [Monitoring and logs](02-monitoring-logs.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

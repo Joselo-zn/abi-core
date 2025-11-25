@@ -1,17 +1,17 @@
-# Comunicación Entre Agentes (A2A)
+# Agent Communication (A2A)
 
-Aprende cómo los agentes se comunican entre sí usando el protocolo A2A.
+Learn how agents communicate with each other using the A2A protocol.
 
-## Protocolo A2A
+## A2A Protocol
 
-**A2A** (Agent-to-Agent) es el protocolo que permite a los agentes:
-- Enviarse mensajes
-- Solicitar tareas
-- Compartir resultados
+**A2A** (Agent-to-Agent) is the protocol that allows agents to:
+- Send messages to each other
+- Request tasks
+- Share results
 
-## Comunicación Básica
+## Basic Communication
 
-### Agente A llama a Agente B
+### Agent A calls Agent B
 
 ```python
 from a2a.client import A2AClient
@@ -20,8 +20,8 @@ import httpx
 import json
 from uuid import uuid4
 
-async def llamar_agente(agent_card, mensaje):
-    """Llama a otro agente"""
+async def call_agent(agent_card, message):
+    """Call another agent"""
     async with httpx.AsyncClient() as http_client:
         a2a_client = A2AClient(http_client, agent_card)
         
@@ -30,7 +30,7 @@ async def llamar_agente(agent_card, mensaje):
             params=MessageSendParams(
                 message={
                     'role': 'user',
-                    'parts': [{'kind': 'text', 'text': mensaje}],
+                    'parts': [{'kind': 'text', 'text': message}],
                     'messageId': str(uuid4()),
                     'contextId': str(uuid4())
                 }
@@ -42,72 +42,72 @@ async def llamar_agente(agent_card, mensaje):
                 return response.root.result.artifact
 ```
 
-## Ejemplo Completo
+## Complete Example
 
-### Agente Coordinador
+### Coordinator Agent
 
 ```python
 from abi_core.agent.agent import AbiAgent
 from abi_core.abi_mcp import client
 from abi_core.common.utils import get_mcp_server_config
 
-class CoordinadorAgent(AbiAgent):
-    async def procesar_tarea_compleja(self, tarea):
-        """Coordina múltiples agentes"""
+class CoordinatorAgent(AbiAgent):
+    async def process_complex_task(self, task):
+        """Coordinate multiple agents"""
         
-        # 1. Buscar agente analista
+        # 1. Find analyst agent
         config = get_mcp_server_config()
         async with client.init_session(
             config.host, config.port, config.transport
         ) as session:
             result = await client.find_agent(
                 session,
-                "agente que analiza datos"
+                "agent that analyzes data"
             )
-            analista_card = AgentCard(**json.loads(result.content[0].text))
+            analyst_card = AgentCard(**json.loads(result.content[0].text))
         
-        # 2. Llamar al analista
-        analisis = await llamar_agente(
-            analista_card,
-            f"Analiza: {tarea}"
+        # 2. Call analyst
+        analysis = await call_agent(
+            analyst_card,
+            f"Analyze: {task}"
         )
         
-        # 3. Buscar agente reportero
+        # 3. Find reporter agent
         async with client.init_session(
             config.host, config.port, config.transport
         ) as session:
             result = await client.find_agent(
                 session,
-                "agente que genera reportes"
+                "agent that generates reports"
             )
-            reportero_card = AgentCard(**json.loads(result.content[0].text))
+            reporter_card = AgentCard(**json.loads(result.content[0].text))
         
-        # 4. Llamar al reportero
-        reporte = await llamar_agente(
-            reportero_card,
-            f"Genera reporte de: {analisis}"
+        # 4. Call reporter
+        report = await call_agent(
+            reporter_card,
+            f"Generate report from: {analysis}"
         )
         
-        return reporte
+        return report
 ```
 
-## Flujo de Comunicación
+## Communication Flow
 
 ```
-Usuario
+User
   ↓
-Coordinador
-  ├─→ Analista → Resultado 1
-  └─→ Reportero → Resultado 2
+Coordinator
+  ├─→ Analyst → Result 1
+  └─→ Reporter → Result 2
   ↓
-Resultado Final
+Final Result
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Tu primer sistema multi-agente](04-first-multi-agent-system.md)
-- [Capa semántica](../semantic-layer/01-what-is-semantic-layer.md)
+- [Your first multi-agent system](04-first-multi-agent-system.md)
+- [Semantic layer](../semantic-layer/01-what-is-semantic-layer.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

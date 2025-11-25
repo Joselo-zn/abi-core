@@ -1,46 +1,46 @@
 # Guardian Service
 
-Guardian es el servicio de seguridad que protege tu sistema de agentes.
+Guardian is the security service that protects your agent system.
 
-## ¿Qué Hace Guardian?
+## What Guardian Does
 
-- 🔒 Control de acceso
-- 📝 Auditoría de acciones
-- ⚠️ Alertas de seguridad
-- 📊 Dashboard de monitoreo
+- 🔒 Access control
+- 📝 Action auditing
+- ⚠️ Security alerts
+- 📊 Monitoring dashboard
 
-## Agregar Guardian
+## Add Guardian
 
 ```bash
-abi-core create project mi-app --with-guardian
+abi-core create project my-app --with-guardian
 ```
 
-O agregar a proyecto existente:
+Or add to existing project:
 ```bash
 abi-core add service guardian-native
 ```
 
-## Componentes
+## Components
 
 ### 1. Guardian Agent
-Monitorea y aplica políticas.
+Monitors and applies policies.
 
 ### 2. OPA (Open Policy Agent)
-Motor de evaluación de políticas.
+Policy evaluation engine.
 
 ### 3. Dashboard
-Interfaz web para monitoreo.
+Web interface for monitoring.
 
-## Acceder al Dashboard
+## Access Dashboard
 
 ```
 http://localhost:8080
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Políticas con OPA](02-opa-policies.md)
+- [OPA policies](02-opa-policies.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

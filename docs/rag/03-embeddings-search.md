@@ -1,32 +1,32 @@
-# Embeddings y Búsqueda
+# Embeddings and Search
 
-Los embeddings convierten texto en vectores numéricos para búsqueda semántica.
+Embeddings convert text to numerical vectors for semantic search.
 
-## ¿Qué son Embeddings?
+## What are Embeddings?
 
 ```
-"Python es genial" → [0.2, 0.8, 0.1, 0.5, ...]
-"Python es excelente" → [0.3, 0.7, 0.2, 0.4, ...]
-# Vectores similares = significado similar
+"Python is great" → [0.2, 0.8, 0.1, 0.5, ...]
+"Python is excellent" → [0.3, 0.7, 0.2, 0.4, ...]
+# Similar vectors = similar meaning
 ```
 
-## Modelo de Embeddings
+## Embedding Model
 
-ABI-Core usa `nomic-embed-text:v1.5` automáticamente.
+ABI-Core uses `nomic-embed-text:v1.5` automatically.
 
-## Búsqueda Semántica
+## Semantic Search
 
 ```python
-# Buscar documentos similares
-query = "lenguaje de programación"
-results = buscar_similares(query)
-# Encuentra: "Python", "JavaScript", "Java"
+# Search for similar documents
+query = "programming language"
+results = search_similar(query)
+# Finds: "Python", "JavaScript", "Java"
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Agentes con RAG](04-agents-with-rag.md)
+- [Agents with RAG](04-agents-with-rag.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

@@ -1,91 +1,91 @@
-# Tu Primer Sistema Multi-Agente
+# Your First Multi-Agent System
 
-Crea un sistema completo con múltiples agentes trabajando juntos.
+Create a complete system with multiple agents working together.
 
-## Lo Que Vas a Construir
+## What You'll Build
 
-Un sistema de análisis con 3 agentes:
-1. **Recolector**: Obtiene datos
-2. **Analista**: Analiza datos
-3. **Reportero**: Genera reportes
+An analysis system with 3 agents:
+1. **Collector**: Gets data
+2. **Analyst**: Analyzes data
+3. **Reporter**: Generates reports
 
-## Paso 1: Crear el Proyecto
+## Step 1: Create the Project
 
 ```bash
-abi-core create project sistema-analisis --with-semantic-layer
-cd sistema-analisis
+abi-core create project analysis-system --with-semantic-layer
+cd analysis-system
 abi-core provision-models
 ```
 
-## Paso 2: Crear los Agentes
+## Step 2: Create the Agents
 
 ```bash
-# Agente 1: Recolector
-abi-core add agent recolector \
-  --description "Recolecta datos de fuentes"
+# Agent 1: Collector
+abi-core add agent collector \
+  --description "Collects data from sources"
 
-# Agente 2: Analista
-abi-core add agent analista \
-  --description "Analiza datos recolectados"
+# Agent 2: Analyst
+abi-core add agent analyst \
+  --description "Analyzes collected data"
 
-# Agente 3: Reportero
-abi-core add agent reportero \
-  --description "Genera reportes"
+# Agent 3: Reporter
+abi-core add agent reporter \
+  --description "Generates reports"
 ```
 
-## Paso 3: Crear Agent Cards
+## Step 3: Create Agent Cards
 
 ```bash
-abi-core add agent-card recolector \
-  --url "http://recolector-agent:8000" \
-  --tasks "recolectar_datos,obtener_fuentes"
+abi-core add agent-card collector \
+  --url "http://collector-agent:8000" \
+  --tasks "collect_data,get_sources"
 
-abi-core add agent-card analista \
-  --url "http://analista-agent:8001" \
-  --tasks "analizar_datos,calcular_metricas"
+abi-core add agent-card analyst \
+  --url "http://analyst-agent:8001" \
+  --tasks "analyze_data,calculate_metrics"
 
-abi-core add agent-card reportero \
-  --url "http://reportero-agent:8002" \
-  --tasks "generar_reporte,formatear_datos"
+abi-core add agent-card reporter \
+  --url "http://reporter-agent:8002" \
+  --tasks "generate_report,format_data"
 ```
 
-## Paso 4: Iniciar el Sistema
+## Step 4: Start the System
 
 ```bash
 docker-compose up -d
 ```
 
-## Paso 5: Probar el Sistema
+## Step 5: Test the System
 
 ```python
 import requests
 
-# Llamar al recolector
-datos = requests.post(
+# Call collector
+data = requests.post(
     "http://localhost:8000/stream",
-    json={"query": "Recolecta datos de ventas", "context_id": "test", "task_id": "1"}
+    json={"query": "Collect sales data", "context_id": "test", "task_id": "1"}
 ).json()
 
-# Llamar al analista
-analisis = requests.post(
+# Call analyst
+analysis = requests.post(
     "http://localhost:8001/stream",
-    json={"query": f"Analiza: {datos['content']}", "context_id": "test", "task_id": "2"}
+    json={"query": f"Analyze: {data['content']}", "context_id": "test", "task_id": "2"}
 ).json()
 
-# Llamar al reportero
-reporte = requests.post(
+# Call reporter
+report = requests.post(
     "http://localhost:8002/stream",
-    json={"query": f"Genera reporte de: {analisis['content']}", "context_id": "test", "task_id": "3"}
+    json={"query": f"Generate report from: {analysis['content']}", "context_id": "test", "task_id": "3"}
 ).json()
 
-print(reporte['content'])
+print(report['content'])
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Capa semántica](../semantic-layer/01-what-is-semantic-layer.md)
-- [Orquestación avanzada](../orchestration/01-planner-orchestrator.md)
+- [Semantic layer](../semantic-layer/01-what-is-semantic-layer.md)
+- [Advanced orchestration](../orchestration/01-planner-orchestrator.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

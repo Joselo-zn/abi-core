@@ -1,37 +1,37 @@
-# Extender la Capa Semántica
+# Extending the Semantic Layer
 
-Personaliza y extiende la capa semántica según tus necesidades.
+Customize and extend the semantic layer for your needs.
 
-## Agregar Metadatos Personalizados
+## Add Custom Metadata
 
-Edita agent cards para agregar información adicional:
+Edit agent cards to add additional information:
 
 ```json
 {
-  "id": "agent://mi-agente",
+  "id": "agent://my-agent",
   "metadata": {
-    "domain": "finanzas",
+    "domain": "finance",
     "region": "LATAM",
-    "language": "es",
-    "custom_field": "valor"
+    "language": "en",
+    "custom_field": "value"
   }
 }
 ```
 
-## Filtrar por Metadatos
+## Filter by Metadata
 
 ```python
-# Buscar agentes de un dominio específico
-agentes = await client.find_agents_by_metadata(
+# Search agents from a specific domain
+agents = await client.find_agents_by_metadata(
     session,
-    {"domain": "finanzas"}
+    {"domain": "finance"}
 )
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Orquestación avanzada](../orchestration/01-planner-orchestrator.md)
+- [Advanced orchestration](../orchestration/01-planner-orchestrator.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

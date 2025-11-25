@@ -1,50 +1,50 @@
-# Monitoreo y Logs
+# Monitoring and Logs
 
-Monitorea tu sistema de agentes en producción.
+Monitor your agent system in production.
 
-## Ver Logs
+## View Logs
 
-### Todos los servicios
+### All services
 ```bash
 docker-compose logs -f
 ```
 
-### Servicio específico
+### Specific service
 ```bash
-docker-compose logs -f mi-agente-agent
+docker-compose logs -f my-agent-agent
 ```
 
-### Últimas N líneas
+### Last N lines
 ```bash
-docker-compose logs --tail=100 mi-agente-agent
+docker-compose logs --tail=100 my-agent-agent
 ```
 
-## Estado de Servicios
+## Service Status
 
 ```bash
-# Ver estado
+# View status
 docker-compose ps
 
-# Ver recursos
+# View resources
 docker stats
 ```
 
-## Métricas
+## Metrics
 
 ### Guardian Dashboard
 ```
 http://localhost:8080
 ```
 
-Muestra:
-- Agentes activos
-- Requests por segundo
-- Errores
-- Latencia
+Shows:
+- Active agents
+- Requests per second
+- Errors
+- Latency
 
-## Alertas
+## Alerts
 
-Configura alertas en `services/guardian/alerting_config.json`:
+Configure alerts in `services/guardian/alerting_config.json`:
 
 ```json
 {
@@ -58,10 +58,10 @@ Configura alertas en `services/guardian/alerting_config.json`:
 }
 ```
 
-## Próximos Pasos
+## Next Steps
 
 - [Troubleshooting](03-troubleshooting.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
