@@ -1,24 +1,24 @@
-# Manejo de Dependencias
+# Dependency Management
 
-Gestiona dependencias entre tareas en workflows complejos.
+Manage dependencies between tasks in complex workflows.
 
-## Dependencias
+## Dependencies
 
-Una tarea puede depender de otras:
+A task can depend on others:
 
 ```python
 {
-    "task_id": "generar_reporte",
-    "dependencies": ["recolectar_datos", "analizar_datos"]
+    "task_id": "generate_report",
+    "dependencies": ["collect_data", "analyze_data"]
 }
 ```
 
-El Orchestrator ejecuta tareas solo cuando sus dependencias están completas.
+The Orchestrator executes tasks only when their dependencies are complete.
 
-## Próximos Pasos
+## Next Steps
 
-- [Síntesis de resultados](04-result-synthesis.md)
+- [Result synthesis](04-result-synthesis.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

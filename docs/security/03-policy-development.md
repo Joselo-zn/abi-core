@@ -1,50 +1,50 @@
-# Desarrollo de Políticas
+# Policy Development
 
-Crea políticas personalizadas para tu dominio.
+Create custom policies for your domain.
 
-## Crear Política
+## Create Policy
 
 ```bash
 abi-core add policies trading --domain finance
 ```
 
-Esto crea:
+This creates:
 ```
 services/guardian/opa/policies/trading.rego
 ```
 
-## Estructura de Política
+## Policy Structure
 
 ```rego
 package abi.trading
 
-# Regla por defecto
+# Default rule
 default allow = false
 
-# Permitir trades pequeños
+# Allow small trades
 allow if {
     input.action == "execute_trade"
     input.amount < 1000
 }
 
-# Requerir aprobación para trades medianos
+# Require approval for medium trades
 require_approval if {
     input.action == "execute_trade"
     input.amount >= 1000
     input.amount < 10000
 }
 
-# Denegar trades grandes
-deny["Monto excede límite máximo"] if {
+# Deny large trades
+deny["Amount exceeds maximum limit"] if {
     input.action == "execute_trade"
     input.amount >= 10000
 }
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Auditoría y compliance](04-audit-compliance.md)
+- [Audit and compliance](04-audit-compliance.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

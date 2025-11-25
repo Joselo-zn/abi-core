@@ -1,45 +1,45 @@
-# Agent Cards (Tarjetas de Agente)
+# Agent Cards
 
-Las agent cards permiten que los agentes se descubran y comuniquen entre sí.
+Agent cards allow agents to discover and communicate with each other.
 
-## ¿Qué es una Agent Card?
+## What is an Agent Card?
 
-Una **agent card** es un documento JSON que describe:
-- Nombre del agente
-- Qué puede hacer
-- Cómo contactarlo
-- Qué tareas soporta
+An **agent card** is a JSON document that describes:
+- Agent name
+- What it can do
+- How to contact it
+- What tasks it supports
 
-**Analogía**: Es como una tarjeta de presentación profesional.
+**Analogy**: It's like a professional business card.
 
-## Crear una Agent Card
+## Create an Agent Card
 
 ```bash
-abi-core add agent-card analista \
-  --description "Analiza datos de ventas" \
+abi-core add agent-card analyst \
+  --description "Analyzes sales data" \
   --url "http://localhost:8000" \
-  --tasks "analizar_ventas,generar_insights,calcular_metricas"
+  --tasks "analyze_sales,generate_insights,calculate_metrics"
 ```
 
-Esto crea:
+This creates:
 ```
-services/semantic_layer/layer/mcp_server/agent_cards/analista.json
+services/semantic_layer/layer/mcp_server/agent_cards/analyst.json
 ```
 
-## Estructura de una Agent Card
+## Agent Card Structure
 
 ```json
 {
   "@context": ["https://..."],
   "@type": "Agent",
-  "id": "agent://analista",
-  "name": "analista",
-  "description": "Analiza datos de ventas",
+  "id": "agent://analyst",
+  "name": "analyst",
+  "description": "Analyzes sales data",
   "url": "http://localhost:8000",
   "supportedTasks": [
-    "analizar_ventas",
-    "generar_insights",
-    "calcular_metricas"
+    "analyze_sales",
+    "generate_insights",
+    "calculate_metrics"
   ],
   "llmConfig": {
     "provider": "ollama",
@@ -47,77 +47,77 @@ services/semantic_layer/layer/mcp_server/agent_cards/analista.json
   },
   "auth": {
     "method": "hmac_sha256",
-    "key_id": "agent://analista-default",
-    "shared_secret": "TOKEN_UNICO"
+    "key_id": "agent://analyst-default",
+    "shared_secret": "UNIQUE_TOKEN"
   }
 }
 ```
 
-## Campos Importantes
+## Important Fields
 
 ### id
-Identificador único del agente:
+Unique agent identifier:
 ```json
-"id": "agent://analista"
+"id": "agent://analyst"
 ```
 
 ### supportedTasks
-Lista de tareas que el agente puede realizar:
+List of tasks the agent can perform:
 ```json
 "supportedTasks": [
-  "analizar_ventas",
-  "generar_insights"
+  "analyze_sales",
+  "generate_insights"
 ]
 ```
 
 ### url
-Dirección donde se puede contactar al agente:
+Address where the agent can be contacted:
 ```json
 "url": "http://localhost:8000"
 ```
 
 ### auth
-Credenciales de autenticación:
+Authentication credentials:
 ```json
 "auth": {
   "method": "hmac_sha256",
-  "shared_secret": "TOKEN_SEGURO"
+  "shared_secret": "SECURE_TOKEN"
 }
 ```
 
-## Usar Agent Cards
+## Using Agent Cards
 
-### Buscar un Agente
+### Search for an Agent
 
 ```python
 from abi_core.abi_mcp import client
 from abi_core.common.utils import get_mcp_server_config
 
-async def buscar_agente(tarea):
+async def find_agent(task):
     config = get_mcp_server_config()
     
     async with client.init_session(
         config.host, config.port, config.transport
     ) as session:
-        result = await client.find_agent(session, tarea)
+        result = await client.find_agent(session, task)
         return result
 
-# Buscar agente que pueda analizar ventas
-agente = await buscar_agente("analizar datos de ventas")
-print(agente)  # Retorna: analista
+# Search for agent that can analyze sales
+agent = await find_agent("analyze sales data")
+print(agent)  # Returns: analyst
 ```
 
-### Listar Todos los Agentes
+### List All Agents
 
 ```bash
 curl http://localhost:10100/v1/agents
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Comunicación entre agentes](03-agent-communication.md)
-- [Tu primer sistema multi-agente](04-first-multi-agent-system.md)
+- [Agent communication](03-agent-communication.md)
+- [Your first multi-agent system](04-first-multi-agent-system.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

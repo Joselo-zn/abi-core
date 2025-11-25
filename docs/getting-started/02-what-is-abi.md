@@ -1,249 +1,249 @@
-# ¿Qué es ABI-Core?
+# What is ABI-Core?
 
-ABI-Core es un framework para construir **sistemas de agentes de IA** que pueden trabajar juntos de forma inteligente y segura.
+ABI-Core is a framework for building **AI agent systems** that can work together intelligently and securely.
 
-## La Idea Simple
+## The Simple Idea
 
-Imagina que tienes varios asistentes de IA, cada uno especializado en algo diferente:
+Imagine you have several AI assistants, each specialized in something different:
 
-- 🤖 Un agente que **analiza datos**
-- 🤖 Un agente que **escribe reportes**
-- 🤖 Un agente que **responde preguntas**
+- 🤖 An agent that **analyzes data**
+- 🤖 An agent that **writes reports**
+- 🤖 An agent that **answers questions**
 
-**ABI-Core** te permite:
+**ABI-Core** allows you to:
 
-1. **Crear** estos agentes fácilmente
-2. **Conectarlos** para que trabajen juntos
-3. **Descubrirlos** automáticamente cuando los necesites
-4. **Protegerlos** con políticas de seguridad
+1. **Create** these agents easily
+2. **Connect** them to work together
+3. **Discover** them automatically when needed
+4. **Protect** them with security policies
 
-## ¿Por Qué Usar ABI-Core?
+## Why Use ABI-Core?
 
-### Sin ABI-Core
+### Without ABI-Core
 
 ```python
-# Tienes que hacer todo manualmente
+# You have to do everything manually
 llm = ChatOllama(model="qwen2.5:3b")
-response = llm.invoke("Analiza estos datos...")
+response = llm.invoke("Analyze this data...")
 
-# ¿Cómo conectar con otro agente?
-# ¿Cómo saber qué agentes existen?
-# ¿Cómo aplicar seguridad?
-# Todo es complicado...
+# How to connect with another agent?
+# How to know what agents exist?
+# How to apply security?
+# Everything is complicated...
 ```
 
-### Con ABI-Core
+### With ABI-Core
 
 ```bash
-# Crear un proyecto
-abi-core create project mi-sistema
+# Create a project
+abi-core create project my-system
 
-# Agregar un agente
-abi-core add agent analista --description "Analiza datos"
+# Add an agent
+abi-core add agent analyst --description "Analyzes data"
 
-# Iniciar todo
+# Start everything
 abi-core run
 
-# ¡Listo! Tu agente está funcionando
+# Done! Your agent is running
 ```
 
-## Componentes Principales
+## Main Components
 
-### 1. Agentes 🤖
+### 1. Agents 🤖
 
-Los **agentes** son programas de IA que pueden:
+**Agents** are AI programs that can:
 
-- Entender lenguaje natural
-- Ejecutar tareas específicas
-- Usar herramientas (calculadoras, APIs, bases de datos)
-- Comunicarse con otros agentes
+- Understand natural language
+- Execute specific tasks
+- Use tools (calculators, APIs, databases)
+- Communicate with other agents
 
-**Ejemplo**: Un agente que responde preguntas sobre productos.
+**Example**: An agent that answers questions about products.
 
-### 2. Capa Semántica 🧠
+### 2. Semantic Layer 🧠
 
-La **capa semántica** es como un directorio inteligente que:
+The **semantic layer** is like an intelligent directory that:
 
-- Sabe qué agentes existen
-- Entiende qué puede hacer cada agente
-- Encuentra el agente correcto para cada tarea
+- Knows what agents exist
+- Understands what each agent can do
+- Finds the right agent for each task
 
-**Ejemplo**: Cuando preguntas "¿Quién puede analizar ventas?", la capa semántica encuentra al agente de análisis.
+**Example**: When you ask "Who can analyze sales?", the semantic layer finds the analysis agent.
 
-### 3. Seguridad 🔒
+### 3. Security 🔒
 
-El **Guardian** es el sistema de seguridad que:
+**Guardian** is the security system that:
 
-- Controla quién puede hacer qué
-- Registra todas las acciones
-- Aplica políticas de cumplimiento
+- Controls who can do what
+- Logs all actions
+- Applies compliance policies
 
-**Ejemplo**: Solo el agente de finanzas puede ejecutar transacciones.
+**Example**: Only the finance agent can execute transactions.
 
-### 4. Orquestación 🎭
+### 4. Orchestration 🎭
 
-El **Orchestrator** coordina múltiples agentes:
+The **Orchestrator** coordinates multiple agents:
 
-- Divide tareas complejas en subtareas
-- Asigna cada subtarea al agente correcto
-- Combina los resultados
+- Divides complex tasks into subtasks
+- Assigns each subtask to the right agent
+- Combines the results
 
-**Ejemplo**: "Analiza ventas y genera reporte" → Agente de análisis + Agente de reportes.
+**Example**: "Analyze sales and generate report" → Analysis agent + Report agent.
 
-## Arquitectura Visual
+## Visual Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Tu Aplicación                        │
+│                    Your Application                      │
 │                  (Web, API, CLI)                        │
 └────────────────────┬────────────────────────────────────┘
                      │
                      ↓
 ┌─────────────────────────────────────────────────────────┐
 │                  Orchestrator                           │
-│         (Coordina múltiples agentes)                    │
+│         (Coordinates multiple agents)                   │
 └────────────────────┬────────────────────────────────────┘
                      │
          ┌───────────┼───────────┐
          ↓           ↓           ↓
     ┌────────┐  ┌────────┐  ┌────────┐
-    │Agente 1│  │Agente 2│  │Agente 3│
-    │Analista│  │Escritor│  │Buscador│
+    │Agent 1 │  │Agent 2 │  │Agent 3 │
+    │Analyst │  │Writer  │  │Searcher│
     └────────┘  └────────┘  └────────┘
          │           │           │
          └───────────┼───────────┘
                      ↓
          ┌───────────────────────┐
-         │   Capa Semántica      │
-         │ (Descubre agentes)    │
+         │   Semantic Layer      │
+         │ (Discovers agents)    │
          └───────────────────────┘
                      │
                      ↓
          ┌───────────────────────┐
          │      Guardian         │
-         │  (Seguridad y logs)   │
+         │  (Security & logs)    │
          └───────────────────────┘
 ```
 
-## Casos de Uso
+## Use Cases
 
-### 1. Chatbot Inteligente
+### 1. Intelligent Chatbot
 
-Un chatbot que puede:
-- Responder preguntas
-- Buscar información
-- Ejecutar acciones
+A chatbot that can:
+- Answer questions
+- Search information
+- Execute actions
 
 ```bash
 abi-core create project chatbot
-abi-core add agent asistente --description "Chatbot de ayuda"
+abi-core add agent assistant --description "Help chatbot"
 ```
 
-### 2. Sistema de Análisis
+### 2. Analysis System
 
-Múltiples agentes que:
-- Recolectan datos
-- Analizan tendencias
-- Generan reportes
+Multiple agents that:
+- Collect data
+- Analyze trends
+- Generate reports
 
 ```bash
-abi-core create project analisis --with-semantic-layer
-abi-core add agent recolector --description "Recolecta datos"
-abi-core add agent analizador --description "Analiza datos"
-abi-core add agent reportero --description "Genera reportes"
+abi-core create project analysis --with-semantic-layer
+abi-core add agent collector --description "Collects data"
+abi-core add agent analyzer --description "Analyzes data"
+abi-core add agent reporter --description "Generates reports"
 ```
 
-### 3. Asistente Empresarial
+### 3. Business Assistant
 
-Sistema completo con:
-- Múltiples agentes especializados
-- Descubrimiento automático
-- Seguridad y auditoría
+Complete system with:
+- Multiple specialized agents
+- Automatic discovery
+- Security and auditing
 
 ```bash
-abi-core create project empresa \
+abi-core create project enterprise \
   --with-semantic-layer \
   --with-guardian
 ```
 
-## Ventajas de ABI-Core
+## Advantages of ABI-Core
 
-### ✅ Fácil de Usar
+### ✅ Easy to Use
 
 ```bash
-# 3 comandos y tienes un agente funcionando
-abi-core create project mi-app
-abi-core add agent mi-agente
+# 3 commands and you have an agent running
+abi-core create project my-app
+abi-core add agent my-agent
 abi-core run
 ```
 
-### ✅ Escalable
+### ✅ Scalable
 
-- Empieza con 1 agente
-- Crece a 10, 100 o más
-- Los agentes se descubren automáticamente
+- Start with 1 agent
+- Grow to 10, 100 or more
+- Agents discover each other automatically
 
-### ✅ Seguro
+### ✅ Secure
 
-- Políticas de acceso
-- Auditoría completa
-- Cumplimiento normativo
+- Access policies
+- Complete auditing
+- Regulatory compliance
 
 ### ✅ Flexible
 
-- Usa cualquier modelo de IA (Ollama, OpenAI, etc.)
-- Integra con tus sistemas existentes
-- Personaliza todo
+- Use any AI model (Ollama, OpenAI, etc.)
+- Integrate with your existing systems
+- Customize everything
 
-## Tecnologías Incluidas
+## Technologies Included
 
-ABI-Core integra las mejores herramientas:
+ABI-Core integrates the best tools:
 
-- **LangChain**: Framework de IA
-- **Ollama**: Modelos de IA locales
-- **Weaviate**: Base de datos vectorial
-- **OPA**: Motor de políticas
-- **FastAPI**: APIs web
-- **Docker**: Contenedores
+- **LangChain**: AI framework
+- **Ollama**: Local AI models
+- **Weaviate**: Vector database
+- **OPA**: Policy engine
+- **FastAPI**: Web APIs
+- **Docker**: Containers
 
-## Filosofía de ABI
+## ABI Philosophy
 
-ABI-Core se basa en tres principios:
+ABI-Core is based on three principles:
 
-### 1. Interoperabilidad Semántica
+### 1. Semantic Interoperability
 
-Los agentes deben compartir **significado**, no solo datos.
+Agents must share **meaning**, not just data.
 
-**Mal**: Enviar `{"data": [1,2,3]}`  
-**Bien**: Enviar `{"ventas_mensuales": [1000, 2000, 3000], "moneda": "USD"}`
+**Bad**: Send `{"data": [1,2,3]}`  
+**Good**: Send `{"monthly_sales": [1000, 2000, 3000], "currency": "USD"}`
 
-### 2. Inteligencia Distribuida
+### 2. Distributed Intelligence
 
-Ningún modelo tiene toda la verdad. La colaboración es clave.
+No single model has all the truth. Collaboration is key.
 
-**Mal**: Un solo agente hace todo  
-**Bien**: Múltiples agentes especializados colaboran
+**Bad**: One agent does everything  
+**Good**: Multiple specialized agents collaborate
 
-### 3. Autonomía Gobernada
+### 3. Governed Autonomy
 
-Los agentes son autónomos pero con límites claros.
+Agents are autonomous but with clear limits.
 
-**Mal**: Agentes sin restricciones  
-**Bien**: Agentes con políticas de seguridad
+**Bad**: Agents without restrictions  
+**Good**: Agents with security policies
 
-## Próximos Pasos
+## Next Steps
 
-Ahora que entiendes qué es ABI-Core, aprende:
+Now that you understand what ABI-Core is, learn:
 
-1. [Conceptos Básicos](03-basic-concepts.md) - Términos y conceptos clave
-2. [Tu Primer Proyecto](04-first-project.md) - Crea tu primer sistema
+1. [Basic Concepts](03-basic-concepts.md) - Key terms and concepts
+2. [Your First Project](04-first-project.md) - Create your first system
 
-## Recursos
+## Resources
 
-- [Ejemplos en GitHub](https://github.com/Joselo-zn/abi-core/tree/main/examples)
-- [Arquitectura Detallada](../reference/architecture.md)
+- [Examples on GitHub](https://github.com/Joselo-zn/abi-core/tree/main/examples)
+- [Detailed Architecture](../reference/architecture.md)
 - [FAQ](../faq.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

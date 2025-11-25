@@ -1,47 +1,47 @@
-# Workflows Multi-Agente
+# Multi-Agent Workflows
 
-Crea workflows complejos que coordinan múltiples agentes.
+Create complex workflows that coordinate multiple agents.
 
-## Tipos de Workflows
+## Workflow Types
 
-### Secuencial
+### Sequential
 ```
-Agente 1 → Agente 2 → Agente 3
-```
-
-### Paralelo
-```
-Agente 1 →
-Agente 2 → Combinar resultados
-Agente 3 →
+Agent 1 → Agent 2 → Agent 3
 ```
 
-### Híbrido
+### Parallel
 ```
-Agente 1 → Agente 2 →
-                      → Agente 4
-Agente 3 ────────────→
+Agent 1 →
+Agent 2 → Combine results
+Agent 3 →
 ```
 
-## Ejemplo de Workflow
+### Hybrid
+```
+Agent 1 → Agent 2 →
+                    → Agent 4
+Agent 3 ────────────→
+```
+
+## Workflow Example
 
 ```python
-# El Planner crea este plan
+# Planner creates this plan
 plan = {
     "tasks": [
-        {"id": "task_1", "agent": "recolector", "dependencies": []},
-        {"id": "task_2", "agent": "analista", "dependencies": ["task_1"]},
-        {"id": "task_3", "agent": "reportero", "dependencies": ["task_2"]}
+        {"id": "task_1", "agent": "collector", "dependencies": []},
+        {"id": "task_2", "agent": "analyst", "dependencies": ["task_1"]},
+        {"id": "task_3", "agent": "reporter", "dependencies": ["task_2"]}
     ]
 }
 
-# El Orchestrator lo ejecuta
+# Orchestrator executes it
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Manejo de dependencias](03-dependency-management.md)
+- [Dependency management](03-dependency-management.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

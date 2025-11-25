@@ -1,120 +1,120 @@
-# Instalación
+# Installation
 
-Bienvenido a ABI-Core. En esta guía aprenderás a instalar todo lo necesario para comenzar a construir sistemas de agentes de IA.
+Welcome to ABI-Core. This guide will help you install everything needed to start building AI agent systems.
 
-## Requisitos
+## Requirements
 
-Antes de comenzar, asegúrate de tener:
+Before starting, make sure you have:
 
-- **Python 3.11 o superior**
-- **Docker y Docker Compose** (para ejecutar agentes y servicios)
-- **4GB de RAM mínimo** (8GB recomendado)
-- **10GB de espacio en disco** (para modelos de IA)
+- **Python 3.11 or higher**
+- **Docker and Docker Compose** (for running agents and services)
+- **4GB RAM minimum** (8GB recommended)
+- **10GB disk space** (for AI models)
 
-## Paso 1: Instalar Python
+## Step 1: Install Python
 
-### En Linux/macOS
+### On Linux/macOS
 
-Python 3.11+ generalmente ya está instalado. Verifica tu versión:
+Python 3.11+ is usually pre-installed. Check your version:
 
 ```bash
 python3 --version
 ```
 
-Si necesitas instalarlo:
+If you need to install it:
 
 ```bash
 # Ubuntu/Debian
 sudo apt update
 sudo apt install python3.11 python3-pip
 
-# macOS (con Homebrew)
+# macOS (with Homebrew)
 brew install python@3.11
 ```
 
-### En Windows
+### On Windows
 
-Descarga Python desde [python.org](https://www.python.org/downloads/) y sigue el instalador.
+Download Python from [python.org](https://www.python.org/downloads/) and follow the installer.
 
-**Importante**: Marca la opción "Add Python to PATH" durante la instalación.
+**Important**: Check "Add Python to PATH" during installation.
 
-## Paso 2: Instalar Docker
+## Step 2: Install Docker
 
-Docker es esencial para ejecutar agentes y servicios en contenedores.
+Docker is essential for running agents and services in containers.
 
-### En Linux
+### On Linux
 
 ```bash
 # Ubuntu/Debian
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
-# Agregar tu usuario al grupo docker
+# Add your user to docker group
 sudo usermod -aG docker $USER
 
-# Reiniciar sesión para aplicar cambios
+# Restart session to apply changes
 ```
 
-### En macOS/Windows
+### On macOS/Windows
 
-Descarga e instala [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
-### Verificar Instalación
+### Verify Installation
 
 ```bash
 docker --version
 docker-compose --version
 ```
 
-Deberías ver algo como:
+You should see something like:
 ```
 Docker version 24.0.0
 Docker Compose version v2.20.0
 ```
 
-## Paso 3: Instalar ABI-Core
+## Step 3: Install ABI-Core
 
-### Instalación desde PyPI (Recomendado)
+### Install from PyPI (Recommended)
 
-La forma más fácil es instalar desde PyPI:
+The easiest way is to install from PyPI:
 
 ```bash
 pip install abi-core-ai
 ```
 
-### Instalación desde Código Fuente
+### Install from Source
 
-Para desarrollo o para obtener las últimas características:
+For development or to get the latest features:
 
 ```bash
-# Clonar el repositorio
+# Clone the repository
 git clone https://github.com/Joselo-zn/abi-core.git
 cd abi-core
 
-# Instalar en modo desarrollo
+# Install in development mode
 pip install -e .
 ```
 
-## Paso 4: Verificar Instalación
+## Step 4: Verify Installation
 
-Verifica que ABI-Core se instaló correctamente:
+Verify that ABI-Core installed correctly:
 
 ```bash
 abi-core --version
 ```
 
-Deberías ver:
+You should see:
 ```
 abi-core version 0.1.0b105
 ```
 
-Verifica los comandos disponibles:
+Check available commands:
 
 ```bash
 abi-core --help
 ```
 
-Deberías ver:
+You should see:
 ```
 Usage: abi-core [OPTIONS] COMMAND [ARGS]...
 
@@ -130,61 +130,61 @@ Commands:
   info              Show project information
 ```
 
-## Solución de Problemas
+## Troubleshooting
 
 ### Error: "command not found: abi-core"
 
-**Causa**: Python no está en tu PATH o pip instaló en un directorio no incluido.
+**Cause**: Python is not in your PATH or pip installed in a non-included directory.
 
-**Solución**:
+**Solution**:
 
 ```bash
-# Encuentra dónde se instaló
+# Find where it was installed
 pip show abi-core-ai
 
-# Agrega el directorio bin a tu PATH
+# Add the bin directory to your PATH
 export PATH="$HOME/.local/bin:$PATH"
 
-# Para hacerlo permanente, agrégalo a ~/.bashrc o ~/.zshrc
+# To make it permanent, add it to ~/.bashrc or ~/.zshrc
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### Error: "Permission denied" al ejecutar Docker
+### Error: "Permission denied" when running Docker
 
-**Causa**: Tu usuario no tiene permisos para ejecutar Docker.
+**Cause**: Your user doesn't have permissions to run Docker.
 
-**Solución**:
+**Solution**:
 
 ```bash
-# Linux: Agregar usuario al grupo docker
+# Linux: Add user to docker group
 sudo usermod -aG docker $USER
 
-# Reiniciar sesión
+# Restart session
 logout
-# Volver a iniciar sesión
+# Log back in
 ```
 
 ### Error: "Python version too old"
 
-**Causa**: Tienes Python 3.10 o anterior.
+**Cause**: You have Python 3.10 or earlier.
 
-**Solución**: Instala Python 3.11 o superior siguiendo las instrucciones del Paso 1.
+**Solution**: Install Python 3.11 or higher following Step 1 instructions.
 
-## Próximos Pasos
+## Next Steps
 
-¡Felicidades! Ya tienes ABI-Core instalado. Ahora puedes:
+Congratulations! You have ABI-Core installed. Now you can:
 
-1. [Entender qué es ABI-Core](02-what-is-abi.md)
-2. [Aprender conceptos básicos](03-basic-concepts.md)
-3. [Crear tu primer proyecto](04-first-project.md)
+1. [Understand what ABI-Core is](02-what-is-abi.md)
+2. [Learn basic concepts](03-basic-concepts.md)
+3. [Create your first project](04-first-project.md)
 
-## Recursos Adicionales
+## Additional Resources
 
-- [Documentación de Docker](https://docs.docker.com/)
-- [Documentación de Python](https://docs.python.org/3/)
-- [Repositorio de ABI-Core](https://github.com/Joselo-zn/abi-core)
+- [Docker Documentation](https://docs.docker.com/)
+- [Python Documentation](https://docs.python.org/3/)
+- [ABI-Core Repository](https://github.com/Joselo-zn/abi-core)
 
 ---
 
-**¿Necesitas ayuda?** Abre un issue en [GitHub](https://github.com/Joselo-zn/abi-core/issues) o escribe a jl.mrtz@gmail.com
+**Need help?** Open an issue on [GitHub](https://github.com/Joselo-zn/abi-core/issues) or email jl.mrtz@gmail.com

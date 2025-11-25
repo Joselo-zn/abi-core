@@ -1,70 +1,70 @@
-# ¿Qué es RAG?
+# What is RAG?
 
-RAG (Retrieval-Augmented Generation) permite a los agentes acceder a información específica de tu dominio.
+RAG (Retrieval-Augmented Generation) allows agents to access specific information from your domain.
 
-## El Problema
+## The Problem
 
-Los LLMs tienen conocimiento general pero no saben sobre:
-- Tus productos específicos
-- Tus documentos internos
-- Información actualizada
+LLMs have general knowledge but don't know about:
+- Your specific products
+- Your internal documents
+- Updated information
 
-## La Solución: RAG
+## The Solution: RAG
 
-RAG = Recuperar información relevante + Generar respuesta
+RAG = Retrieve relevant information + Generate response
 
 ```
-Usuario: "¿Cuál es el precio del producto X?"
+User: "What's the price of product X?"
   ↓
-1. Buscar en base de datos → "Producto X: $99"
-2. LLM genera respuesta → "El producto X cuesta $99"
+1. Search in database → "Product X: $99"
+2. LLM generates response → "Product X costs $99"
 ```
 
-## Componentes de RAG
+## RAG Components
 
-### 1. Base de Datos Vectorial
-Almacena documentos como vectores (Weaviate en ABI-Core).
+### 1. Vector Database
+Stores documents as vectors (Weaviate in ABI-Core).
 
 ### 2. Embeddings
-Convierte texto en vectores numéricos.
+Converts text to numerical vectors.
 
-### 3. Búsqueda Semántica
-Encuentra documentos relevantes.
+### 3. Semantic Search
+Finds relevant documents.
 
 ### 4. LLM
-Genera respuesta usando documentos encontrados.
+Generates response using found documents.
 
-## Flujo RAG
+## RAG Flow
 
 ```
-Pregunta del usuario
+User question
   ↓
-Convertir a embedding
+Convert to embedding
   ↓
-Buscar documentos similares
+Search similar documents
   ↓
-Pasar documentos + pregunta al LLM
+Pass documents + question to LLM
   ↓
-Respuesta generada
+Generated response
 ```
 
-## Cuándo Usar RAG
+## When to Use RAG
 
-✅ Usar RAG cuando:
-- Necesitas información específica de tu dominio
-- Tienes documentos/manuales/políticas
-- Quieres respuestas basadas en tus datos
+✅ Use RAG when:
+- You need domain-specific information
+- You have documents/manuals/policies
+- You want answers based on your data
 
-❌ No usar RAG cuando:
-- Solo necesitas conocimiento general
-- No tienes documentos para indexar
+❌ Don't use RAG when:
+- You only need general knowledge
+- You don't have documents to index
 
-## Próximos Pasos
+## Next Steps
 
-- [Bases de datos vectoriales](02-vector-databases.md)
-- [Embeddings y búsqueda](03-embeddings-search.md)
-- [Agentes con RAG](04-agents-with-rag.md)
+- [Vector databases](02-vector-databases.md)
+- [Embeddings and search](03-embeddings-search.md)
+- [Agents with RAG](04-agents-with-rag.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

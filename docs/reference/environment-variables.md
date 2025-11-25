@@ -1,29 +1,29 @@
-# Variables de Entorno
+# Environment Variables
 
-Referencia completa de variables de entorno en ABI-Core.
+Complete reference for environment variables in ABI-Core.
 
-## Agentes
+## Agents
 
 ### MODEL_NAME
-Modelo LLM a usar.
+LLM model to use.
 ```bash
 MODEL_NAME=qwen2.5:3b
 ```
 
 ### OLLAMA_HOST
-URL del servidor Ollama.
+Ollama server URL.
 ```bash
 OLLAMA_HOST=http://localhost:11434
 ```
 
 ### AGENT_PORT
-Puerto del agente.
+Agent port.
 ```bash
 AGENT_PORT=8000
 ```
 
 ### LOG_LEVEL
-Nivel de logging.
+Logging level.
 ```bash
 LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
 ```
@@ -31,33 +31,33 @@ LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
 ## Semantic Layer
 
 ### SEMANTIC_LAYER_HOST
-Host de la capa semántica.
+Semantic layer host.
 ```bash
 SEMANTIC_LAYER_HOST=semantic-layer
 ```
 
 ### SEMANTIC_LAYER_PORT
-Puerto de la capa semántica.
+Semantic layer port.
 ```bash
 SEMANTIC_LAYER_PORT=10100
 ```
 
 ### TRANSPORT
-Protocolo de transporte.
+Transport protocol.
 ```bash
-TRANSPORT=sse  # sse o http
+TRANSPORT=sse  # sse or http
 ```
 
 ## Guardian
 
 ### OPA_URL
-URL del servidor OPA.
+OPA server URL.
 ```bash
 OPA_URL=http://guardian-opa:8181
 ```
 
 ### ABI_POLICY_PATH
-Ruta a políticas OPA.
+Path to OPA policies.
 ```bash
 ABI_POLICY_PATH=/app/opa/policies
 ```
@@ -65,17 +65,17 @@ ABI_POLICY_PATH=/app/opa/policies
 ## Docker
 
 ### START_OLLAMA
-Iniciar Ollama en el contenedor.
+Start Ollama in container.
 ```bash
-START_OLLAMA=false  # true o false
+START_OLLAMA=false  # true or false
 ```
 
 ### LOAD_MODELS
-Cargar modelos al iniciar.
+Load models on startup.
 ```bash
-LOAD_MODELS=false  # true o false
+LOAD_MODELS=false  # true or false
 ```
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

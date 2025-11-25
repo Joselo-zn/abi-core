@@ -1,320 +1,320 @@
-# Conceptos Básicos
+# Basic Concepts
 
-Antes de comenzar a construir, es importante entender algunos conceptos clave de ABI-Core.
+Before you start building, it's important to understand some key concepts in ABI-Core.
 
-## Agente (Agent)
+## Agent
 
-Un **agente** es un programa de IA que puede:
+An **agent** is an AI program that can:
 
-- Entender y generar lenguaje natural
-- Ejecutar tareas específicas
-- Usar herramientas y funciones
-- Comunicarse con otros agentes
+- Understand and generate natural language
+- Execute specific tasks
+- Use tools and functions
+- Communicate with other agents
 
-**Analogía**: Piensa en un agente como un empleado especializado en tu empresa.
+**Analogy**: Think of an agent as a specialized employee in your company.
 
-**Ejemplo**:
+**Example**:
 ```python
-# Un agente simple
-class AsistenteAgente:
-    def responder(self, pregunta):
-        # Usa IA para responder
-        return "Aquí está tu respuesta..."
+# A simple agent
+class AssistantAgent:
+    def respond(self, question):
+        # Uses AI to respond
+        return "Here's your answer..."
 ```
 
-## Proyecto (Project)
+## Project
 
-Un **proyecto** es un contenedor para tu sistema de agentes. Incluye:
+A **project** is a container for your agent system. It includes:
 
-- Uno o más agentes
-- Servicios (capa semántica, seguridad)
-- Configuración
-- Archivos Docker
+- One or more agents
+- Services (semantic layer, security)
+- Configuration
+- Docker files
 
-**Analogía**: Un proyecto es como una empresa con varios departamentos (agentes).
+**Analogy**: A project is like a company with several departments (agents).
 
-**Estructura**:
+**Structure**:
 ```
-mi-proyecto/
-├── agents/          # Tus agentes
-├── services/        # Servicios de soporte
-├── compose.yaml     # Configuración Docker
-└── .abi/           # Metadatos del proyecto
+my-project/
+├── agents/          # Your agents
+├── services/        # Support services
+├── compose.yaml     # Docker configuration
+└── .abi/           # Project metadata
 ```
 
-## Agent Card (Tarjeta de Agente)
+## Agent Card
 
-Una **agent card** es un documento que describe:
+An **agent card** is a document that describes:
 
-- Qué puede hacer el agente
-- Cómo comunicarse con él
-- Qué tareas soporta
+- What the agent can do
+- How to communicate with it
+- What tasks it supports
 
-**Analogía**: Es como una tarjeta de presentación profesional.
+**Analogy**: It's like a professional business card.
 
-**Ejemplo**:
+**Example**:
 ```json
 {
-  "name": "Agente Analista",
-  "description": "Analiza datos de ventas",
+  "name": "Analyst Agent",
+  "description": "Analyzes sales data",
   "url": "http://localhost:8000",
-  "tasks": ["analizar_ventas", "generar_reporte"]
+  "tasks": ["analyze_sales", "generate_report"]
 }
 ```
 
-## Capa Semántica (Semantic Layer)
+## Semantic Layer
 
-La **capa semántica** es un servicio que:
+The **semantic layer** is a service that:
 
-- Registra todos los agentes disponibles
-- Encuentra el agente correcto para cada tarea
-- Usa búsqueda inteligente (embeddings)
+- Registers all available agents
+- Finds the right agent for each task
+- Uses intelligent search (embeddings)
 
-**Analogía**: Es como un directorio telefónico inteligente.
+**Analogy**: It's like an intelligent phone directory.
 
-**Uso**:
+**Usage**:
 ```python
-# Buscar un agente
-agente = encontrar_agente("analizar datos de ventas")
-# Retorna: Agente Analista
+# Search for an agent
+agent = find_agent("analyze sales data")
+# Returns: Analyst Agent
 ```
 
-## A2A Protocol (Agent-to-Agent)
+## A2A Protocol
 
-**A2A** es el protocolo que permite a los agentes comunicarse entre sí.
+**A2A** is the protocol that allows agents to communicate with each other.
 
-**Analogía**: Es como el email entre empleados de una empresa.
+**Analogy**: It's like email between company employees.
 
-**Ejemplo**:
+**Example**:
 ```python
-# Agente A envía mensaje a Agente B
-await agente_a.enviar_mensaje(
-    destino="agente_b",
-    mensaje="Analiza estos datos"
+# Agent A sends message to Agent B
+await agent_a.send_message(
+    destination="agent_b",
+    message="Analyze this data"
 )
 ```
 
 ## LLM (Large Language Model)
 
-Un **LLM** es el "cerebro" del agente. Es el modelo de IA que:
+An **LLM** is the "brain" of the agent. It's the AI model that:
 
-- Entiende lenguaje natural
-- Genera respuestas
-- Razona sobre problemas
+- Understands natural language
+- Generates responses
+- Reasons about problems
 
-**Modelos comunes**:
-- `qwen2.5:3b` (por defecto en ABI-Core)
+**Common models**:
+- `qwen2.5:3b` (default in ABI-Core)
 - `llama3.2:3b`
 - `mistral:7b`
 
 ## Ollama
 
-**Ollama** es el servidor que ejecuta los LLMs localmente.
+**Ollama** is the server that runs LLMs locally.
 
-**Analogía**: Es como tener tu propio servidor de IA en lugar de usar servicios en la nube.
+**Analogy**: It's like having your own AI server instead of using cloud services.
 
-**Ventajas**:
-- ✅ Privacidad (todo local)
-- ✅ Sin costos de API
-- ✅ Sin límites de uso
+**Advantages**:
+- ✅ Privacy (everything local)
+- ✅ No API costs
+- ✅ No usage limits
 
-## Model Serving (Servicio de Modelos)
+## Model Serving
 
-Hay dos formas de servir modelos:
+There are two ways to serve models:
 
-### Centralizado (Recomendado)
+### Centralized (Recommended)
 
-Un solo Ollama sirve a todos los agentes:
+One Ollama serves all agents:
 
 ```
 ┌─────────────┐
-│   Ollama    │ ← Todos los agentes usan este
+│   Ollama    │ ← All agents use this
 └─────────────┘
       ↑
-      ├─── Agente 1
-      ├─── Agente 2
-      └─── Agente 3
+      ├─── Agent 1
+      ├─── Agent 2
+      └─── Agent 3
 ```
 
-**Ventajas**: Menos recursos, más fácil de gestionar
+**Advantages**: Less resources, easier to manage
 
-### Distribuido
+### Distributed
 
-Cada agente tiene su propio Ollama:
+Each agent has its own Ollama:
 
 ```
-Agente 1 ← Ollama 1
-Agente 2 ← Ollama 2
-Agente 3 ← Ollama 3
+Agent 1 ← Ollama 1
+Agent 2 ← Ollama 2
+Agent 3 ← Ollama 3
 ```
 
-**Ventajas**: Aislamiento completo, versiones independientes
+**Advantages**: Complete isolation, independent versions
 
 ## Guardian
 
-**Guardian** es el servicio de seguridad que:
+**Guardian** is the security service that:
 
-- Controla permisos
-- Registra todas las acciones
-- Aplica políticas
+- Controls permissions
+- Logs all actions
+- Applies policies
 
-**Analogía**: Es como el departamento de seguridad de una empresa.
+**Analogy**: It's like the security department of a company.
 
 ## OPA (Open Policy Agent)
 
-**OPA** es el motor que evalúa políticas de seguridad.
+**OPA** is the engine that evaluates security policies.
 
-**Ejemplo de política**:
+**Policy example**:
 ```rego
-# Solo el agente de finanzas puede ejecutar transacciones
+# Only the finance agent can execute transactions
 allow if {
-    input.agent == "finanzas"
-    input.action == "ejecutar_transaccion"
+    input.agent == "finance"
+    input.action == "execute_transaction"
 }
 ```
 
 ## Embeddings
 
-Los **embeddings** son representaciones numéricas de texto que permiten:
+**Embeddings** are numerical representations of text that allow:
 
-- Buscar por significado (no solo palabras exactas)
-- Encontrar contenido similar
-- Agrupar información relacionada
+- Search by meaning (not just exact words)
+- Find similar content
+- Group related information
 
-**Ejemplo**:
+**Example**:
 ```
-"analizar ventas" → [0.2, 0.8, 0.1, ...]
-"examinar ingresos" → [0.3, 0.7, 0.2, ...]
-# Estos son similares!
+"analyze sales" → [0.2, 0.8, 0.1, ...]
+"examine revenue" → [0.3, 0.7, 0.2, ...]
+# These are similar!
 ```
 
 ## Weaviate
 
-**Weaviate** es la base de datos vectorial que:
+**Weaviate** is the vector database that:
 
-- Almacena embeddings
-- Realiza búsquedas semánticas
-- Encuentra agentes por capacidad
+- Stores embeddings
+- Performs semantic searches
+- Finds agents by capability
 
-## Docker y Docker Compose
+## Docker and Docker Compose
 
-**Docker** empaqueta aplicaciones en contenedores.  
-**Docker Compose** orquesta múltiples contenedores.
+**Docker** packages applications in containers.  
+**Docker Compose** orchestrates multiple containers.
 
-**Analogía**: Docker es como una caja de envío estándar, Docker Compose es el sistema de logística.
+**Analogy**: Docker is like a standard shipping container, Docker Compose is the logistics system.
 
-**En ABI-Core**:
+**In ABI-Core**:
 ```yaml
 # compose.yaml
 services:
-  mi-agente:
-    build: ./agents/mi-agente
+  my-agent:
+    build: ./agents/my-agent
     ports:
       - "8000:8000"
 ```
 
 ## Streaming
 
-**Streaming** es enviar respuestas en tiempo real, palabra por palabra.
+**Streaming** is sending responses in real-time, word by word.
 
-**Sin streaming**:
+**Without streaming**:
 ```
-Usuario: "Explica la IA"
-[espera 10 segundos]
-Agente: "La inteligencia artificial es..."
-```
-
-**Con streaming**:
-```
-Usuario: "Explica la IA"
-Agente: "La" "inteligencia" "artificial" "es"...
+User: "Explain AI"
+[wait 10 seconds]
+Agent: "Artificial intelligence is..."
 ```
 
-## Context ID y Task ID
-
-- **Context ID**: Identifica una conversación completa
-- **Task ID**: Identifica una tarea específica
-
-**Ejemplo**:
+**With streaming**:
 ```
-Context ID: "conversacion-001"
-  ├─ Task ID: "pregunta-1"
-  ├─ Task ID: "pregunta-2"
-  └─ Task ID: "pregunta-3"
+User: "Explain AI"
+Agent: "Artificial" "intelligence" "is"...
 ```
 
-## Workflow (Flujo de Trabajo)
+## Context ID and Task ID
 
-Un **workflow** es una secuencia de tareas ejecutadas por múltiples agentes.
+- **Context ID**: Identifies a complete conversation
+- **Task ID**: Identifies a specific task
 
-**Ejemplo**:
+**Example**:
 ```
-1. Agente Recolector → Obtiene datos
-2. Agente Analista → Analiza datos
-3. Agente Reportero → Genera reporte
+Context ID: "conversation-001"
+  ├─ Task ID: "question-1"
+  ├─ Task ID: "question-2"
+  └─ Task ID: "question-3"
 ```
 
-## Planner y Orchestrator
+## Workflow
 
-- **Planner**: Divide tareas complejas en subtareas
-- **Orchestrator**: Ejecuta las subtareas y coordina agentes
+A **workflow** is a sequence of tasks executed by multiple agents.
 
-**Ejemplo**:
+**Example**:
 ```
-Usuario: "Analiza ventas y genera reporte"
+1. Collector Agent → Gets data
+2. Analyst Agent → Analyzes data
+3. Reporter Agent → Generates report
+```
+
+## Planner and Orchestrator
+
+- **Planner**: Divides complex tasks into subtasks
+- **Orchestrator**: Executes subtasks and coordinates agents
+
+**Example**:
+```
+User: "Analyze sales and generate report"
 
 Planner:
-  ├─ Tarea 1: Analizar ventas → Agente Analista
-  └─ Tarea 2: Generar reporte → Agente Reportero
+  ├─ Task 1: Analyze sales → Analyst Agent
+  └─ Task 2: Generate report → Reporter Agent
 
 Orchestrator:
-  ├─ Ejecuta Tarea 1
-  ├─ Ejecuta Tarea 2
-  └─ Combina resultados
+  ├─ Executes Task 1
+  ├─ Executes Task 2
+  └─ Combines results
 ```
 
 ## MCP (Model Context Protocol)
 
-**MCP** es el protocolo para comunicación entre agentes y la capa semántica.
+**MCP** is the protocol for communication between agents and the semantic layer.
 
-**Funciones principales**:
-- `find_agent()`: Buscar un agente
-- `list_agents()`: Listar todos los agentes
-- `check_health()`: Verificar estado de un agente
+**Main functions**:
+- `find_agent()`: Search for an agent
+- `list_agents()`: List all agents
+- `check_health()`: Verify agent status
 
-## Glosario Rápido
+## Quick Glossary
 
-| Término | Significado |
-|---------|-------------|
-| **Agent** | Programa de IA que ejecuta tareas |
-| **Agent Card** | Descripción de capacidades de un agente |
-| **A2A** | Protocolo de comunicación entre agentes |
-| **LLM** | Modelo de lenguaje (cerebro del agente) |
-| **Ollama** | Servidor para ejecutar LLMs localmente |
-| **Semantic Layer** | Servicio de descubrimiento de agentes |
-| **Guardian** | Servicio de seguridad y políticas |
-| **OPA** | Motor de evaluación de políticas |
-| **Embeddings** | Representación numérica de texto |
-| **Weaviate** | Base de datos vectorial |
-| **Streaming** | Respuestas en tiempo real |
-| **Workflow** | Secuencia de tareas multi-agente |
-| **Planner** | Divide tareas complejas |
-| **Orchestrator** | Coordina ejecución de tareas |
-| **MCP** | Protocolo de comunicación con capa semántica |
+| Term | Meaning |
+|------|---------|
+| **Agent** | AI program that executes tasks |
+| **Agent Card** | Description of agent capabilities |
+| **A2A** | Agent-to-agent communication protocol |
+| **LLM** | Language model (agent's brain) |
+| **Ollama** | Server to run LLMs locally |
+| **Semantic Layer** | Agent discovery service |
+| **Guardian** | Security and policy service |
+| **OPA** | Policy evaluation engine |
+| **Embeddings** | Numerical representation of text |
+| **Weaviate** | Vector database |
+| **Streaming** | Real-time responses |
+| **Workflow** | Multi-agent task sequence |
+| **Planner** | Divides complex tasks |
+| **Orchestrator** | Coordinates task execution |
+| **MCP** | Communication protocol with semantic layer |
 
-## Próximos Pasos
+## Next Steps
 
-Ahora que conoces los conceptos básicos:
+Now that you know the basic concepts:
 
-1. [Crea tu primer proyecto](04-first-project.md)
-2. [Crea tu primer agente](../single-agent/01-first-agent.md)
+1. [Create your first project](04-first-project.md)
+2. [Create your first agent](../single-agent/01-first-agent.md)
 
-## Recursos
+## Resources
 
-- [Arquitectura Completa](../reference/architecture.md)
-- [Referencia CLI](../reference/cli-reference.md)
+- [Complete Architecture](../reference/architecture.md)
+- [CLI Reference](../reference/cli-reference.md)
 - [FAQ](../faq.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

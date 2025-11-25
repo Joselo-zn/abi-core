@@ -1,30 +1,30 @@
-# Síntesis de Resultados
+# Result Synthesis
 
-El Orchestrator combina resultados de múltiples agentes en una respuesta coherente.
+The Orchestrator combines results from multiple agents into a coherent response.
 
-## Cómo Funciona
+## How It Works
 
-1. Agentes ejecutan sus tareas
-2. Cada agente retorna un resultado
-3. Orchestrator usa LLM para sintetizar
-4. Usuario recibe respuesta unificada
+1. Agents execute their tasks
+2. Each agent returns a result
+3. Orchestrator uses LLM to synthesize
+4. User receives unified response
 
-## Ejemplo
+## Example
 
 ```
-Agente 1: "Ventas: $100,000"
-Agente 2: "Crecimiento: 15%"
-Agente 3: "Top producto: Widget A"
+Agent 1: "Sales: $100,000"
+Agent 2: "Growth: 15%"
+Agent 3: "Top product: Widget A"
 
-Síntesis:
-"Las ventas alcanzaron $100,000 con un crecimiento del 15%.
-El producto más vendido fue Widget A."
+Synthesis:
+"Sales reached $100,000 with 15% growth.
+The best-selling product was Widget A."
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [RAG y Conocimiento](../rag/01-what-is-rag.md)
+- [RAG & Knowledge](../rag/01-what-is-rag.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

@@ -1,77 +1,77 @@
 # API Reference
 
-Referencia completa de las APIs de ABI-Core.
+Complete reference for ABI-Core APIs.
 
 ## AbiAgent
 
-Clase base para crear agentes.
+Base class for creating agents.
 
 ```python
 from abi_core.agent.agent import AbiAgent
 
-class MiAgente(AbiAgent):
+class MyAgent(AbiAgent):
     def __init__(self):
         super().__init__(
-            agent_name='mi-agente',
-            description='Descripción',
+            agent_name='my-agent',
+            description='Description',
             content_types=['text/plain']
         )
 ```
 
-### Métodos
+### Methods
 
 #### `process(enriched_input)`
-Procesa entrada enriquecida.
+Processes enriched input.
 
-**Parámetros**:
-- `enriched_input`: Dict con query y contexto
+**Parameters**:
+- `enriched_input`: Dict with query and context
 
-**Retorna**: Dict con resultado
+**Returns**: Dict with result
 
 #### `stream(query, context_id, task_id)`
-Responde en streaming.
+Responds in streaming mode.
 
-**Parámetros**:
-- `query`: Consulta del usuario
-- `context_id`: ID de contexto
-- `task_id`: ID de tarea
+**Parameters**:
+- `query`: User query
+- `context_id`: Context ID
+- `task_id`: Task ID
 
-**Retorna**: AsyncGenerator con respuestas
+**Returns**: AsyncGenerator with responses
 
 ## MCP Client
 
-Cliente para capa semántica.
+Client for semantic layer.
 
 ```python
 from abi_core.abi_mcp import client
 
 async with client.init_session(host, port, transport) as session:
-    result = await client.find_agent(session, "descripción")
+    result = await client.find_agent(session, "description")
 ```
 
-### Funciones
+### Functions
 
 #### `find_agent(session, description)`
-Busca un agente por descripción.
+Searches for an agent by description.
 
 #### `recommend_agents(session, description, max_agents)`
-Recomienda múltiples agentes.
+Recommends multiple agents.
 
 #### `check_agent_health(session, agent_name)`
-Verifica salud de un agente.
+Verifies agent health.
 
-## Utilidades
+## Utilities
 
 ```python
 from abi_core.common.utils import abi_logging, get_mcp_server_config
 
 # Logging
-abi_logging("Mensaje")
+abi_logging("Message")
 
-# Configuración MCP
+# MCP Configuration
 config = get_mcp_server_config()
 ```
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

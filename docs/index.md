@@ -1,10 +1,10 @@
 # ABI-Core Documentation
 
-Bienvenido a la documentación de **ABI-Core** — un framework completo para construir sistemas de agentes de IA con capas semánticas, orquestación y políticas de seguridad.
+Welcome to **ABI-Core** documentation — a comprehensive framework for building AI agent systems with semantic layers, orchestration, and security policies.
 
 ```{toctree}
 :maxdepth: 2
-:caption: 1. Fundamentos
+:caption: 1. Fundamentals
 
 getting-started/01-installation
 getting-started/02-what-is-abi
@@ -14,7 +14,7 @@ getting-started/04-first-project
 
 ```{toctree}
 :maxdepth: 2
-:caption: 2. Agentes Individuales
+:caption: 2. Single Agents
 
 single-agent/01-first-agent
 single-agent/02-simple-chatbot
@@ -25,7 +25,7 @@ single-agent/05-testing-agents
 
 ```{toctree}
 :maxdepth: 2
-:caption: 3. Múltiples Agentes
+:caption: 3. Multi-Agent Basics
 
 multi-agent-basics/01-why-multiple-agents
 multi-agent-basics/02-agent-cards
@@ -35,7 +35,7 @@ multi-agent-basics/04-first-multi-agent-system
 
 ```{toctree}
 :maxdepth: 2
-:caption: 4. Capa Semántica
+:caption: 4. Semantic Layer
 
 semantic-layer/01-what-is-semantic-layer
 semantic-layer/02-agent-discovery
@@ -45,7 +45,7 @@ semantic-layer/04-extending-semantic-layer
 
 ```{toctree}
 :maxdepth: 2
-:caption: 5. Orquestación Avanzada
+:caption: 5. Advanced Orchestration
 
 orchestration/01-planner-orchestrator
 orchestration/02-multi-agent-workflows
@@ -55,7 +55,7 @@ orchestration/04-result-synthesis
 
 ```{toctree}
 :maxdepth: 2
-:caption: 6. RAG y Conocimiento
+:caption: 6. RAG & Knowledge
 
 rag/01-what-is-rag
 rag/02-vector-databases
@@ -65,7 +65,7 @@ rag/04-agents-with-rag
 
 ```{toctree}
 :maxdepth: 2
-:caption: 7. Seguridad y Políticas
+:caption: 7. Security & Policies
 
 security/01-guardian-service
 security/02-opa-policies
@@ -75,7 +75,7 @@ security/04-audit-compliance
 
 ```{toctree}
 :maxdepth: 2
-:caption: 8. Producción
+:caption: 8. Production
 
 production/01-model-serving
 production/02-monitoring-logs
@@ -85,7 +85,7 @@ production/04-deployment
 
 ```{toctree}
 :maxdepth: 2
-:caption: 9. Referencia
+:caption: 9. Reference
 
 reference/cli-reference
 reference/api-reference
@@ -95,77 +95,77 @@ reference/architecture
 
 ```{toctree}
 :maxdepth: 1
-:caption: Recursos Adicionales
+:caption: Additional Resources
 
 changelog
 faq
 roadmap
 ```
 
-## ¿Qué es ABI-Core?
+## What is ABI-Core?
 
-**ABI-Core** (Agent-Based Infrastructure Core) es un framework de producción que combina:
+**ABI-Core** (Agent-Based Infrastructure Core) is a production-ready framework that combines:
 
-- 🤖 **Agentes de IA** — Agentes potenciados por LangChain con comunicación A2A
-- 🧠 **Capa Semántica** — Embeddings vectoriales y gestión de conocimiento distribuido
-- 🔒 **Seguridad** — Aplicación de políticas basada en OPA y control de acceso
-- 🌐 **Interfaces Web** — APIs REST basadas en FastAPI y dashboards en tiempo real
-- 📦 **Contenedorización** — Despliegues listos para Docker con orquestación
+- 🤖 **AI Agents** — LangChain-powered agents with A2A (Agent-to-Agent) communication
+- 🧠 **Semantic Layer** — Vector embeddings and distributed knowledge management
+- 🔒 **Security** — OPA-based policy enforcement and access control
+- 🌐 **Web Interfaces** — FastAPI-based REST APIs and real-time dashboards
+- 📦 **Containerization** — Docker-ready deployments with orchestration
 
-## Inicio Rápido
+## Quick Start
 
 ```bash
-# Instalar ABI-Core
+# Install ABI-Core
 pip install abi-core-ai
 
-# Crear tu primer proyecto
-abi-core create project mi-sistema-ia --with-semantic-layer
+# Create your first project
+abi-core create project my-ai-system --with-semantic-layer
 
-# Navegar al proyecto
-cd mi-sistema-ia
+# Navigate to project
+cd my-ai-system
 
-# Provisionar modelos
+# Provision models
 abi-core provision-models
 
-# Crear un agente
-abi-core add agent mi-agente --description "Mi primer agente de IA"
+# Create an agent
+abi-core add agent my-agent --description "My first AI agent"
 
-# Iniciar el sistema
+# Start the system
 abi-core run
 ```
 
-## Rutas de Aprendizaje
+## Learning Paths
 
-### 🎯 Para Principiantes
-1. [Instalación](getting-started/01-installation.md)
-2. [¿Qué es ABI-Core?](getting-started/02-what-is-abi.md)
-3. [Tu Primer Proyecto](getting-started/04-first-project.md)
-4. [Tu Primer Agente](single-agent/01-first-agent.md)
+### 🎯 For Beginners
+1. [Installation](getting-started/01-installation.md)
+2. [What is ABI-Core?](getting-started/02-what-is-abi.md)
+3. [Your First Project](getting-started/04-first-project.md)
+4. [Your First Agent](single-agent/01-first-agent.md)
 
-### 🚀 Para Desarrolladores
-1. [Agentes con Herramientas](single-agent/03-agents-with-tools.md)
-2. [Comunicación Entre Agentes](multi-agent-basics/03-agent-communication.md)
-3. [Capa Semántica](semantic-layer/01-what-is-semantic-layer.md)
-4. [Workflows Multi-Agente](orchestration/02-multi-agent-workflows.md)
+### 🚀 For Developers
+1. [Agents with Tools](single-agent/03-agents-with-tools.md)
+2. [Agent Communication](multi-agent-basics/03-agent-communication.md)
+3. [Semantic Layer](semantic-layer/01-what-is-semantic-layer.md)
+4. [Multi-Agent Workflows](orchestration/02-multi-agent-workflows.md)
 
-### 🏢 Para Producción
+### 🏢 For Production
 1. [Model Serving](production/01-model-serving.md)
-2. [Seguridad con Guardian](security/01-guardian-service.md)
-3. [Monitoreo y Logs](production/02-monitoring-logs.md)
+2. [Security with Guardian](security/01-guardian-service.md)
+3. [Monitoring & Logs](production/02-monitoring-logs.md)
 4. [Deployment](production/04-deployment.md)
 
-## Comunidad y Soporte
+## Community & Support
 
 - **GitHub**: [github.com/Joselo-zn/abi-core](https://github.com/Joselo-zn/abi-core)
-- **Issues**: [Reportar bugs o solicitar features](https://github.com/Joselo-zn/abi-core/issues)
-- **Discussions**: [Únete a la conversación](https://github.com/Joselo-zn/abi-core/discussions)
+- **Issues**: [Report bugs or request features](https://github.com/Joselo-zn/abi-core/issues)
+- **Discussions**: [Join the conversation](https://github.com/Joselo-zn/abi-core/discussions)
 - **Email**: jl.mrtz@gmail.com
 
-## Licencia
+## License
 
-ABI-Core se distribuye bajo la Licencia Apache 2.0. Ver [LICENSE](https://github.com/Joselo-zn/abi-core/blob/main/LICENSE) para detalles.
+ABI-Core is released under the Apache 2.0 License. See [LICENSE](https://github.com/Joselo-zn/abi-core/blob/main/LICENSE) for details.
 
 ---
 
-**Construido con ❤️ por [José Luis Martínez](https://github.com/Joselo-zn)**  
-Creador de **ABI (Agent-Based Infrastructure)** — redefiniendo cómo los sistemas inteligentes se interconectan.
+**Built with ❤️ by [José Luis Martínez](https://github.com/Joselo-zn)**  
+Creator of **ABI (Agent-Based Infrastructure)** — redefining how intelligent systems interconnect.

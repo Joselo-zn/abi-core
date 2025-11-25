@@ -1,45 +1,45 @@
-# Agentes con Herramientas
+# Agents with Tools
 
-Los agentes pueden usar herramientas para realizar acciones específicas como calcular, buscar información o llamar APIs.
+Agents can use tools to perform specific actions like calculating, searching information, or calling APIs.
 
-## ¿Qué son las Herramientas?
+## What are Tools?
 
-Las **herramientas** (tools) son funciones que el agente puede llamar para:
-- Realizar cálculos
-- Buscar información
-- Llamar APIs externas
-- Acceder a bases de datos
+**Tools** are functions that the agent can call to:
+- Perform calculations
+- Search information
+- Call external APIs
+- Access databases
 
-## Crear un Agente con Herramientas
+## Create an Agent with Tools
 
-### Paso 1: Definir Herramientas
+### Step 1: Define Tools
 
 ```python
 from langchain.tools import tool
 
 @tool
-def calcular(expresion: str) -> str:
-    """Calcula una expresión matemática"""
+def calculate(expression: str) -> str:
+    """Calculate a mathematical expression"""
     try:
-        resultado = eval(expresion)
-        return f"Resultado: {resultado}"
+        result = eval(expression)
+        return f"Result: {result}"
     except Exception as e:
         return f"Error: {str(e)}"
 
 @tool
-def obtener_clima(ciudad: str) -> str:
-    """Obtiene el clima de una ciudad"""
-    # En producción, llamarías a una API real
-    return f"El clima en {ciudad} es soleado, 22°C"
+def get_weather(city: str) -> str:
+    """Get weather for a city"""
+    # In production, you'd call a real API
+    return f"Weather in {city} is sunny, 72°F"
 
 @tool
-def buscar_web(query: str) -> str:
-    """Busca información en la web"""
-    # En producción, usarías una API de búsqueda
-    return f"Resultados para '{query}': [información simulada]"
+def search_web(query: str) -> str:
+    """Search information on the web"""
+    # In production, you'd use a search API
+    return f"Results for '{query}': [simulated information]"
 ```
 
-### Paso 2: Crear el Agente
+### Step 2: Create the Agent
 
 ```python
 from abi_core.agent.agent import AbiAgent
@@ -52,7 +52,7 @@ class ToolAgent(AbiAgent):
     def __init__(self):
         super().__init__(
             agent_name='tool-agent',
-            description='Agente con herramientas'
+            description='Agent with tools'
         )
         self.setup_agent_with_tools()
     
@@ -64,18 +64,18 @@ class ToolAgent(AbiAgent):
             temperature=0.1
         )
         
-        # Herramientas
-        tools = [calcular, obtener_clima, buscar_web]
+        # Tools
+        tools = [calculate, get_weather, search_web]
         
         # Prompt
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "Eres un asistente con acceso a herramientas. "
-                       "Usa las herramientas cuando sea necesario."),
+            ("system", "You are an assistant with access to tools. "
+                       "Use tools when necessary."),
             ("human", "{input}"),
             ("placeholder", "{agent_scratchpad}"),
         ])
         
-        # Crear agente
+        # Create agent
         agent = create_tool_calling_agent(llm, tools, prompt)
         
         # Executor
@@ -88,7 +88,7 @@ class ToolAgent(AbiAgent):
     def process(self, enriched_input):
         query = enriched_input['query']
         
-        # Ejecutar con herramientas
+        # Execute with tools
         result = self.agent_executor.invoke({"input": query})
         
         return {
@@ -97,55 +97,55 @@ class ToolAgent(AbiAgent):
         }
 ```
 
-## Ejemplos de Uso
+## Usage Examples
 
 ```bash
-# Calcular
+# Calculate
 curl -X POST http://localhost:8000/stream \
-  -d '{"query": "¿Cuánto es 25 * 4?", "context_id": "test", "task_id": "1"}'
-# Respuesta: "Resultado: 100"
+  -d '{"query": "What is 25 * 4?", "context_id": "test", "task_id": "1"}'
+# Response: "Result: 100"
 
-# Clima
+# Weather
 curl -X POST http://localhost:8000/stream \
-  -d '{"query": "¿Qué clima hace en Madrid?", "context_id": "test", "task_id": "2"}'
-# Respuesta: "El clima en Madrid es soleado, 22°C"
+  -d '{"query": "What's the weather in Madrid?", "context_id": "test", "task_id": "2"}'
+# Response: "Weather in Madrid is sunny, 72°F"
 
-# Búsqueda
+# Search
 curl -X POST http://localhost:8000/stream \
-  -d '{"query": "Busca información sobre Python", "context_id": "test", "task_id": "3"}'
+  -d '{"query": "Search for Python information", "context_id": "test", "task_id": "3"}'
 ```
 
-## Herramientas Avanzadas
+## Advanced Tools
 
-### Herramienta con API Real
+### Tool with Real API
 
 ```python
 @tool
-def obtener_precio_crypto(simbolo: str) -> str:
-    """Obtiene el precio actual de una criptomoneda"""
+def get_crypto_price(symbol: str) -> str:
+    """Get current price of a cryptocurrency"""
     import requests
     
     try:
         url = f"https://api.coingecko.com/api/v3/simple/price"
         params = {
-            'ids': simbolo.lower(),
+            'ids': symbol.lower(),
             'vs_currencies': 'usd'
         }
         response = requests.get(url, params=params)
         data = response.json()
         
-        precio = data[simbolo.lower()]['usd']
-        return f"El precio de {simbolo} es ${precio} USD"
+        price = data[symbol.lower()]['usd']
+        return f"The price of {symbol} is ${price} USD"
     except Exception as e:
-        return f"Error obteniendo precio: {str(e)}"
+        return f"Error getting price: {str(e)}"
 ```
 
-### Herramienta con Base de Datos
+### Tool with Database
 
 ```python
 @tool
-def consultar_usuario(user_id: str) -> str:
-    """Consulta información de un usuario"""
+def query_user(user_id: str) -> str:
+    """Query user information"""
     import sqlite3
     
     try:
@@ -161,18 +161,18 @@ def consultar_usuario(user_id: str) -> str:
         conn.close()
         
         if result:
-            return f"Usuario: {result[0]}, Email: {result[1]}"
+            return f"User: {result[0]}, Email: {result[1]}"
         else:
-            return f"Usuario {user_id} no encontrado"
+            return f"User {user_id} not found"
     except Exception as e:
         return f"Error: {str(e)}"
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Agregar memoria](04-agents-with-memory.md)
-- [Probar agentes](05-testing-agents.md)
+- [Add memory](04-agents-with-memory.md)
+- [Test agents](05-testing-agents.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

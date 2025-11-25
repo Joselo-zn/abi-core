@@ -1,29 +1,29 @@
-# Descubrimiento de Agentes
+# Agent Discovery
 
-Aprende cómo la capa semántica encuentra agentes automáticamente.
+Learn how the semantic layer finds agents automatically.
 
-## Cómo Funciona
+## How It Works
 
-1. Agentes se registran con agent cards
-2. Capa semántica indexa las cards
-3. Búsquedas encuentran agentes por capacidad
+1. Agents register with agent cards
+2. Semantic layer indexes the cards
+3. Searches find agents by capability
 
-## Buscar Agentes
+## Search for Agents
 
 ```python
 from abi_core.abi_mcp import client
 
-# Buscar por tarea
-agente = await client.find_agent(session, "analizar datos de ventas")
+# Search by task
+agent = await client.find_agent(session, "analyze sales data")
 
-# Buscar múltiples
-agentes = await client.recommend_agents(session, "procesar transacciones", max_agents=3)
+# Search multiple
+agents = await client.recommend_agents(session, "process transactions", max_agents=3)
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Búsqueda semántica](03-semantic-search.md)
+- [Semantic search](03-semantic-search.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

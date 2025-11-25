@@ -1,123 +1,123 @@
-# ¿Por Qué Múltiples Agentes?
+# Why Multiple Agents?
 
-Aprende cuándo y por qué usar múltiples agentes en lugar de uno solo.
+Learn when and why to use multiple agents instead of one.
 
-## El Problema con Un Solo Agente
+## The Problem with One Agent
 
-Un agente que hace todo:
+One agent doing everything:
 ```
-Agente Universal
-├─ Analiza datos
-├─ Escribe código
-├─ Traduce idiomas
-├─ Responde preguntas
-├─ Genera reportes
-└─ ... (hace todo mal)
-```
-
-**Problemas**:
-- ❌ No es experto en nada
-- ❌ Respuestas genéricas
-- ❌ Difícil de mantener
-- ❌ No escalable
-
-## La Solución: Agentes Especializados
-
-Múltiples agentes, cada uno experto:
-```
-Sistema Multi-Agente
-├─ Agente Analista → Experto en análisis
-├─ Agente Programador → Experto en código
-├─ Agente Traductor → Experto en idiomas
-└─ Agente Reportero → Experto en reportes
+Universal Agent
+├─ Analyzes data
+├─ Writes code
+├─ Translates languages
+├─ Answers questions
+├─ Generates reports
+└─ ... (does everything poorly)
 ```
 
-**Ventajas**:
-- ✅ Cada agente es experto
-- ✅ Respuestas especializadas
-- ✅ Fácil de mantener
-- ✅ Escalable
+**Problems**:
+- ❌ Not expert in anything
+- ❌ Generic responses
+- ❌ Hard to maintain
+- ❌ Not scalable
 
-## Cuándo Usar Múltiples Agentes
+## The Solution: Specialized Agents
 
-### Caso 1: Tareas Complejas
-
-**Tarea**: "Analiza ventas del último mes y genera un reporte en PDF"
-
-**Con un agente**: Hace todo mal
-**Con múltiples agentes**:
-1. Agente Analista → Analiza ventas
-2. Agente Reportero → Genera PDF
-
-### Caso 2: Dominios Diferentes
-
-**Proyecto**: Sistema de e-commerce
-
-**Agentes necesarios**:
-- Agente de Productos (catálogo)
-- Agente de Ventas (transacciones)
-- Agente de Soporte (ayuda al cliente)
-- Agente de Inventario (stock)
-
-### Caso 3: Escalabilidad
-
-**Problema**: Un agente no da abasto
-
-**Solución**: Múltiples instancias del mismo agente
+Multiple agents, each expert:
 ```
-Usuario 1 → Agente A
-Usuario 2 → Agente B
-Usuario 3 → Agente C
+Multi-Agent System
+├─ Analyst Agent → Expert in analysis
+├─ Programmer Agent → Expert in code
+├─ Translator Agent → Expert in languages
+└─ Reporter Agent → Expert in reports
 ```
 
-## Arquitectura Multi-Agente
+**Advantages**:
+- ✅ Each agent is expert
+- ✅ Specialized responses
+- ✅ Easy to maintain
+- ✅ Scalable
+
+## When to Use Multiple Agents
+
+### Case 1: Complex Tasks
+
+**Task**: "Analyze last month's sales and generate a PDF report"
+
+**With one agent**: Does everything poorly
+**With multiple agents**:
+1. Analyst Agent → Analyzes sales
+2. Reporter Agent → Generates PDF
+
+### Case 2: Different Domains
+
+**Project**: E-commerce system
+
+**Agents needed**:
+- Product Agent (catalog)
+- Sales Agent (transactions)
+- Support Agent (customer help)
+- Inventory Agent (stock)
+
+### Case 3: Scalability
+
+**Problem**: One agent can't handle the load
+
+**Solution**: Multiple instances of the same agent
+```
+User 1 → Agent A
+User 2 → Agent B
+User 3 → Agent C
+```
+
+## Multi-Agent Architecture
 
 ```
-Usuario
+User
   ↓
-Orchestrator (coordina)
+Orchestrator (coordinates)
   ↓
-├─ Agente 1 (especialista)
-├─ Agente 2 (especialista)
-└─ Agente 3 (especialista)
+├─ Agent 1 (specialist)
+├─ Agent 2 (specialist)
+└─ Agent 3 (specialist)
   ↓
-Resultado combinado
+Combined result
 ```
 
-## Ejemplo Práctico
+## Practical Example
 
-### Sistema de Análisis Financiero
+### Financial Analysis System
 
 ```bash
-# Crear proyecto
-abi-core create project finanzas --with-semantic-layer
+# Create project
+abi-core create project finance --with-semantic-layer
 
-# Agente 1: Recolector de datos
-abi-core add agent recolector \
-  --description "Recolecta datos financieros"
+# Agent 1: Data collector
+abi-core add agent collector \
+  --description "Collects financial data"
 
-# Agente 2: Analista
-abi-core add agent analista \
-  --description "Analiza datos financieros"
+# Agent 2: Analyst
+abi-core add agent analyst \
+  --description "Analyzes financial data"
 
-# Agente 3: Reportero
-abi-core add agent reportero \
-  --description "Genera reportes"
+# Agent 3: Reporter
+abi-core add agent reporter \
+  --description "Generates reports"
 ```
 
-**Flujo**:
-1. Usuario: "Analiza las acciones de Apple"
-2. Recolector → Obtiene datos de Apple
-3. Analista → Analiza los datos
-4. Reportero → Genera reporte
-5. Usuario recibe reporte completo
+**Flow**:
+1. User: "Analyze Apple stock"
+2. Collector → Gets Apple data
+3. Analyst → Analyzes the data
+4. Reporter → Generates report
+5. User receives complete report
 
-## Próximos Pasos
+## Next Steps
 
 - [Agent Cards](02-agent-cards.md)
-- [Comunicación entre agentes](03-agent-communication.md)
-- [Tu primer sistema multi-agente](04-first-multi-agent-system.md)
+- [Agent communication](03-agent-communication.md)
+- [Your first multi-agent system](04-first-multi-agent-system.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

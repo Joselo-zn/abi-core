@@ -1,46 +1,46 @@
-# Bases de Datos Vectoriales
+# Vector Databases
 
-Las bases de datos vectoriales almacenan y buscan información por similitud semántica.
+Vector databases store and search information by semantic similarity.
 
-## Weaviate en ABI-Core
+## Weaviate in ABI-Core
 
-ABI-Core usa **Weaviate** automáticamente cuando agregas la capa semántica.
+ABI-Core uses **Weaviate** automatically when you add the semantic layer.
 
 ```bash
 abi-core add semantic-layer
-# Weaviate se incluye automáticamente
+# Weaviate is included automatically
 ```
 
-## Cómo Funciona
+## How It Works
 
-1. Documentos → Embeddings (vectores)
-2. Almacenar en Weaviate
-3. Buscar por similitud vectorial
+1. Documents → Embeddings (vectors)
+2. Store in Weaviate
+3. Search by vector similarity
 
-## Usar Weaviate
+## Use Weaviate
 
 ```python
 import weaviate
 
-# Conectar
+# Connect
 client = weaviate.Client("http://localhost:8080")
 
-# Agregar documento
+# Add document
 client.data_object.create({
-    "content": "Python es un lenguaje de programación",
-    "category": "tecnología"
+    "content": "Python is a programming language",
+    "category": "technology"
 }, "Document")
 
-# Buscar
+# Search
 result = client.query.get("Document", ["content"]).with_near_text({
-    "concepts": ["lenguaje de programación"]
+    "concepts": ["programming language"]
 }).do()
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Embeddings y búsqueda](03-embeddings-search.md)
+- [Embeddings and search](03-embeddings-search.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

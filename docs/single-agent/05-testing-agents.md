@@ -1,17 +1,17 @@
-# Probar y Depurar Agentes
+# Testing and Debugging Agents
 
-Aprende a probar y depurar tus agentes de forma efectiva.
+Learn to test and debug your agents effectively.
 
-## Pruebas Básicas
+## Basic Testing
 
-### Con curl
+### With curl
 ```bash
 curl -X POST http://localhost:8000/stream \
   -H "Content-Type: application/json" \
   -d '{"query": "test", "context_id": "test", "task_id": "1"}'
 ```
 
-### Con Python
+### With Python
 ```python
 import requests
 
@@ -24,51 +24,51 @@ def test_agent(query):
     assert 'content' in response.json()
     print(f"✅ Test passed: {query}")
 
-test_agent("Hola")
-test_agent("¿Qué es Python?")
+test_agent("Hello")
+test_agent("What is Python?")
 ```
 
-## Ver Logs
+## View Logs
 
 ```bash
-# Logs en tiempo real
-docker-compose logs -f mi-agente-agent
+# Real-time logs
+docker-compose logs -f my-agent-agent
 
-# Últimas 100 líneas
-docker-compose logs --tail=100 mi-agente-agent
+# Last 100 lines
+docker-compose logs --tail=100 my-agent-agent
 ```
 
-## Depuración
+## Debugging
 
-### Agregar Logs
+### Add Logs
 ```python
 from abi_core.common.utils import abi_logging
 
 def process(self, enriched_input):
     abi_logging(f"INPUT: {enriched_input}")
-    # ... tu código
+    # ... your code
     abi_logging(f"OUTPUT: {result}")
     return result
 ```
 
-### Probar Localmente
+### Test Locally
 ```python
 # test_local.py
-from agents.mi_agente.agent_mi_agente import MiAgente
+from agents.my_agent.agent_my_agent import MyAgent
 import os
 
 os.environ['MODEL_NAME'] = 'qwen2.5:3b'
 os.environ['OLLAMA_HOST'] = 'http://localhost:11434'
 
-agent = MiAgente()
+agent = MyAgent()
 result = agent.handle_input("test")
 print(result)
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Múltiples agentes](../multi-agent-basics/01-why-multiple-agents.md)
+- [Multiple agents](../multi-agent-basics/01-why-multiple-agents.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

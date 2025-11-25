@@ -1,12 +1,12 @@
-# Arquitectura de ABI-Core
+# ABI-Core Architecture
 
-Visión general de la arquitectura del sistema.
+Overview of the system architecture.
 
-## Capas del Sistema
+## System Layers
 
 ```
 ┌─────────────────────────────────────────┐
-│         Aplicación del Usuario          │
+│         User Application                │
 │        (Web, CLI, API, etc.)            │
 └────────────────┬────────────────────────┘
                  │
@@ -40,56 +40,56 @@ Visión general de la arquitectura del sistema.
 └─────────────────────────────────────────┘
 ```
 
-## Componentes Principales
+## Main Components
 
-### 1. Agentes
-Programas de IA que ejecutan tareas específicas.
+### 1. Agents
+AI programs that execute specific tasks.
 
 ### 2. Semantic Layer
-Descubrimiento y routing de agentes.
+Agent discovery and routing.
 
 ### 3. Orchestration Layer
-Coordinación de workflows multi-agente.
+Multi-agent workflow coordination.
 
 ### 4. Security Layer
-Políticas y auditoría.
+Policies and auditing.
 
-## Flujo de Datos
+## Data Flow
 
 ```
-Usuario → Orchestrator → Planner → Semantic Layer
+User → Orchestrator → Planner → Semantic Layer
                                          ↓
-                                   Encuentra Agentes
+                                   Find Agents
                                          ↓
-                                   Ejecuta Workflow
+                                   Execute Workflow
                                          ↓
-                                   Sintetiza Resultados
+                                   Synthesize Results
                                          ↓
-                                      Usuario
+                                      User
 ```
 
-## Comunicación
+## Communication
 
 ### A2A Protocol
-Comunicación entre agentes.
+Agent-to-agent communication.
 
 ### MCP Protocol
-Comunicación con capa semántica.
+Communication with semantic layer.
 
 ### REST API
-Comunicación con usuarios.
+Communication with users.
 
-## Almacenamiento
+## Storage
 
 ### Weaviate
-Base de datos vectorial para embeddings.
+Vector database for embeddings.
 
 ### Ollama
-Almacenamiento de modelos LLM.
+LLM model storage.
 
 ### Logs
-Archivos de log para auditoría.
+Log files for auditing.
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

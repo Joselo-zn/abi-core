@@ -1,8 +1,8 @@
-# Agentes con RAG
+# Agents with RAG
 
-Crea agentes que usan RAG para responder con información específica.
+Create agents that use RAG to respond with specific information.
 
-## Agente RAG Básico
+## Basic RAG Agent
 
 ```python
 from abi_core.agent.agent import AbiAgent
@@ -15,7 +15,7 @@ class RAGAgent(AbiAgent):
     def __init__(self):
         super().__init__(
             agent_name='rag-agent',
-            description='Agente con RAG'
+            description='Agent with RAG'
         )
         self.setup_rag()
     
@@ -36,7 +36,7 @@ class RAGAgent(AbiAgent):
     def process(self, enriched_input):
         query = enriched_input['query']
         
-        # Buscar y generar respuesta
+        # Search and generate response
         response = self.qa_chain.invoke({"query": query})
         
         return {
@@ -45,34 +45,34 @@ class RAGAgent(AbiAgent):
         }
 ```
 
-## Indexar Documentos
+## Index Documents
 
 ```python
-# Agregar documentos a Weaviate
-documentos = [
-    "Producto A cuesta $99",
-    "Producto B cuesta $149",
-    "Envíos gratis en compras mayores a $50"
+# Add documents to Weaviate
+documents = [
+    "Product A costs $99",
+    "Product B costs $149",
+    "Free shipping on orders over $50"
 ]
 
-for doc in documentos:
+for doc in documents:
     weaviate_client.data_object.create({
         "content": doc
     }, "Document")
 ```
 
-## Usar el Agente
+## Use the Agent
 
 ```bash
 curl -X POST http://localhost:8000/stream \
-  -d '{"query": "¿Cuánto cuesta el producto A?", "context_id": "test", "task_id": "1"}'
-# Respuesta: "El producto A cuesta $99"
+  -d '{"query": "How much does product A cost?", "context_id": "test", "task_id": "1"}'
+# Response: "Product A costs $99"
 ```
 
-## Próximos Pasos
+## Next Steps
 
-- [Seguridad y políticas](../security/01-guardian-service.md)
+- [Security and policies](../security/01-guardian-service.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com

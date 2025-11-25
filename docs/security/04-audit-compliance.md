@@ -1,45 +1,45 @@
-# Auditoría y Compliance
+# Audit and Compliance
 
-Guardian registra todas las acciones para auditoría y cumplimiento normativo.
+Guardian logs all actions for auditing and regulatory compliance.
 
-## Logs de Auditoría
+## Audit Logs
 
-Guardian registra:
-- Quién hizo qué
-- Cuándo lo hizo
-- Resultado de la acción
-- Políticas evaluadas
+Guardian records:
+- Who did what
+- When they did it
+- Action result
+- Policies evaluated
 
-## Ver Logs
+## View Logs
 
 ```bash
 docker-compose logs guardian
 ```
 
-## Dashboard de Auditoría
+## Audit Dashboard
 
-Accede al dashboard:
+Access the dashboard:
 ```
 http://localhost:8080/audit
 ```
 
-Verás:
-- Historial de acciones
-- Políticas violadas
-- Alertas de seguridad
-- Métricas de compliance
+You'll see:
+- Action history
+- Violated policies
+- Security alerts
+- Compliance metrics
 
-## Exportar Logs
+## Export Logs
 
 ```bash
-# Exportar logs a archivo
+# Export logs to file
 docker-compose logs guardian > audit.log
 ```
 
-## Próximos Pasos
+## Next Steps
 
 - [Model serving](../production/01-model-serving.md)
 
 ---
 
-**Creado por [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
