@@ -273,18 +273,16 @@ abi-core add agentic-orchestration-layer
 ```
 agents/
 ├── planner/
-│   ├── agent/
-│   │   ├── main.py
-│   │   └── planner.py
+│   ├── main.py
+│   ├── planner.py
 │   ├── agent_cards/
 │   │   └── planner_agent.json
 │   ├── Dockerfile
 │   └── requirements.txt
 └── orchestrator/
-    ├── agent/
-    │   ├── main.py
-    │   ├── orchestrator.py
-    │   └── web_interface.py
+    ├── main.py
+    ├── orchestrator.py
+    ├── web_interface.py
     ├── agent_cards/
     │   └── orchestrator_agent.json
     ├── Dockerfile

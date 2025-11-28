@@ -273,18 +273,16 @@ abi-core add agentic-orchestration-layer
 ```
 agents/
 ├── planner/
-│   ├── agent/
-│   │   ├── main.py
-│   │   └── planner.py
+│   ├── main.py
+│   ├── planner.py
 │   ├── agent_cards/
 │   │   └── planner_agent.json
 │   ├── Dockerfile
 │   └── requirements.txt
 └── orchestrator/
-    ├── agent/
-    │   ├── main.py
-    │   ├── orchestrator.py
-    │   └── web_interface.py
+    ├── main.py
+    ├── orchestrator.py
+    ├── web_interface.py
     ├── agent_cards/
     │   └── orchestrator_agent.json
     ├── Dockerfile
@@ -365,43 +363,269 @@ curl -X POST http://localhost:8083/stream \
 
 ### `remove`
 
-Remove components from project.
+Remove components from ABI project.
 
 #### `remove agent`
 
-Remove an agent from the project.
+Remove an agent from the project, including its directory, agent cards, Docker service, and configuration entries.
 
 **Syntax:**
 ```bash
-abi-core remove agent <name>
+abi-core remove agent <name> [OPTIONS]
 ```
+
+**Options:**
+- `--force, -f` - Skip confirmation prompt
+- `--dry-run` - Show what would be removed without doing it
+- `--keep-compose` - Do not modify compose.yaml
+- `--keep-runtime` - Do not modify runtime.yaml
 
 **Examples:**
 ```bash
-# Remove agent
-abi-core remove agent my-agent
+# Remove agent with confirmation
+abi-core remove agent sales
 
-# Remove multiple agents
-abi-core remove agent agent1
-abi-core remove agent agent2
+# Remove without confirmation
+abi-core remove agent sales --force
+
+# Preview what would be removed
+abi-core remove agent sales --dry-run
+
+# Remove but keep compose configuration
+abi-core remove agent sales --keep-compose
+```
+
+**What it removes:**
+```
+✓ Agent directory: agents/sales/
+✓ Agent cards: services/semantic_layer/.../sales_agent.json
+✓ Docker service: project-sales-agent
+✓ Runtime config: agents.sales, agent_cards.sales
+```
+
+**Output:**
+```
+🗑️  Removing agent 'sales'...
+============================================================
+
+⚠️  This will remove:
+  • Agent directory: agents/sales
+  • Agent card: services/semantic_layer/.../sales_agent.json
+  • Docker service: my_project-sales-agent
+  • Runtime config: agents.sales
+
+❓ Are you sure? [y/N]: y
+
+[1/4] Removing agent directory...
+[2/4] Removing agent cards...
+[3/4] Updating compose.yaml...
+[4/4] Updating runtime.yaml...
+
+============================================================
+✅ Agent 'sales' removed successfully!
+============================================================
+
+💡 Next steps:
+  • Stop the container: docker-compose down my_project-sales-agent
+  • Restart other services: docker-compose up -d
 ```
 
 #### `remove service`
 
-Remove a service from the project.
+Remove a service from the project, including its directory, Docker service, and configuration.
 
 **Syntax:**
 ```bash
-abi-core remove service <name>
+abi-core remove service <name> [OPTIONS]
 ```
+
+**Options:**
+- `--force, -f` - Skip confirmation prompt
+- `--dry-run` - Show what would be removed without doing it
 
 **Examples:**
 ```bash
-# Remove semantic layer
-abi-core remove service semantic_layer
-
-# Remove guardian
+# Remove service with confirmation
 abi-core remove service guardian
+
+# Remove without confirmation
+abi-core remove service guardian --force
+
+# Preview what would be removed
+abi-core remove service semantic_layer --dry-run
+```
+
+**What it removes:**
+```
+✓ Service directory: services/guardian/
+✓ Docker service: project-guardian
+✓ Runtime config: services.guardian
+```
+
+**Safety validations:**
+- Cannot remove semantic-layer if agents exist
+- Prompts for confirmation unless `--force` is used
+
+**Output:**
+```
+🗑️  Removing service 'guardian'...
+============================================================
+
+⚠️  This will remove:
+  • Service directory: services/guardian
+  • Docker service: my_project-guardian
+  • Runtime config: services.guardian
+
+❓ Are you sure? [y/N]: y
+
+[1/3] Removing service directory...
+[2/3] Updating compose.yaml...
+[3/3] Updating runtime.yaml...
+
+============================================================
+✅ Service 'guardian' removed successfully!
+============================================================
+
+💡 Next steps:
+  • Stop the container: docker-compose down my_project-guardian
+  • Restart other services: docker-compose up -d
+```
+
+**Error example (semantic-layer with active agents):**
+```bash
+$ abi-core remove service semantic_layer
+
+❌ Cannot remove semantic layer while agents exist!
+   Active agents: planner, orchestrator, sales, analyst
+💡 Remove agents first, then remove semantic layer.
+```
+
+#### `remove agentic-orchestration-layer`
+
+Remove both Planner and Orchestrator agents that make up the agentic orchestration layer.
+
+**Syntax:**
+```bash
+abi-core remove agentic-orchestration-layer [OPTIONS]
+```
+
+**Options:**
+- `--force, -f` - Skip confirmation prompt
+- `--dry-run` - Show what would be removed without doing it
+
+**Examples:**
+```bash
+# Remove orchestration layer with confirmation
+abi-core remove agentic-orchestration-layer
+
+# Remove without confirmation
+abi-core remove agentic-orchestration-layer --force
+
+# Preview what would be removed
+abi-core remove agentic-orchestration-layer --dry-run
+```
+
+**What it removes:**
+```
+✓ Planner agent directory: agents/planner/
+✓ Orchestrator agent directory: agents/orchestrator/
+✓ All agent cards from semantic layer
+✓ Docker services: project-planner, project-orchestrator
+✓ Docker volumes: ollama-planner, ollama-orchestrator (if distributed mode)
+✓ Runtime config: agents.planner, agents.orchestrator, agent_cards.*
+```
+
+**Output:**
+```
+🗑️  Removing Agentic Orchestration Layer...
+============================================================
+
+⚠️  This will remove:
+  • Planner agent directory: agents/planner
+  • Orchestrator agent directory: agents/orchestrator
+  • Agent card: services/semantic_layer/.../planner_agent.json
+  • Agent card: services/semantic_layer/.../orchestrator_agent.json
+  • Docker service: my_project-planner
+  • Docker service: my_project-orchestrator
+
+❓ Are you sure? [y/N]: y
+
+[1/4] Removing agent directories...
+[2/4] Removing agent cards...
+[3/4] Updating compose.yaml...
+[4/4] Updating runtime.yaml...
+
+============================================================
+✅ Agentic Orchestration Layer removed successfully!
+============================================================
+
+💡 Next steps:
+  • Stop containers: docker-compose down my_project-planner my_project-orchestrator
+  • Restart other services: docker-compose up -d
+```
+
+#### `remove agent-card`
+
+Remove only an agent card from the semantic layer without removing the agent itself. Useful for regenerating agent cards.
+
+**Syntax:**
+```bash
+abi-core remove agent-card <name> [OPTIONS]
+```
+
+**Options:**
+- `--force, -f` - Skip confirmation prompt
+
+**Examples:**
+```bash
+# Remove agent card with confirmation
+abi-core remove agent-card sales
+
+# Remove without confirmation
+abi-core remove agent-card planner --force
+```
+
+**What it removes:**
+```
+✓ Agent card files from all locations
+✓ Runtime config: agent_cards.sales
+```
+
+**Note:** The agent itself remains intact. This is useful when you need to regenerate an agent card with updated configuration.
+
+**Output:**
+```
+🗑️  Removing agent card 'sales'...
+============================================================
+
+⚠️  This will remove:
+  • Agent card: services/semantic_layer/.../sales_agent.json
+  • Agent card: agents/sales/agent_cards/sales_agent.json
+  • Runtime config: agent_cards.sales
+
+❓ Are you sure? [y/N]: y
+
+[1/2] Removing agent card files...
+[2/2] Updating runtime.yaml...
+
+============================================================
+✅ Agent card 'sales' removed successfully!
+============================================================
+
+💡 The agent itself still exists.
+   To regenerate the card, run: abi-core add agent-card sales
+```
+
+**Common workflow:**
+```bash
+# 1. Remove old agent card
+abi-core remove agent-card sales --force
+
+# 2. Regenerate with new configuration
+abi-core add agent-card sales \
+  --description "Updated description" \
+  --url "http://sales-agent:8003" \
+  --tasks "new_task1,new_task2"
 ```
 
 ---
@@ -740,6 +964,64 @@ abi-core provision-models --force
 
 # Restart services
 docker-compose restart
+```
+
+### Remove and Recreate Agent
+
+```bash
+# 1. Remove existing agent
+abi-core remove agent old-agent --force
+
+# 2. Create new agent with same name
+abi-core add agent old-agent \
+  --description "Updated agent implementation"
+
+# 3. Create agent card
+abi-core add agent-card old-agent \
+  --url "http://old-agent:8000" \
+  --tasks "new_task1,new_task2"
+
+# 4. Restart services
+docker-compose up -d
+```
+
+### Clean Up Project
+
+```bash
+# Remove all custom agents (keep orchestration layer)
+abi-core remove agent sales --force
+abi-core remove agent analyst --force
+abi-core remove agent trader --force
+
+# Remove orchestration layer
+abi-core remove agentic-orchestration-layer --force
+
+# Remove services
+abi-core remove service guardian --force
+
+# Clean up Docker
+docker-compose down
+docker system prune -f
+```
+
+### Regenerate Agent Cards
+
+```bash
+# Remove old agent cards
+abi-core remove agent-card sales --force
+abi-core remove agent-card analyst --force
+
+# Regenerate with updated configuration
+abi-core add agent-card sales \
+  --description "Updated sales agent" \
+  --tasks "new_sales_task1,new_sales_task2"
+
+abi-core add agent-card analyst \
+  --description "Updated analyst agent" \
+  --tasks "new_analysis_task1,new_analysis_task2"
+
+# Restart semantic layer to reload cards
+docker-compose restart my-project-semantic-layer
 ```
 
 ---
