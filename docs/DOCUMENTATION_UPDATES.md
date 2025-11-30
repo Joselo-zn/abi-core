@@ -221,3 +221,138 @@ Check output in `docs/_build/html/index.html`
 - Troubleshooting sections included
 - Best practices documented
 - No breaking changes to existing documentation
+
+
+---
+
+## Update 2024-11-29: MCPToolkit Documentation
+
+### Summary
+
+Added comprehensive documentation for **MCPToolkit**, a new pythonic interface for calling custom MCP tools dynamically. This update provides developers with an easier way to interact with the semantic layer's MCP server.
+
+### Files Created
+
+#### 1. docs/semantic-layer/05-mcp-toolkit.md (NEW)
+**Content:**
+- Complete guide to MCPToolkit usage
+- Comparison: with vs without MCPToolkit
+- Basic usage examples (dynamic and explicit calls)
+- Tool discovery methods (list_tools, has_tool)
+- Error handling patterns
+- 7 real-world examples:
+  - Data processing pipeline
+  - Conditional tool execution
+  - Batch processing
+  - Using in agent code
+  - Custom configuration
+  - Debugging
+  - Creating custom MCP tools
+- Best practices section
+- Advanced usage patterns
+- Troubleshooting guide
+- Integration with LangChain
+
+#### 2. examples/mcp_toolkit_usage.py (NEW)
+**Content:**
+- Complete working examples of MCPToolkit
+- 7 example functions demonstrating different use cases
+- Async/await patterns
+- Error handling examples
+- Batch processing examples
+- Real-world data pipeline scenario
+
+### Files Updated
+
+#### 1. docs/semantic-layer/01-what-is-semantic-layer.md
+**Changes:**
+- Added "Option 1: Using MCPToolkit (Recommended)" section
+- Showed MCPToolkit as the preferred way to interact with semantic layer
+- Kept existing client.py examples as "Option 2"
+- Added link to MCPToolkit documentation in "Next Steps"
+
+#### 2. docs/semantic-layer/02-agent-discovery.md
+**Changes:**
+- Added "Using MCPToolkit (Recommended)" section with examples
+- Demonstrated find_agent, recommend_agents, check_agent_capability, check_agent_health
+- Kept existing client examples as alternative
+- Added link to MCPToolkit documentation
+
+#### 3. docs/semantic-layer/04-extending-semantic-layer.md
+**Changes:**
+- Added "Create Custom MCP Tools" section
+- Showed how to create tools that work with MCPToolkit
+- Demonstrated @server.call_tool() decorator pattern
+- Added example of calling custom tools via MCPToolkit
+- Added link to MCPToolkit documentation in "Next Steps"
+
+#### 4. docs/index.md
+**Changes:**
+- Added `semantic-layer/05-mcp-toolkit` to table of contents
+- Integrated into "4. Semantic Layer" section
+
+### Key Features Documented
+
+1. **Dynamic Tool Access**
+   - Pythonic syntax: `await toolkit.my_tool(param="value")`
+   - Attribute-based access via `__getattr__`
+   - Explicit call method for dynamic tool names
+
+2. **Tool Discovery**
+   - `list_tools()` - List all available MCP tools
+   - `has_tool(name)` - Check if specific tool exists
+   - Tool caching for performance
+
+3. **Error Handling**
+   - Structured error responses
+   - Try-except patterns
+   - Graceful degradation examples
+
+4. **Integration Patterns**
+   - Using in agent code
+   - Data processing pipelines
+   - Batch processing
+   - Conditional execution
+
+5. **Best Practices**
+   - Reuse toolkit instances
+   - Check tool availability
+   - Handle errors gracefully
+   - Use type hints
+
+### Benefits for Developers
+
+- **Reduced Boilerplate**: No need to manually manage MCP sessions
+- **Pythonic API**: Natural Python syntax for tool calls
+- **Type Safety**: Consistent return types (always dict)
+- **Better DX**: Clear error messages and logging
+- **Flexibility**: Supports both dynamic and explicit calling patterns
+
+### Code Examples Added
+
+- 7 complete working examples in documentation
+- Full example file with async patterns
+- Real-world scenarios (data pipelines, batch processing)
+- Integration with agent code
+- Custom tool creation guide
+
+### Related Implementation
+
+This documentation update corresponds to the implementation of:
+- `MCPToolkit` class in `src/abi_core/common/semantic_tools.py`
+- Updated `custom_tool` function in `src/abi_core/abi_mcp/client.py`
+- Global `mcp_toolkit` instance for convenience
+
+### Next Steps for Users
+
+After reading this documentation, users can:
+1. Replace manual MCP client calls with MCPToolkit
+2. Create custom MCP tools for their semantic layer
+3. Build data processing pipelines with MCP tools
+4. Integrate MCP tools seamlessly into their agents
+
+---
+
+**Documentation Author**: José Luis Martínez  
+**Date**: 2024-11-29  
+**Related PR**: MCPToolkit Implementation
