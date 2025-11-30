@@ -30,30 +30,40 @@ async def init_session(host, port, transport):
         ClientSession: An initialized and ready-to-use MCP client session.
 
     Raises:
-        ValueError: If an unsupported transport type is provided (implicitly,
-                    as it won't match 'sse').
+        ValueError: If an unsupported transport type is provided.
         Exception: Other potential exceptions during client initialization or
                    session setup.
     """
 
-    if transport == 'sse':
-        url = f'http://{host}:{port}/sse'
-        async with sse_client(url) as (read_stream, write_stream):
-            async with ClientSession(
-                read_stream=read_stream,
-                write_stream=write_stream,
-            ) as session:
-                logger.debug('SSE Client Session Initializing...')
-                await session.initialize()
-                logger.debug('SSE Cliente Session Initialized Successfully')
-                yield session
-    else:
+    if transport != 'sse':
         logger.error(f'Unsupported Transport type {transport}')
         raise ValueError(
             f"Unsupported transport type: {transport}. Must be 'sse'"
         )
+    
+    url = f'http://{host}:{port}/sse'
+    logger.info(f'Connecting to MCP server at {url}')
+    
+    try:
+        async with sse_client(url) as (read_stream, write_stream):
+            logger.info('SSE connection established')
+            try:
+                async with ClientSession(
+                    read_stream=read_stream,
+                    write_stream=write_stream,
+                ) as session:
+                    logger.info('SSE Client Session Initializing...')
+                    await session.initialize()
+                    logger.info('SSE Client Session Initialized Successfully')
+                    yield session
+            except Exception as e:
+                logger.error(f'Error initializing ClientSession: {e}', exc_info=True)
+                raise
+    except Exception as e:
+        logger.error(f'Error connecting to SSE server at {url}: {e}', exc_info=True)
+        raise
 
-async def find_agent(session: ClientSession, query) -> CallToolResult:
+async def find_agent(session: ClientSession, query: str, ctx) -> CallToolResult:
     """Call the tool 'find_agent' tool on the connected MCP server.
 
     Args:
@@ -63,15 +73,16 @@ async def find_agent(session: ClientSession, query) -> CallToolResult:
     Returns:
         The result of the tool call.
     """
-    logger.info(f"Calling 'find_agent' tool with query: '{query[:50]}...'")
+
     return await session.call_tool(
         name='find_agent',
         arguments={
             'query': query,
+            '_request_context':ctx
         },
     )
 
-async def find_resource(session: ClientSession, resource) -> ReadResourceResult:
+async def find_resource(session: ClientSession, resource: str) -> ReadResourceResult:
     """Reads a resource from the connected MCP server.
 
     Args:
@@ -84,4 +95,104 @@ async def find_resource(session: ClientSession, resource) -> ReadResourceResult:
     logger.info(f'Reading resource: {resource}')
     return await session.read_resource(resource)
 
-# TODO: Implementation of the other actions and tools
+
+async def recommend_agents(
+    session: ClientSession,
+    task_description: str,
+    max_agents: int,
+    ctx: dict
+) -> CallToolResult:
+    """Call the 'recommend_agents' tool on the connected MCP server.
+
+    Args:
+        session: The active ClientSession.
+        task_description: Description of the task requiring multiple agents.
+        max_agents: Maximum number of agents to recommend.
+        ctx: Request context for authentication.
+
+    Returns:
+        The result of the tool call.
+    """
+    return await session.call_tool(
+        name='recommend_agents',
+        arguments={
+            'task_description': task_description,
+            'max_agents': max_agents,
+            '_request_context': ctx
+        },
+    )
+
+
+async def check_agent_capability(
+    session: ClientSession,
+    agent_name: str,
+    required_tasks: list,
+    ctx: dict
+) -> CallToolResult:
+    """Call the 'check_agent_capability' tool on the connected MCP server.
+
+    Args:
+        session: The active ClientSession.
+        agent_name: Name of the agent to check.
+        required_tasks: List of required task names.
+        ctx: Request context for authentication.
+
+    Returns:
+        The result of the tool call.
+    """
+    return await session.call_tool(
+        name='check_agent_capability',
+        arguments={
+            'agent_name': agent_name,
+            'required_tasks': required_tasks,
+            '_request_context': ctx
+        },
+    )
+
+
+async def check_agent_health(
+    session: ClientSession,
+    agent_name: str,
+    ctx: dict
+) -> CallToolResult:
+    """Call the 'check_agent_health' tool on the connected MCP server.
+
+    Args:
+        session: The active ClientSession.
+        agent_name: Name of the agent to check.
+        ctx: Request context for authentication.
+
+    Returns:
+        The result of the tool call.
+    """
+    return await session.call_tool(
+        name='check_agent_health',
+        arguments={
+            'agent_name': agent_name,
+            '_request_context': ctx
+        },
+    )
+
+
+async def register_agent(
+    session: ClientSession,
+    agent_card: dict,
+    ctx: dict
+) -> CallToolResult:
+    """Call the 'register_agent' tool on the connected MCP server.
+
+    Args:
+        session: The active ClientSession.
+        agent_card: Complete agent card dictionary with auth credentials.
+        ctx: Request context for authentication.
+
+    Returns:
+        The result of the tool call with registration status.
+    """
+    return await session.call_tool(
+        name='register_agent',
+        arguments={
+            'agent_card': agent_card,
+            '_request_context': ctx
+        },
+    )

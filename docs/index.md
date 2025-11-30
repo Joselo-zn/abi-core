@@ -41,6 +41,7 @@ semantic-layer/01-what-is-semantic-layer
 semantic-layer/02-agent-discovery
 semantic-layer/03-semantic-search
 semantic-layer/04-extending-semantic-layer
+semantic-layer/05-mcp-toolkit
 ```
 
 ```{toctree}
@@ -169,3 +170,14 @@ ABI-Core is released under the Apache 2.0 License. See [LICENSE](https://github.
 
 **Built with ❤️ by [José Luis Martínez](https://github.com/Joselo-zn)**  
 Creator of **ABI (Agent-Based Infrastructure)** — redefining how intelligent systems interconnect.
+
+✨ From Curiosity to Creation: A Personal Note
+
+I first saw a computer in 1995. My dad had received a Windows 3.11 machine as payment for a job. I was fascinated.
+At the time, I wanted to study robotics — but when I touched that machine, everything changed.
+
+I didn't understand what the Internet was, and I had no idea where to go… but even in that confusion, I felt something big.
+When I wrote my first Visual C++ program in 1999, I felt like a hacker. When I built my first web page, full of GIFs, I was flying.
+
+Nobody taught me. I just read manuals. And now, years later, that journey continues — not just as a coder, but as the creator of ABI.
+This is for the kids like me, then and now.

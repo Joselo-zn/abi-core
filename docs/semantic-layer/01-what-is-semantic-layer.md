@@ -53,7 +53,28 @@ services/semantic_layer/
 
 ## Use the Semantic Layer
 
-### Search for Agent
+### Option 1: Using MCPToolkit (Recommended)
+
+The easiest way to interact with the semantic layer:
+
+```python
+from abi_core.common.semantic_tools import MCPToolkit
+
+toolkit = MCPToolkit()
+
+# Find an agent
+agent = await toolkit.find_agent(query="agent that analyzes sales")
+
+# List all agents
+agents = await toolkit.list_agents(query="all")
+
+# Call any custom MCP tool
+result = await toolkit.my_custom_tool(param="value")
+```
+
+### Option 2: Using Client Directly
+
+For more control:
 
 ```python
 from abi_core.abi_mcp import client
@@ -72,7 +93,7 @@ async def search(description):
 agent = await search("agent that analyzes sales")
 ```
 
-### List Agents
+### List Agents via HTTP
 
 ```bash
 curl http://localhost:10100/v1/agents
@@ -82,6 +103,7 @@ curl http://localhost:10100/v1/agents
 
 - [Agent discovery](02-agent-discovery.md)
 - [Semantic search](03-semantic-search.md)
+- [MCPToolkit - Dynamic Tool Access](05-mcp-toolkit.md) - Pythonic tool calling
 
 ---
 
