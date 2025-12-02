@@ -71,7 +71,8 @@ rag/04-agents-with-rag
 security/01-guardian-service
 security/02-opa-policies
 security/03-policy-development
-security/04-audit-compliance
+security/04-user-validation
+security/05-audit-compliance
 ```
 
 ```{toctree}
