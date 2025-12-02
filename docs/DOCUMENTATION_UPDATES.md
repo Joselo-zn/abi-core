@@ -356,3 +356,306 @@ After reading this documentation, users can:
 **Documentation Author**: José Luis Martínez  
 **Date**: 2024-11-29  
 **Related PR**: MCPToolkit Implementation
+
+
+---
+
+## Update 2024-12-02: Configuration Centralization & User Validation
+
+### Summary
+
+Implemented centralized configuration for Semantic Layer and Guardian services, and added comprehensive user-level validation for MCP tool access.
+
+### Files Created
+
+#### 1. Configuration Files
+
+**Semantic Layer Configuration:**
+- `src/abi_core/scaffolding/service_semantic_layer/config/config.py.j2`
+- `src/abi_core/scaffolding/service_semantic_layer/config/__init__.py.j2`
+
+**Guardian Configuration:**
+- `src/abi_core/scaffolding/service_guardian/config/config.py.j2`
+- `src/abi_core/scaffolding/service_guardian/config/__init__.py.j2`
+
+**Documentation:**
+- `docs/security/04-user-validation.md` - Complete guide for user validation
+
+### Files Updated
+
+#### 1. Semantic Layer Service
+
+**main.py.j2:**
+- Imports `config` module instead of using `os.getenv()` directly
+- Displays configuration on startup
+- Uses `config.HOST`, `config.PORT`, `config.TRANSPORT`
+
+**server.py.j2:**
+- Imports `config` module
+- Uses `config.EMBEDDING_MODEL` instead of `os.getenv("MODEL")`
+
+#### 2. Guardian Service
+
+**main.py.j2:**
+- Imports `config` module
+- Uses `config.HOST` and `config.PORT` for dashboard
+
+**guardial_secure.py.j2:**
+- Imports `config` module
+- Uses `config.MODEL_NAME` instead of `os.getenv("MODEL_NAME")`
+
+#### 3. Security & Validation
+
+**agent_auth.py:**
+- Added `user_email` parameter to `build_semantic_context_from_card()`
+- Includes user email in payload and headers
+- Maintains backward compatibility (user_email is optional)
+
+**semantic_access_validator.py:**
+- Added configuration import with fallback to environment variables
+- Implemented `_extract_user_info()` method
+- Updated `validate_access()` to support user validation
+- Added validation modes: `strict`, `permissive`, `disabled`
+- Updated `_prepare_opa_input()` to include user information
+- Enhanced logging to include user email
+
+**semantic_access.rego:**
+- Added USER VALIDATION section
+- Implemented `user_validation_passed` rule
+- Added `user_has_access` verification
+- Included `user_permissions` database
+- Added user-specific deny rules
+- Updated audit log with user information
+- Added user-related remediation suggestions
+
+### Configuration Variables
+
+#### Semantic Layer Config
+
+**Validation:**
+- `REQUIRE_USER_VALIDATION` - Enable/disable user validation (default: false)
+- `REQUIRE_AGENT_VALIDATION` - Enable/disable agent validation (default: true)
+- `VALIDATION_MODE` - strict/permissive/disabled (default: permissive)
+
+**Quotas:**
+- `SEMANTIC_LAYER_DAILY_QUOTA` - Daily request limit (default: 1000)
+- `ENABLE_QUOTA_MANAGEMENT` - Enable quota tracking (default: true)
+
+**Security:**
+- `GUARDIAN_URL` - Guardian service URL
+- `OPA_URL` - OPA policy engine URL
+- `VALIDATION_CACHE_TTL` - Cache duration in seconds (default: 300)
+
+**Weaviate:**
+- `WEAVIATE_HOST` - Weaviate server URL
+- `WEAVIATE_ENABLED` - Enable/disable Weaviate (default: true)
+
+**Embedding:**
+- `EMBEDDING_MODEL` - Model for embeddings (default: nomic-embed-text:v1.5)
+- `OLLAMA_HOST` - Ollama server URL
+
+#### Guardian Config
+
+**Validation:**
+- `ENABLE_AGENT_VALIDATION` - Enable agent validation (default: true)
+- `ENABLE_USER_VALIDATION` - Enable user validation (default: false)
+- `ENABLE_RESOURCE_VALIDATION` - Enable resource validation (default: true)
+
+**Security:**
+- `REQUIRE_AUTHENTICATION` - Require authentication (default: true)
+- `ENABLE_AUDIT_LOG` - Enable audit logging (default: true)
+- `AUDIT_LOG_PATH` - Path to audit log file
+
+**Rate Limiting:**
+- `ENABLE_RATE_LIMITING` - Enable rate limiting (default: true)
+- `RATE_LIMIT_REQUESTS` - Max requests per window (default: 100)
+- `RATE_LIMIT_WINDOW` - Time window in seconds (default: 60)
+
+**Risk Scoring:**
+- `ENABLE_RISK_SCORING` - Enable risk scoring (default: true)
+- `HIGH_RISK_THRESHOLD` - High risk threshold (default: 0.7)
+- `MEDIUM_RISK_THRESHOLD` - Medium risk threshold (default: 0.4)
+
+**Policies:**
+- `POLICIES_DIR` - Directory for OPA policies
+- `AUTO_RELOAD_POLICIES` - Auto-reload policies (default: true)
+- `POLICY_RELOAD_INTERVAL` - Reload interval in seconds (default: 60)
+
+**AI Assistance:**
+- `ENABLE_AI_POLICY_ASSIST` - Enable AI policy assistance (default: false)
+- `MODEL_NAME` - LLM model for AI assistance
+- `OLLAMA_HOST` - Ollama server URL
+
+### Validation Modes
+
+**1. `disabled`:**
+- No validation performed
+- All requests allowed
+- ⚠️ Development only - never use in production
+
+**2. `permissive` (default):**
+- Agent validation required
+- User validation optional
+- Backward compatible with existing code
+
+**3. `strict`:**
+- Both agent AND user validation required
+- User email must be provided
+- Highest security level
+
+### Usage Examples
+
+#### Basic Usage with User Email
+
+```python
+from abi_core.security.agent_auth import build_semantic_context_from_card
+
+# Build context with user email
+context = build_semantic_context_from_card(
+    agent_card_path="/app/agent_cards/my_agent.json",
+    tool_name="find_agent",
+    query="search query",
+    user_email="user@example.com"  # ← User email
+)
+
+# Use in MCP call
+result = await mcp_tool(query="...", _request_context=context)
+```
+
+#### Configuration in compose.yaml
+
+```yaml
+services:
+  project-semantic-layer:
+    environment:
+      # Validation mode
+      - VALIDATION_MODE=permissive
+      - REQUIRE_USER_VALIDATION=false
+      - REQUIRE_AGENT_VALIDATION=true
+      
+      # Quotas
+      - ENABLE_QUOTA_MANAGEMENT=true
+      - SEMANTIC_LAYER_DAILY_QUOTA=1000
+      
+      # Security
+      - GUARDIAN_URL=http://project-guardian:8100
+      - OPA_URL=http://project-guardian:8181
+
+  project-guardian:
+    environment:
+      # Validation
+      - ENABLE_AGENT_VALIDATION=true
+      - ENABLE_USER_VALIDATION=false
+      
+      # Security
+      - REQUIRE_AUTHENTICATION=true
+      - ENABLE_AUDIT_LOG=true
+      
+      # Rate limiting
+      - ENABLE_RATE_LIMITING=true
+      - RATE_LIMIT_REQUESTS=100
+```
+
+### OPA Policy Updates
+
+The `semantic_access.rego` policy now includes:
+
+1. **User Validation Rules:**
+   - `user_validation_passed` - Main validation rule
+   - `user_has_access` - Permission checking
+   - `user_permissions` - User permission database
+
+2. **User-Specific Deny Rules:**
+   - "User email required for validation"
+   - "User does not have permission for this tool"
+
+3. **Enhanced Audit Log:**
+   - Includes user email
+   - Tracks validation mode
+   - Records user validation requirements
+
+4. **Remediation Suggestions:**
+   - "Provide user email in request context"
+   - "Request tool access permission from administrator"
+
+### Benefits
+
+1. **Centralized Configuration:**
+   - Single source of truth for service settings
+   - Easy to manage and update
+   - Type-safe configuration access
+   - Display configuration on startup
+
+2. **User-Level Security:**
+   - Fine-grained access control per user
+   - Audit trail includes user information
+   - Flexible permission management
+   - Role-based access control ready
+
+3. **Flexible Validation:**
+   - Three validation modes for different environments
+   - Easy to enable/disable features
+   - Backward compatible
+   - Production-ready security
+
+4. **Better Observability:**
+   - Configuration displayed on startup
+   - User information in logs
+   - Enhanced audit trail
+   - Clear error messages
+
+### Migration Path
+
+**Phase 1: Development (Current)**
+```bash
+VALIDATION_MODE=permissive
+REQUIRE_USER_VALIDATION=false
+```
+
+**Phase 2: Staging**
+```bash
+VALIDATION_MODE=permissive
+REQUIRE_USER_VALIDATION=true
+```
+
+**Phase 3: Production**
+```bash
+VALIDATION_MODE=strict
+REQUIRE_USER_VALIDATION=true
+```
+
+### Testing
+
+**Test User Validation:**
+```bash
+# Without user email (should fail in strict mode)
+curl -X POST http://localhost:10100/mcp/find_agent \
+  -H "X-ABI-Agent-ID: agent://my_agent" \
+  -d '{"query": "search"}'
+
+# With user email (should work if user has permission)
+curl -X POST http://localhost:10100/mcp/find_agent \
+  -H "X-ABI-Agent-ID: agent://my_agent" \
+  -H "X-ABI-User-Email: user@example.com" \
+  -d '{"query": "search"}'
+```
+
+### Related Files
+
+**Implementation:**
+- `src/abi_core/security/agent_auth.py`
+- `src/abi_core/semantic/semantic_access_validator.py`
+- `src/abi_core/scaffolding/service_guardian/opa/policies/semantic_access.rego`
+
+**Configuration:**
+- `src/abi_core/scaffolding/service_semantic_layer/config/config.py.j2`
+- `src/abi_core/scaffolding/service_guardian/config/config.py.j2`
+
+**Documentation:**
+- `docs/security/04-user-validation.md`
+
+---
+
+**Documentation Author**: José Luis Martínez  
+**Date**: 2024-12-02  
+**Related PR**: Configuration Centralization & User Validation
