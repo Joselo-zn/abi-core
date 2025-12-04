@@ -73,6 +73,7 @@ security/02-opa-policies
 security/03-policy-development
 security/04-user-validation
 security/05-audit-compliance
+security/06-a2a-validation
 ```
 
 ```{toctree}
