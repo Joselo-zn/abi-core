@@ -4,7 +4,7 @@
 project = 'ABI-Core'
 copyright = '2025, José Luis Martínez'
 author = 'José Luis Martínez'
-release = '0.1.0b127'
+release = '1.0.0'
 
 # -- General configuration ---------------------------------------------------
 extensions = [
