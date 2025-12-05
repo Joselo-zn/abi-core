@@ -506,4 +506,4 @@ This ensures:
 ---
 
 **Last Updated:** January 8, 2025  
-**Version:** 0.1.0b121
+**Version:** 1.0.0

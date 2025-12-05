@@ -43,14 +43,22 @@ You can configure A2A validation through environment variables (loaded into conf
 
 ```bash
 # Validation mode: strict, permissive, or disabled
-A2A_VALIDATION_MODE=strict
+A2A_VALIDATION_MODE=permissive
 
 # Enable audit logging
 A2A_ENABLE_AUDIT_LOG=true
 
-# Guardian service URL (uses project name automatically)
-GUARDIAN_URL=http://my-project-guardian:8383
+# OPA service URL for policy evaluation (uses project name automatically)
+OPA_URL=http://my-project-opa:8181
+
+# Guardian service URL for audit logs (uses project name automatically)
+GUARDIAN_URL=http://my-project-guardian:11438
 ```
+
+**Important:** 
+- `OPA_URL` is used for policy evaluation (port 8181)
+- `GUARDIAN_URL` is used for audit logging (port 11438)
+- Both URLs use Docker service names in containerized environments
 
 ### Validation Modes
 
@@ -237,6 +245,179 @@ communication_rules := [
 ]
 ```
 
+### Blocking Specific Communications
+
+There are three approaches to block specific agent-to-agent communications:
+
+#### Option 1: Remove Permissive Rules (Recommended)
+
+The simplest approach is to use a whitelist model - only allow what you explicitly permit:
+
+```rego
+communication_rules := [
+    # Only allow specific communications
+    {"source": "orchestrator", "target": "data-agent", "bidirectional": false},
+    {"source": "orchestrator", "target": "analytics-agent", "bidirectional": false},
+    # Note: orchestrator -> planner is NOT listed, so it's blocked
+    
+    {"source": "*", "target": "semantic-layer", "bidirectional": false},
+]
+```
+
+**Example: Block Orchestrator → Planner**
+
+Remove the wildcard rule and only allow specific targets:
+
+```rego
+communication_rules := [
+    # OLD (allows everything):
+    # {"source": "orchestrator", "target": "*", "bidirectional": false},
+    
+    # NEW (explicit whitelist):
+    {"source": "orchestrator", "target": "data-agent", "bidirectional": false},
+    {"source": "orchestrator", "target": "analytics-agent", "bidirectional": false},
+    # planner is not in the list, so communication is blocked
+    
+    {"source": "*", "target": "semantic-layer", "bidirectional": false},
+]
+```
+
+#### Option 2: Explicit Blocklist
+
+Add a blocklist for specific communications that should never be allowed:
+
+```rego
+# ============================================
+# BLOCKED COMMUNICATIONS
+# ============================================
+
+blocked_communications := [
+    {"source": "orchestrator", "target": "planner"},
+    {"source": "planner", "target": "orchestrator"},
+    {"source": "untrusted-agent", "target": "sensitive-data-agent"},
+]
+
+# Check if communication is explicitly blocked
+is_blocked_communication if {
+    some rule in blocked_communications
+    rule.source == source_agent.name
+    rule.target == target_agent.name
+}
+
+# Update the main allow rule to check for blocks
+allow if {
+    agents_identified
+    is_allowed_communication
+    not is_blocked_communication  # ← Add this condition
+}
+```
+
+**Complete example with blocklist:**
+
+```rego
+package a2a_access
+
+import future.keywords.if
+import future.keywords.in
+
+default allow := false
+
+source_agent := input.source_agent
+target_agent := input.target_agent
+
+# Blocked communications (highest priority)
+blocked_communications := [
+    {"source": "orchestrator", "target": "planner"},
+    {"source": "planner", "target": "orchestrator"},
+]
+
+is_blocked_communication if {
+    some rule in blocked_communications
+    rule.source == source_agent.name
+    rule.target == target_agent.name
+}
+
+# Allowed communications
+communication_rules := [
+    {"source": "orchestrator", "target": "*", "bidirectional": false},
+    {"source": "*", "target": "semantic-layer", "bidirectional": false},
+]
+
+is_allowed_communication if {
+    some rule in communication_rules
+    rule.source == source_agent.name
+    rule.target == target_agent.name
+}
+
+# Main allow rule - checks both allow and block lists
+allow if {
+    source_agent.name != ""
+    target_agent.name != ""
+    is_allowed_communication
+    not is_blocked_communication  # Block takes precedence
+}
+```
+
+#### Option 3: Conditional Rules
+
+Block communications based on conditions like time, message content, or metadata:
+
+```rego
+# Block during maintenance window
+is_maintenance_window if {
+    # Check if current time is in maintenance window
+    time.now_ns() > maintenance_start
+    time.now_ns() < maintenance_end
+}
+
+# Block high-risk communications
+is_high_risk_communication if {
+    source_agent.name == "external-agent"
+    target_agent.name == "database-agent"
+}
+
+# Deny if conditions are met
+allow if {
+    agents_identified
+    is_allowed_communication
+    not is_blocked_communication
+    not is_maintenance_window
+    not is_high_risk_communication
+}
+```
+
+### Testing Your Policy
+
+After modifying the policy, test it using OPA's evaluation endpoint:
+
+```bash
+# Test if orchestrator can talk to planner
+curl -X POST http://localhost:8181/v1/data/a2a_access/allow \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "source_agent": {"name": "orchestrator"},
+      "target_agent": {"name": "planner"},
+      "validation_mode": "strict"
+    }
+  }'
+
+# Expected response for blocked communication:
+# {"result": false}
+```
+
+### Policy Reload
+
+After updating the policy file, Guardian automatically reloads it (if `AUTO_RELOAD_POLICIES=true`). You can also manually reload:
+
+```bash
+# Check policy status
+curl http://localhost:8383/v1/policies
+
+# Force reload (if endpoint available)
+curl -X POST http://localhost:8383/v1/policies/reload
+```
+
 ## Context Structure
 
 The validator builds a context object sent to OPA:
@@ -351,10 +532,19 @@ class Orchestrator:
 
 ### Validation Always Fails
 
-1. Check Guardian is running: `curl http://localhost:8383/health`
-2. Check policy is loaded: `curl http://localhost:8383/v1/policies`
+1. Check OPA is running: `curl http://localhost:8181/health`
+2. Check policy is loaded: `curl http://localhost:8181/v1/policies`
 3. Check validation mode: `echo $A2A_VALIDATION_MODE`
-4. Check logs for detailed error messages
+4. Check OPA_URL is correct: `echo $OPA_URL`
+5. Check logs for detailed error messages
+
+### 404 Error from Guardian
+
+If you see "Guardian returned status 404":
+- The validator is trying to call Guardian instead of OPA
+- Check that `OPA_URL` is set correctly
+- OPA should be at port 8181, not Guardian's port 11438
+- Restart services after updating environment variables
 
 ### Validation Always Passes
 
@@ -362,11 +552,13 @@ class Orchestrator:
 2. Check if wildcard rules are too permissive
 3. Review policy logic in `a2a_access.rego`
 
-### Guardian Timeout
+### OPA/Guardian Timeout
 
 1. Increase timeout in validator initialization
-2. Check Guardian performance and resources
-3. Consider using permissive mode if Guardian is unstable
+2. Check OPA performance and resources
+3. Check Guardian performance for audit logs
+4. Consider using permissive mode if OPA is unstable
+5. Verify network connectivity between containers
 
 ## Related Documentation
 
