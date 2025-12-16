@@ -23,7 +23,7 @@ class RichGroup(click.Group):
         super().format_help(ctx, formatter)
 
 @click.group(cls=RichGroup)
-@click.version_option(version="1.0.0", prog_name="abi-core")
+@click.version_option(version="1.4.0", prog_name="abi-core")
 def cli():
     """ABI Core - Agent-Based Infrastructure CLI
     

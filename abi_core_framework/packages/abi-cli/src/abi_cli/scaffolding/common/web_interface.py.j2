@@ -41,7 +41,7 @@ class AgentWebInterface:
         self.app = FastAPI(
             title=f"{interface_name}",
             description=f"Web interface for {interface_name} - Compatible with Open WebUI",
-            version="1.2.0"
+            version="1.4.0"
         )
         self.setup_routes()
         
@@ -69,14 +69,14 @@ class AgentWebInterface:
                         "parameter_size": "agent-based",
                         "quantization_level": "native"
                     },
-                    "version": "1.2.0"
+                    "version": "1.4.0"
                 }]
             }
 
         @self.app.get("/api/version")
         async def get_version():
             """Retorna versión compatible con Ollama"""
-            return {"version": "1.2.0"}
+            return {"version": "1.4.0"}
 
         @self.app.get("/api/ps")
         async def list_running():
@@ -156,7 +156,7 @@ class AgentWebInterface:
                 "interface": self.interface_name,
                 "status": "running",
                 "model": self.agent_model_name,
-                "version": "1.2.0",
+                "version": "1.4.0",
                 "compatibility": "Open WebUI",
                 "endpoints": {
                     "openwebui_chat": "/api/chat - POST - Open WebUI chat endpoint",
@@ -175,7 +175,7 @@ class AgentWebInterface:
                 "status": "healthy",
                 "interface": self.interface_name,
                 "model": self.agent_model_name,
-                "version": "1.2.0",
+                "version": "1.4.0",
                 "agent_available": self.agent_instance is not None
             }
 
