@@ -55,7 +55,7 @@ Agent cards follow the A2A (Agent-to-Agent) protocol specification and include:
   "metadata": {
     "created": "2025-01-15T10:30:00Z",
     "generator": "abi-core-cli",
-    "version": "1.0.0"
+    "version": "1.4.0"
   }
 }
 ```
