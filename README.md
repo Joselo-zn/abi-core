@@ -1,0 +1,268 @@
+# ABI – Agent-Based Infrastructure
+Created and maintained by José Luis Martínez
+
+**ABI** is a paradigm shift in how we design, deploy, and interact with intelligent systems.
+
+Instead of centralizing superintelligence behind APIs or monolithic LLMs, ABI implements a distributed, agent-based architecture where cognition is shared, decisions are explainable, and humans remain in control.
+
+This repository contains a **functional MVP implementation** of ABI: a human-supervised, auditable infrastructure that enables universities, NGOs, independent labs, and open-source communities to access and build on top of intelligent, modular agents.
+
+## Why ABI?
+
+AI today is not just about performance — it's about control.  
+ABI is designed to make intelligent infrastructure accessible, safe, and inspectable by default.
+
+It's not just "agent-based tech."  
+It's an architecture designed to reason, act, and learn across networks — and to be supervised by people, not just orchestrated by scripts.
+
+## Core principles
+
+- **Human-based supervision** over automation
+- **Shared context** and semantic communication between agents
+- **Layered architecture**: physical infra, semantic protocols, agent layer, governance
+- **Explainability and auditability** by design
+- **No black boxes** — cognition is distributed, not hidden
+
+## 🚀 What's Implemented
+
+### Multi-Agent System
+- **4 core agents** operational with A2A communication + 1 framework ready:
+  - **Orchestrator**: ✅ Workflow coordination with semantic agent discovery via MCP
+  - **Planner**: ✅ Task decomposition using LangGraph with structured responses
+  - **Actor**: ✅ Task execution with A2A communication and tool integration
+  - **Guardian**: ✅ Advanced OPA policy engine with emergency response capabilities
+  - **Observer**: 🚧 Architecture defined, implementation framework ready
+
+### Core Infrastructure
+- **Docker-based deployment** with full containerization
+- **Weaviate vector database** for semantic search and embeddings
+- **Ollama integration** for local LLM execution with jina embeddings
+- **FastAPI** REST APIs for each agent with A2A protocol
+- **MCP (Model Context Protocol)** server with semantic agent discovery
+- **A2A (Agent-to-Agent)** protocol with streaming communication
+
+### Implemented Features
+- **Semantic workflow orchestration** with NetworkX graphs and MCP discovery
+- **Intelligent agent discovery** via embedding similarity search (`find_agent` tool)
+- **Real-time streaming** responses with A2A protocol communication
+- **Context preservation** across multi-step workflows
+- **OPA policy engine** with immutable core policies and emergency controls
+- **Comprehensive audit trails** and security validation
+- **Emergency shutdown mechanisms** and fail-safe defaults
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Orchestrator  │◄──►│    Planner      │◄──►│     Actor       │
+│   (Coordinator) │    │  (Task Decomp)  │    │  (Execution)    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         ▲                       ▲                       ▲
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│    Guardian     │    │  Semantic Layer │    │    Observer     │
+│   (Policies)    │    │   (MCP Server)  │    │  (Framework)    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │    Weaviate     │
+                       │ (Vector Store)  │
+                       └─────────────────┘
+```
+
+## 🛠️ Technology Stack
+
+- **Python 3.11+** - Core agent implementation
+- **FastAPI** - REST API framework for agent endpoints
+- **Docker & Docker Compose** - Containerization and orchestration
+- **Weaviate** - Vector database for semantic search
+- **Ollama** - Local LLM inference engine
+- **LangChain** - LLM integration and workflow management
+- **NetworkX** - Graph-based workflow orchestration
+- **Redis/TinyDB** - State management and caching
+- **MCP Protocol** - Model Context Protocol for standardized communication
+- **A2A SDK** - Agent-to-Agent communication framework
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker and Docker Compose
+- 8GB+ RAM recommended
+- NVIDIA GPU (optional, for faster inference)
+
+### Launch the System
+```bash
+cd abi-core
+docker-compose up -d
+```
+
+### Access Points
+- **Orchestrator API**: http://localhost:8082 (workflow coordination)
+- **Actor Agent API**: http://localhost:8083 (task execution)
+- **Guardian Agent API**: http://localhost:8003 (policy validation)
+- **Semantic Layer MCP**: http://localhost:10100 (agent discovery)
+- **Weaviate Console**: http://localhost:8080 (vector database)
+- **OPA Policy Server**: http://localhost:8181 (policy engine)
+
+### Example Usage
+```bash
+# Send a query to the orchestrator
+curl -X POST http://localhost:8082/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Analyze the latest market trends and create a summary report",
+    "context_id": "user-session-123",
+    "task_id": "task-001"
+  }'
+```
+
+## 📋 Agent Capabilities
+
+### Orchestrator Agent ✅
+- **Workflow coordination** using NetworkX graphs with pause/resume
+- **Semantic agent discovery** via MCP server integration (`find_agent` tool)
+- **Real-time streaming** with A2A protocol communication
+- **Context preservation** across multi-step workflows
+- **Human-in-the-loop** decision points with automatic Q&A
+
+### Planner Agent ✅
+- **Query decomposition** using LangGraph with structured responses
+- **Task sequencing** with dependency resolution
+- **Memory persistence** via LangGraph checkpointer
+- **A2A communication** for inter-agent coordination
+
+### Actor Agent ✅
+- **Task execution** with LangChain integration
+- **A2A communication** for inter-agent coordination
+- **Structured result reporting** with artifact generation
+- **Error handling** and recovery mechanisms
+
+### Guardian Agent ✅
+- **Advanced OPA integration** with secure policy engine
+- **Immutable core policies** that cannot be overridden by agents
+- **Real-time policy validation** with risk scoring
+- **Emergency shutdown** mechanisms always available
+- **Comprehensive audit trails** with remediation suggestions
+- **Dashboard and alerting** system integration
+
+### Observer Agent 🚧
+- **System monitoring** (architecture defined, implementation pending)
+- **Performance metrics** collection and analysis
+- **Anomaly detection** and alerting
+- **Health checks** and diagnostics
+
+## 🔧 Configuration
+
+### Environment Variables
+```bash
+# LLM Configuration
+MODEL_NAME=llama3.2:3b
+OLLAMA_HOST=http://abi-llm-base:11434
+
+# Database Configuration
+WEAVIATE_URL=http://abi-weaviate:8080
+SQLLITE_DB=abi_context.db
+
+# Agent Configuration
+ABI_ROLE=Agent_Name
+ABI_NODE=ABI_Node
+PYTHONPATH=/app
+```
+
+### Agent Cards
+Each agent is defined by a JSON configuration card specifying:
+- Capabilities and skills
+- Input/output modes
+- Communication protocols
+- Metadata and requirements
+
+## 🔒 Security & Governance
+
+### Advanced OPA Policy Engine ✅
+- **Immutable core policies** auto-generated at startup
+- **Multi-layer policy evaluation** (core + custom policies)
+- **Real-time risk scoring** with contextual modifiers
+- **Fail-safe security defaults** (deny by default)
+- **Comprehensive audit logging** with decision traceability
+
+### Built-in Safety Mechanisms
+- **Human veto power** on all critical decisions (implemented)
+- **Emergency shutdown** mechanisms always available
+- **Self-replication blocking** via core policies
+- **Policy modification protection** (agents cannot alter security policies)
+- **Sensitive data detection** and blocking
+
+### Governance Rules (Enforced by OPA)
+- ✅ **Self-replication strictly prohibited** by immutable core policies
+- ✅ **Policy modification blocked** for all agents except human operators
+- ✅ **System-level access denied** to all agents
+- ✅ **Network access controlled** to authorized endpoints only
+- ✅ **Resource access validated** with risk assessment
+
+## 📚 Documentation
+
+- [Architecture Overview](docs/architecture.md)
+- [Agent Protocols](docs/agent_protocols.md)
+- [Governance Framework](docs/gobernance.md)
+- [Core Stack Details](CORE-STACK.md)
+- [Infrastructure Guide](INFRA-STACK.md)
+- [Development Roadmap](ROADMAP.md)
+
+## 🤝 Contributing
+
+ABI is an open-source project welcoming contributions from the community. Whether you're interested in:
+
+- Enhancing existing agent capabilities
+- Implementing the Observer agent
+- Improving the semantic layer
+- Expanding security mechanisms
+- Adding tool integrations
+- Writing documentation
+
+Please see our contribution guidelines and join the discussion.
+
+## 📄 License & Philosophy
+
+Distributed under the [Apache License 2.0](LICENSE).
+
+Read our [Manifesto](MANIFIESTO.md) and [Whitepaper](WHITEPAPER.md) to understand the philosophical foundations of ABI.
+
+## Status
+
+**ABI is a functional MVP demonstrating distributed agent-based infrastructure** with semantic discovery and human supervision.  
+The system provides a solid foundation with 4/5 agents operational, OPA policy engine, and MCP-based semantic workflow orchestration. This MVP serves as an extensible platform for building production-ready multi-agent systems.
+
+### Current Implementation Status:
+- **Infrastructure**: ✅ Production-ready (Docker, Weaviate, Ollama, MCP Server)
+- **Core Agents**: ✅ Operational with A2A communication and semantic discovery
+- **Security Layer**: ✅ Advanced Guardian with OPA integration and emergency systems
+- **Semantic Layer**: ✅ MCP-based agent discovery with embedding similarity
+- **Observer Agent**: 🚧 Framework ready, implementation pending
+
+### Key Architectural Achievements:
+- **Semantic Agent Discovery**: Agents discover each other via MCP `find_agent` tool using embedding similarity
+- **A2A Communication**: All agents implement A2A server with standardized communication protocol
+- **Human Supervision**: Native human-in-the-loop controls with emergency shutdown capabilities
+- **Policy-First Security**: OPA-based governance with immutable core policies
+- **Vendor Independence**: Local LLM execution with Ollama, no external API dependencies
+
+### Roadmap to Production:
+1. **Complete Observer Agent** - Implement monitoring and metrics collection
+2. **Enhanced Tool Ecosystem** - Expand agent capabilities with specialized tools
+3. **Performance Optimization** - Optimize semantic discovery and A2A communication
+4. **Enterprise Features** - Multi-tenancy, advanced security, and compliance
+5. **Community Ecosystem** - Agent marketplace and contribution framework
+
+---
+
+## ✨ From Curiosity to Creation: A Personal Note
+I first saw a computer in 1995. My dad had received a Windows 3.11 machine as payment for a job. I was fascinated. At the time, I wanted to study robotics — but when I touched that machine, everything changed. I didn't understand what the Internet was, and I had no idea where to go… but even in that confusion, I felt something big. When I wrote my first Visual C++ program in 1999, I felt like a hacker. When I built my first web page, full of GIFs, I was flying. Nobody taught me. I just read manuals. And now, years later, that journey continues — not just as a coder, but as the creator of ABI. This is for the kids like me, then and now.
+
+## About the Author
+
+**José Luis Martínez** is a systems engineer, AI infrastructure strategist, and creator of the ABI (Agent-Based Infrastructure) paradigm.  
+This project is part of an ongoing research effort to democratize intelligent systems and create shared cognition frameworks for open innovation.
+
+Connect on [LinkedIn](https://www.linkedin.com/in/jose-luis-martinez-71195425/) | [Blog](https://designednotmagic.hashnode.dev)

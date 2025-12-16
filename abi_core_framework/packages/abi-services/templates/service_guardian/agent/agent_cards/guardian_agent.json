@@ -1,0 +1,63 @@
+{
+  "name": "Abi Guardial Agent",
+  "description": "Guards execution by validating intents, actions, and artifacts against organizational and regulatory policies (OPA + semantic layer). Blocks, allows, or requests revision with traceable justifications.",
+  "url": "http://guardial:8003/",
+  "version": "1.0.0",
+
+  "capabilities": {
+    "streaming": "False",
+    "pushNotifications": "True",
+    "stateTransitionHistory": "True"
+  },
+
+  "defaultInputModes": ["application/json", "text/plain", "text/markdown"],
+  "defaultOutputModes": ["application/json", "text/plain"],
+
+  "skills": [
+    {
+      "id": "policy_validate",
+      "name": "Policy Validation",
+      "description": "Validate agent outputs and planned actions against explicit policy documents (e.g., OPA/Rego) and expected behaviors.",
+      "tags": ["compliance", "policy", "validation"],
+      "examples": ["Check an LLM action list against OPA rules for data exfiltration"],
+      "inputModes": ["application/json", "text/plain"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "semantic_compliance",
+      "name": "Semantic Compliance",
+      "description": "Apply semantic checks to detect policy violations not caught by strict rules (embedding/semantic layer).",
+      "tags": ["semantic", "compliance", "safety"],
+      "examples": ["Detect PII leakage risk in a draft response using embeddings + heuristics"],
+      "inputModes": ["text/plain", "text/markdown"],
+      "outputModes": ["application/json", "text/plain"]
+    },
+    {
+      "id": "action_gatekeeping",
+      "name": "Action Gatekeeping",
+      "description": "Gatekeep execution by approving, modifying, or rejecting proposed actions with explicit rationale and compliance trace.",
+      "tags": ["authorization", "gatekeeping", "controls"],
+      "examples": ["Approve read-only access but reject delete on a production bucket"],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json", "text/plain"]
+    },
+    {
+      "id": "risk_scoring",
+      "name": "Risk Scoring",
+      "description": "Assign a deviation score and risk level to outputs/actions versus expected behavior and policy baseline.",
+      "tags": ["risk", "scoring", "deviation"],
+      "examples": ["Return deviation_score=0.72 for a partially compliant data export"],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "remediation_guidance",
+      "name": "Remediation Guidance",
+      "description": "Generate actionable remediation steps to reach compliance and produce an audit-ready report.",
+      "tags": ["remediation", "guidance", "report"],
+      "examples": ["Suggest redactions and scope reduction, then emit an audit_report and compliance_trace"],
+      "inputModes": ["application/json", "text/plain"],
+      "outputModes": ["application/json", "text/plain"]
+    }
+  ]
+}
