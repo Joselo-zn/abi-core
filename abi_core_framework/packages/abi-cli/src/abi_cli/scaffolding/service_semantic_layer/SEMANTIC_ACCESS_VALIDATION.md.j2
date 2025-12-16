@@ -1,0 +1,303 @@
+# 🛡️ **Validación de Acceso Semántico**
+
+## 📋 **Resumen**
+
+Sistema de validación de acceso para la capa semántica que utiliza:
+1. **Política OPA** (`semantic_access.rego`) con reglas de autorización
+2. **Decorador Python** (`@validate_semantic_access`) para interceptar requests
+3. **Agent Cards** como fuente de verdad para agentes registrados
+
+## 🏗️ **Arquitectura**
+
+```
+Request MCP → @validate_semantic_access → OPA Policy → Agent Card → Allow/Deny
+```
+
+### **Flujo de Validación**
+
+1. **Request llega** a función MCP decorada
+2. **Decorador extrae** información del agente (headers, contexto)
+3. **Carga Agent Card** desde filesystem
+4. **Prepara input OPA** con toda la información
+5. **Evalúa política** `abi.semantic_access` en OPA
+6. **Procesa resultado** y permite/deniega acceso
+7. **Ejecuta función** original si está autorizado
+
+## 🔒 **Política OPA: `semantic_access.rego`**
+
+### **Ubicación**
+```
+{{ project_name }}/agents/guardial/opa/policies/semantic_access.rego
+```
+
+### **Reglas Principales**
+
+#### **✅ Permitir Acceso**
+- Agente registrado en sistema (tiene agent card)
+- Agent card activo (`status != "inactive"`)
+- No está en lista negra
+- No excede rate limit
+- IP autorizada (si está configurada)
+- Dentro de horario permitido (si está configurado)
+- Tiene permisos para herramienta MCP solicitada
+
+#### **❌ Denegar Acceso**
+- Agente no registrado
+- Agent card inactivo o blacklisted
+- Rate limit excedido
+- IP no autorizada
+- Fuera de horario permitido
+- Sin permisos para herramienta MCP
+
+#### **📊 Cálculo de Riesgo**
+- **Base**: Por tipo de acción (0.1 - 0.9)
+- **IP**: +0.2 si IP desconocida, +0.1 si externa
+- **Tiempo**: +0.1 si fuera de horario laboral
+- **Herramienta**: +0.0 a +0.4 según herramienta MCP
+- **Agente**: +0.0 a +0.2 según nivel de confianza
+
+## 🔧 **Decorador: `@validate_semantic_access`**
+
+### **Ubicación**
+```
+{{ project_name }}/semantic_layer/layer/mcp_server/semantic_access_validator.py
+```
+
+### **Uso**
+
+```python
+from layer.mcp_server.semantic_access_validator import validate_semantic_access
+
+@validate_semantic_access
+def find_agent(query: str, _request_context: dict = None) -> dict:
+    # Esta función solo se ejecuta si el agente está autorizado
+    return search_agents(query)
+```
+
+### **Extracción de Agente**
+
+El decorador identifica agentes usando:
+
+1. **Header `X-Agent-ID`**
+   ```
+   X-Agent-ID: orchestrator
+   ```
+
+2. **User-Agent parsing**
+   ```
+   User-Agent: ABI-Agent/orchestrator/1.0
+   ```
+
+3. **Contexto del request**
+   ```python
+   _request_context = {"agent_id": "orchestrator"}
+   ```
+
+### **Respuesta de Error**
+
+Si el acceso es denegado:
+
+```json
+{
+  "error": {
+    "code": "ACCESS_DENIED",
+    "message": "Agent not registered in system",
+    "agent_id": "unknown_agent",
+    "risk_score": 1.0,
+    "timestamp": "2025-01-XX..."
+  }
+}
+```
+
+## 📋 **Agent Cards Requeridos**
+
+### **Estructura Mínima**
+
+```json
+{
+  "@type": "Agent",
+  "id": "agent://orchestrator",
+  "name": "Orchestrator Agent",
+  "url": "http://localhost:8002",
+  "metadata": {
+    "status": "active",
+    "trust_level": "high",
+    "enabled": true
+  }
+}
+```
+
+### **Configuración de Seguridad (Opcional)**
+
+```json
+{
+  "security": {
+    "allowed_ips": ["127.0.0.1", "192.168.1.0/24"],
+    "allowed_mcp_tools": ["find_agent", "get_agent_card"],
+    "access_schedule": {
+      "start_hour": 8,
+      "end_hour": 18
+    }
+  }
+}
+```
+
+## 🧪 **Testing**
+
+### **Script de Prueba**
+```bash
+cd {{ project_name }}/semantic_layer
+python test_semantic_validation.py
+```
+
+### **Casos de Prueba**
+1. ✅ Agente autorizado con agent card válido
+2. ❌ Agente con agent card inactivo
+3. ❌ Agente no registrado (sin agent card)
+4. ❌ Request sin identificación de agente
+5. ✅ Diferentes herramientas MCP autorizadas
+
+### **Prueba Manual con OPA**
+
+```bash
+# 1. Iniciar OPA
+docker run -p 8181:8181 openpolicyagent/opa:latest run --server
+
+# 2. Cargar política
+curl -X PUT http://localhost:8181/v1/policies/semantic_access \
+  --data-binary @{{ project_name }}/agents/guardial/opa/policies/semantic_access.rego
+
+# 3. Probar evaluación
+curl -X POST http://localhost:8181/v1/data/abi/semantic_access \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "action": "semantic_layer_access",
+      "source_agent": "orchestrator",
+      "agent_card": {
+        "id": "agent://orchestrator",
+        "metadata": {"status": "active"}
+      },
+      "request_metadata": {
+        "source_ip": "127.0.0.1",
+        "mcp_tool": "find_agent"
+      }
+    }
+  }'
+```
+
+## 🔄 **Integración con Semantic Layer**
+
+### **Servidor MCP Modificado**
+
+```python
+# En server.py
+from layer.mcp_server.semantic_access_validator import validate_semantic_access
+
+@mcp.tool(name='find_agent')
+@validate_semantic_access
+def find_agent(query: str, _request_context: dict = None) -> dict:
+    # Función protegida por validación
+    return search_agent(query)
+```
+
+### **Configuración de Agentes**
+
+Los agentes deben incluir identificación en requests:
+
+```python
+# En cliente MCP
+headers = {
+    "X-Agent-ID": "orchestrator",
+    "User-Agent": "ABI-Agent/orchestrator/1.0"
+}
+```
+
+## 📊 **Monitoreo y Logs**
+
+### **Logs de Validación**
+
+```
+✅ Semantic access granted for 'orchestrator' (risk: 0.15)
+❌ Semantic access denied for 'unauthorized': Agent marked as inactive (risk: 1.0)
+```
+
+### **Métricas Disponibles**
+
+- Requests validados por minuto
+- Agentes autorizados vs denegados
+- Distribución de risk scores
+- Tipos de violaciones más comunes
+- Performance de validación (latencia)
+
+## 🚀 **Despliegue**
+
+### **Variables de Entorno**
+
+```bash
+# Configuración del validador
+AGENT_CARDS_BASE=/app/agent_cards
+OPA_URL=http://{{ project_dir }}-opa:8181
+GUARDIAN_URL=http://{{ project_dir }}-guardian:11438
+
+# Configuración de cache
+VALIDATION_CACHE_TTL=300  # 5 minutos
+```
+
+### **Dependencias**
+
+```bash
+# En requirements.txt del semantic layer
+httpx>=0.24.0
+```
+
+## 🔧 **Configuración Avanzada**
+
+### **Rate Limiting**
+
+Configurar en OPA data:
+
+```json
+{
+  "rate_limits": {
+    "requests_per_minute": 60
+  },
+  "agent_request_counts": {
+    "orchestrator": 45,
+    "planner": 30
+  }
+}
+```
+
+### **Lista Negra**
+
+```json
+{
+  "blacklisted_agents": ["malicious_agent", "test_agent"]
+}
+```
+
+### **Agentes de Confianza**
+
+En la política, modificar:
+
+```rego
+trusted_agents := {
+    "orchestrator",
+    "planner", 
+    "observer",
+    "your_trusted_agent"
+}
+```
+
+## ✅ **Estado de Implementación**
+
+- ✅ Política OPA completa con todas las reglas
+- ✅ Decorador funcional con extracción de agente
+- ✅ Integración con agent cards
+- ✅ Cálculo de risk score
+- ✅ Logging y auditoría
+- ✅ Script de pruebas
+- ✅ Documentación completa
+
+**Sistema listo para validar acceso a la capa semántica** 🛡️

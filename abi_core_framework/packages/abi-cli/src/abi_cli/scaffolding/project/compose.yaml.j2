@@ -1,0 +1,182 @@
+services:
+  # Ollama Service (always present)
+  {{ project_dir }}-ollama:
+    image: ollama/ollama:latest
+    container_name: {{ project_dir }}-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - {{ project_dir }}-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Main application
+  {{ project_dir }}:
+    build: ./services/web_api
+    container_name: {{ project_dir }}-app
+    ports:
+      - "8000:8000"
+    environment:
+      - ABI_ROLE={{ project_name }}
+      - ABI_NODE=ABI Node
+      - MODEL_NAME={{ model_name | default('qwen2.5:3b') }}
+      - OLLAMA_HOST=http://localhost:11434
+      - LOG_LEVEL={{ log_level | default('INFO') }}
+      {% if with_semantic_layer %}
+      - SEMANTIC_LAYER_HOST=http://{{ project_dir }}-semantic-layer:10100
+      {% endif %}
+      {% if with_guardian %}
+      - GUARDIAN_URL=http://{{ project_dir }}-guardian:11438
+      - OPA_URL=http://{{ project_dir }}-opa:8181
+      {% endif %}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      {% if with_semantic_layer %}
+      - {{ project_dir }}-semantic-layer
+      {% endif %}
+      {% if with_guardian %}
+      - {{ project_dir }}-guardian
+      - {{ project_dir }}-opa
+      {% endif %}
+    networks:
+      - {{ project_dir }}-network
+
+  {% if with_semantic_layer %}
+  # Weaviate Vector Database (required by semantic layer)
+  {{ project_dir }}-weaviate:
+    image: semitechnologies/weaviate:1.32.4
+    container_name: {{ project_dir }}-weaviate
+    ports:
+      - "{{ weaviate_port | default('8081') }}:8080"
+    environment:
+      - QUERY_DEFAULT_LIMIT=25
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - CLUSTER_HOSTNAME=node1
+      - WEAVIATE_URL=http://{{ project_dir }}-weaviate:8080
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - {{ project_dir }}-network
+    restart: unless-stopped
+
+  # Semantic Layer Service
+  {{ project_dir }}-semantic-layer:
+    build: ./services/semantic_layer
+    container_name: {{ project_dir }}-semantic-layer
+    ports:
+      - "10100:10100"
+    environment:
+      - AGENT_CARDS_BASE=/app/layer/mcp_server/agent_cards
+      - ABI_LLM_BASE=http://{{ project_dir }}-ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text:v1.5
+      - GUARDIAN_URL=http://{{ project_dir }}-guardian:11438
+      - OPA_URL=http://{{ project_dir }}-opa:8181
+      - SEMANTIC_LAYER_HOST=0.0.0.0
+      - SEMANTIC_LAYER_PORT=10100
+      - WEAVIATE_URL=http://{{ project_dir }}-weaviate:8080
+    volumes:
+      - ./services/semantic_layer/layer/mcp_server/agent_cards:/app/layer/mcp_server/agent_cards:ro
+      - ./logs:/app/logs
+    networks:
+      - {{ project_dir }}-network
+    depends_on:
+      {{ project_dir }}-weaviate:
+        condition: service_healthy
+    restart: unless-stopped
+  {% endif %}
+
+  {% if with_guardian %}
+  # Guardian Security Service
+  {{ project_dir }}-guardian:
+    build: ./services/guardian
+    container_name: {{ project_dir }}-guardian
+    ports:
+      - "{{ guardian_port | default('11438') }}:{{ guardian_port | default('11434') }}"
+      - "{{ dashboard_port | default('8080') }}:{{ dashboard_port | default('8080') }}"
+    environment:
+      - ABI_ROLE=Guardian Security
+      - ABI_NODE=ABI Node
+      - AGENT_HOST=0.0.0.0
+      - AGENT_PORT={{ guardian_port | default('11438') }}
+      - OPA_URL=http://{{ project_dir }}-opa:8181
+      {% if with_semantic_layer %}
+      - SEMANTIC_LAYER_HOST=http://{{ project_dir }}-semantic-layer:10100
+      {% endif %}
+      - MAX_RISK_THRESHOLD={{ max_risk_threshold | default('0.7') }}
+      - EMERGENCY_LOG_DIR=/app/emergency_logs
+      - GUARDIAL_DASHBOARD_PORT={{ dashboard_port | default('8080') }}
+      - GUARDIAL_DASHBOARD_HOST=0.0.0.0
+      {% if domain == 'finance' %}
+      - COMPLIANCE_REQUIRED=true
+      - AUDIT_ALL_TRANSACTIONS=true
+      {% elif domain == 'healthcare' %}
+      - HIPAA_COMPLIANCE=true
+      - PHI_PROTECTION=true
+      {% endif %}
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./logs:/app/logs
+      - ./services/guardian/emergency_logs:/app/emergency_logs
+    depends_on:
+      - {{ project_dir }}-opa
+      {% if with_semantic_layer %}
+      - {{ project_dir }}-semantic-layer
+      {% endif %}
+    networks:
+      - {{ project_dir }}-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:{{ guardian_port | default('11438') }}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Open Policy Agent (OPA)
+  {{ project_dir }}-opa:
+    build: ./services/guardian/opa
+    container_name: {{ project_dir }}-opa
+    ports:
+      - "8181:8181"
+    environment:
+      - OPA_LOG_LEVEL=info
+      - OPA_HOST=0.0.0.0
+    volumes:
+      - ./services/guardian/opa/policies:/policies
+      - ./logs:/app/logs
+    networks:
+      - {{ project_dir }}-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+  {% endif %}
+
+volumes:
+  ollama_data:
+    driver: local
+{% if with_semantic_layer %}
+  weaviate_data:
+    driver: local
+{% endif %}
+
+
+networks:
+  {{ project_dir }}-network:
+    driver: bridge

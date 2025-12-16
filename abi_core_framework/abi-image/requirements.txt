@@ -1,0 +1,45 @@
+# ABI Image Base Dependencies
+# Common libraries for all ABI services (Agents, Semantic Layer, Guardian, MCP-API)
+
+# Core Framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+pydantic>=2.0.0
+starlette>=0.27.0
+
+# MCP Protocol Stack
+fastmcp>=0.1.0
+mcp>=1.0.0
+mcp-toolbox>=0.1.0
+a2a-sdk>=0.1.0
+
+# LangChain AI Stack
+langchain>=0.1.0
+langchain-core>=0.2.20
+langchain-ollama>=0.1.0
+langchain-community>=0.1.0
+langgraph>=0.1.0
+
+# HTTP and Networking
+httpx>=0.25.0
+requests>=2.31.0
+aiohttp>=3.8.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+networkx>=3.0.0
+
+# Data Storage
+redis>=4.5.0
+tinydb>=4.7.0
+
+# System Utilities
+psutil>=5.9.0
+pyyaml>=6.0.0
+jinja2>=3.1.0
+
+# Development and Testing
+rich>=13.0.0
+click>=8.0.0
+python-dotenv>=1.0.0
