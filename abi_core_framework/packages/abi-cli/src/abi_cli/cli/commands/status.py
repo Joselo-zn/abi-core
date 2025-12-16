@@ -18,17 +18,30 @@ def status():
     # Check if we're in an ABI project
     if not Path('.abi').exists():
         console.print("❌ Not in an ABI project directory.", style="red")
+        console.print("💡 Run this command from inside a project created with:", style="yellow")
+        console.print("   abi-core create project my-project --domain 'General'", style="cyan")
         return
     
     runtime_file = Path('.abi/runtime.yaml')
     
     if not runtime_file.exists():
-        console.print("❌ Runtime configuration not found", style="red")
+        console.print("❌ Runtime configuration not found (.abi/runtime.yaml)", style="red")
+        console.print("💡 This appears to be an incomplete ABI project.", style="yellow")
+        console.print("   Try creating a new project with:", style="yellow")
+        console.print("   abi-core create project my-project --domain 'General'", style="cyan")
         return
     
     # Load runtime configuration
-    with open(runtime_file, 'r') as f:
-        runtime_config = yaml.safe_load(f)
+    try:
+        with open(runtime_file, 'r') as f:
+            runtime_config = yaml.safe_load(f)
+        
+        if runtime_config is None:
+            console.print("❌ Runtime configuration is empty or invalid", style="red")
+            return
+    except yaml.YAMLError as e:
+        console.print(f"❌ Error parsing runtime configuration: {e}", style="red")
+        return
     
     project_info = runtime_config.get('project', {})
     project_name = project_info.get('name', 'Unknown Project')
