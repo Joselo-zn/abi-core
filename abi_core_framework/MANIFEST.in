@@ -4,7 +4,7 @@ include CHANGELOG.md
 include pyproject.toml
 
 # Include all scaffolding templates
-recursive-include src/abi_core/scaffolding *
+recursive-include packages/abi-cli/src/abi_cli/scaffolding *
 
 # Include documentation (commented out - docs excluded from package)
 # recursive-include docs *.md
@@ -30,6 +30,6 @@ global-exclude .DS_Store
 prune test-env
 prune docs
 prune .venv
-prune .abi
 prune abi-image
 prune abi_two
+# Note: .abi templates in scaffolding are needed, only exclude project .abi dirs

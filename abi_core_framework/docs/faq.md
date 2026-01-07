@@ -8,7 +8,7 @@ ABI-Core is a framework for building Agent-Based Infrastructure systems. It prov
 
 ### Is ABI-Core production-ready?
 
-ABI-Core v1.2.0 is production-ready with a stable API. The framework includes comprehensive security, modular architecture, and enhanced web interfaces for seamless integration.
+ABI-Core v1.5.2 is production-ready with a stable API. The framework includes comprehensive security, modular architecture, and enhanced web interfaces for seamless integration.
 
 ### What license is ABI-Core under?
 
@@ -112,7 +112,7 @@ abi-core add agent writer --model mistral:7b
 
 ## Architecture
 
-### What's new in v1.2.0?
+### What's new in v1.5.2?
 
 **Modular Architecture:**
 - Reorganized into 5 focused packages: abi-core, abi-agents, abi-services, abi-cli, abi-framework

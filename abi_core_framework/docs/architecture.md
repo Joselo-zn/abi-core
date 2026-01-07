@@ -115,7 +115,7 @@ Agents communicate through A2A over WebSockets, gRPC or message queues, dependin
 
 ---
 
-## 🏗️ Modular Architecture (v1.2.0)
+## 🏗️ Modular Architecture (v1.5.2)
 
 ABI-Core now features a **modular monorepo structure** for enhanced maintainability and community collaboration:
 
@@ -143,5 +143,5 @@ packages/
 
 ---
 
-Document version: `v1.2.0`
+Document version: `v1.5.2`
 Maintainer: [José Luis Martínez](https://github.com/Joselo-zn)
