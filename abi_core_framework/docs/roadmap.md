@@ -1,6 +1,6 @@
 # ABI-Core Roadmap
 
-## ✅ Completed (v1.2.0)
+## ✅ Completed (v1.5.2)
 
 ### Core Infrastructure
 - **Multi-Agent Framework**: Complete agent orchestration system
@@ -22,13 +22,13 @@
 - **Agent Cards**: Standardized agent metadata and discovery
 - **Template System**: Jinja2-based code generation
 
-### Modular Architecture (v1.2.0)
+### Modular Architecture (v1.5.2)
 - **Monorepo Structure**: ✅ **Modular package architecture (COMPLETED 2024-12-16)**
 - **Package Separation**: Core, agents, services, CLI, and framework packages
 - **Backward Compatibility**: All existing imports continue to work
 - **Community Development**: Easier contribution workflow with focused packages
 
-### Enhanced Web Interfaces (v1.2.0)
+### Enhanced Web Interfaces (v1.5.2)
 - **Open WebUI Compatibility**: ✅ **Fixed connection issues (COMPLETED 2024-12-16)**
 - **Streaming Improvements**: Better real-time response handling
 - **Template Consistency**: Synchronized web interfaces across all agents
@@ -84,14 +84,14 @@
 
 | Component | Status | Version | Notes |
 |-----------|--------|---------|-------|
-| Core Framework | ✅ Complete | v1.2.0 | Production ready |
-| A2A Security | ✅ Complete | v1.2.0 | **Fully operational** |
-| Semantic Layer | ✅ Complete | v1.2.0 | MCP integration working |
-| Guardian Service | ✅ Complete | v1.2.0 | OPA policies active |
-| CLI Tools | ✅ Complete | v1.2.0 | Full project lifecycle |
-| Modular Architecture | ✅ Complete | v1.2.0 | **Monorepo structure** |
-| Web Interfaces | ✅ Complete | v1.2.0 | **Open WebUI compatible** |
-| Documentation | ✅ Complete | v1.2.0 | Comprehensive guides |
+| Core Framework | ✅ Complete | v1.5.2 | Production ready |
+| A2A Security | ✅ Complete | v1.5.2 | **Fully operational** |
+| Semantic Layer | ✅ Complete | v1.5.2 | MCP integration working |
+| Guardian Service | ✅ Complete | v1.5.2 | OPA policies active |
+| CLI Tools | ✅ Complete | v1.5.2 | Full project lifecycle |
+| Modular Architecture | ✅ Complete | v1.5.2 | **Monorepo structure** |
+| Web Interfaces | ✅ Complete | v1.5.2 | **Open WebUI compatible** |
+| Documentation | ✅ Complete | v1.5.2 | Comprehensive guides |
 
 ---
 

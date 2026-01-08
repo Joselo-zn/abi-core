@@ -109,7 +109,7 @@ roadmap
 
 **ABI-Core** (Agent-Based Infrastructure Core) is a production-ready framework that combines:
 
-> 🎉 **v1.2.0 Released!** — Now featuring modular architecture, enhanced Open WebUI compatibility, and improved web interfaces for seamless agent development.
+> 🎉 **v1.5.2 Released!** — Now featuring modular architecture, enhanced Open WebUI compatibility, and improved web interfaces for seamless agent development.
 
 - 🤖 **AI Agents** — LangChain-powered agents with A2A (Agent-to-Agent) communication
 - 🧠 **Semantic Layer** — Vector embeddings and distributed knowledge management

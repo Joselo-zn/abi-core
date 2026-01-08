@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Project Structure**: Reorganized codebase into modular packages for better maintainability
 - **Web Interface Templates**: Updated all agent web interfaces for Open WebUI compatibility
 - **Import Paths**: Maintained backward compatibility while enabling new modular imports
-- **Documentation**: Updated to reflect v1.2.0 architecture and features
+- **Documentation**: Updated to reflect v1.5.2 architecture and features
 
 ### Fixed
 - **Web Interface Streaming**: Resolved connection leaks in Open WebUI integration

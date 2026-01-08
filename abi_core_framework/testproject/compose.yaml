@@ -1,0 +1,176 @@
+services:
+  # Ollama Service (always present)
+  testproject-ollama:
+    image: ollama/ollama:latest
+    container_name: testproject-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - testproject-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Main application
+  testproject:
+    build: ./services/web_api
+    container_name: testproject-app
+    ports:
+      - "8000:8000"
+    environment:
+      - ABI_ROLE=testproject
+      - ABI_NODE=ABI Node
+      - MODEL_NAME=qwen2.5:3b
+      - OLLAMA_HOST=http://localhost:11434
+      - LOG_LEVEL=INFO
+      
+      - SEMANTIC_LAYER_HOST=http://testproject-semantic-layer:10100
+      
+      
+      - GUARDIAN_URL=http://testproject-guardian:11438
+      - OPA_URL=http://testproject-opa:8181
+      
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      
+      - testproject-semantic-layer
+      
+      
+      - testproject-guardian
+      - testproject-opa
+      
+    networks:
+      - testproject-network
+
+  
+  # Weaviate Vector Database (required by semantic layer)
+  testproject-weaviate:
+    image: semitechnologies/weaviate:1.32.4
+    container_name: testproject-weaviate
+    ports:
+      - "8081:8080"
+    environment:
+      - QUERY_DEFAULT_LIMIT=25
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - CLUSTER_HOSTNAME=node1
+      - WEAVIATE_URL=http://testproject-weaviate:8080
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - testproject-network
+    restart: unless-stopped
+
+  # Semantic Layer Service
+  testproject-semantic-layer:
+    build: ./services/semantic_layer
+    container_name: testproject-semantic-layer
+    ports:
+      - "10100:10100"
+    environment:
+      - AGENT_CARDS_BASE=/app/layer/mcp_server/agent_cards
+      - ABI_LLM_BASE=http://testproject-ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text:v1.5
+      - GUARDIAN_URL=http://testproject-guardian:11438
+      - OPA_URL=http://testproject-opa:8181
+      - SEMANTIC_LAYER_HOST=0.0.0.0
+      - SEMANTIC_LAYER_PORT=10100
+      - WEAVIATE_URL=http://testproject-weaviate:8080
+    volumes:
+      - ./services/semantic_layer/layer/mcp_server/agent_cards:/app/layer/mcp_server/agent_cards:ro
+      - ./logs:/app/logs
+    networks:
+      - testproject-network
+    depends_on:
+      testproject-weaviate:
+        condition: service_healthy
+    restart: unless-stopped
+  
+
+  
+  # Guardian Security Service
+  testproject-guardian:
+    build: ./services/guardian
+    container_name: testproject-guardian
+    ports:
+      - "11438:11434"
+      - "8080:8080"
+    environment:
+      - ABI_ROLE=Guardian Security
+      - ABI_NODE=ABI Node
+      - AGENT_HOST=0.0.0.0
+      - AGENT_PORT=11438
+      - OPA_URL=http://testproject-opa:8181
+      
+      - SEMANTIC_LAYER_HOST=http://testproject-semantic-layer:10100
+      
+      - MAX_RISK_THRESHOLD=0.7
+      - EMERGENCY_LOG_DIR=/app/emergency_logs
+      - GUARDIAL_DASHBOARD_PORT=8080
+      - GUARDIAL_DASHBOARD_HOST=0.0.0.0
+      
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./logs:/app/logs
+      - ./services/guardian/emergency_logs:/app/emergency_logs
+    depends_on:
+      - testproject-opa
+      
+      - testproject-semantic-layer
+      
+    networks:
+      - testproject-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:11438/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Open Policy Agent (OPA)
+  testproject-opa:
+    build: ./services/guardian/opa
+    container_name: testproject-opa
+    ports:
+      - "8181:8181"
+    environment:
+      - OPA_LOG_LEVEL=info
+      - OPA_HOST=0.0.0.0
+    volumes:
+      - ./services/guardian/opa/policies:/policies
+      - ./logs:/app/logs
+    networks:
+      - testproject-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+  
+
+volumes:
+  ollama_data:
+    driver: local
+
+  weaviate_data:
+    driver: local
+
+
+
+networks:
+  testproject-network:
+    driver: bridge

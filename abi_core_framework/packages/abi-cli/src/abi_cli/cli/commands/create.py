@@ -172,10 +172,25 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
             'model_serving': model_serving,
             'is_centralized': model_serving == 'centralized',
             'is_distributed': model_serving == 'distributed',
-            'service_name': name,  # Add service_name
-            'service_class_name': name.replace(' ', '').replace('-', '').replace('_', ''),  # Add service_class_name
+            'service_name': name,
+            'service_class_name': name.replace(' ', '').replace('-', '').replace('_', ''),
             'version': '1.0.0',
-            'timestamp': '2024-01-01T00:00:00Z'
+            'timestamp': '2024-01-01T00:00:00Z',
+            # Additional variables for runtime.yaml template
+            'model_name': 'qwen2.5:3b',
+            'embedding_model': 'nomic-embed-text:v1.5',
+            'dashboard_port': '8080',
+            'opa_url': f'http://{project_dir.name}-opa:8181',
+            'max_risk_threshold': '0.7',
+            'mode': 'development',
+            'log_level': 'INFO',
+            'debug': 'true',
+            'compliance_required': 'true',
+            'audit_all_transactions': 'true',
+            'max_transaction_amount': '10000.0',
+            'hipaa_compliance': 'true',
+            'phi_protection': 'true',
+            'audit_patient_access': 'true'
         }
         
         # Create project structure

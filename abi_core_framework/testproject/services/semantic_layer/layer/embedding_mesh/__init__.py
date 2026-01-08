@@ -1,0 +1,29 @@
+# semantic_layer/embedding_mesh/__init__.py
+import os
+import weaviate
+
+
+def _get_weaviate_url() -> str:
+    return os.getenv("WEAVIATE_URL", "http://testproject-weaviate:8080")
+
+def weaviate_connection() -> weaviate.WeaviateClient:
+    """Create a new Weaviate client connection.
+    
+    Note: Each call creates a NEW connection. Callers are responsible
+    for closing the connection when done.
+    """
+    url = _get_weaviate_url()
+    host = url.split("://")[1].split(":")[0]
+    port = int(url.rsplit(":", 1)[-1])
+
+    return weaviate.connect_to_local(
+        host=host,
+        port=port,
+        #grpc_port=50051,
+    )
+
+# Create a module-level client for backward compatibility
+# but prefer using weaviate_connection() for new code
+weaviate_client = weaviate_connection()
+
+__all__ = ["weaviate_client", "weaviate_connection"]

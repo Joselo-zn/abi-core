@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""
+Semantic Layer Service - MCP Server
+testproject - general Domain
+"""
+
+from abi_core.common.utils import abi_logging
+
+# Import configuration
+from config import config
+
+# Import MCP server directly
+from layer.mcp_server.server import serve
+
+if __name__ == "__main__":
+    # Display configuration
+    abi_logging(f"📋 Semantic Layer Configuration:")
+    for key, value in config.display_config().items():
+        abi_logging(f"   {key}: {value}")
+    
+    abi_logging(f"🚀 Starting Semantic Layer MCP Server on {config.HOST}:{config.PORT} with transport {config.TRANSPORT}")
+    serve(config.HOST, config.PORT, config.TRANSPORT)
