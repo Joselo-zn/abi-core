@@ -19,5 +19,8 @@ def __getattr__(name):
     elif name == "abi_mcp":
         from . import abi_mcp
         return abi_mcp
+    elif name == "semantic":
+        from . import semantic
+        return semantic
     else:
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
