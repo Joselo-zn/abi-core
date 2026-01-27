@@ -7,7 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.4.0] - 2025-12-16
+## [1.5.8] - 2024-12-20
+
+### Fixed
+- **Version Synchronization**: Updated all version references to 1.5.8 for next PyPI release
+- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.5.11`
+- **Documentation**: Updated version references across all documentation files to 1.5.8
+
+## [1.5.7] - 2024-12-20
+
+### Fixed
+- **Version Synchronization**: Updated all version references to match PyPI published version 1.5.7
+- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.5.7`
+- **Documentation**: Updated version references across all documentation files to 1.5.7
+
+## [1.5.6] - 2024-12-20
+
+### Added
+- **AbiAgent Base Class**: Restored missing `abi_core.agent.agent.AbiAgent` base class
+  - Fixed `ModuleNotFoundError: No module named 'abi_core.agent'` errors
+  - Added proper abstract base class with `stream()` method
+  - Includes lazy imports in `abi_core.__init__.py`
+- **Semantic Module Exports**: Enhanced `abi_core.semantic` module exports
+  - Added `validate_semantic_access` function export
+  - Improved module structure for better accessibility
+
+### Fixed
+- **Import Dependencies**: Resolved missing module imports after monorepo migration
+- **Template Consistency**: Updated all requirements.txt templates to use version 1.5.8
+- **Documentation Version**: Updated Sphinx configuration to reflect current version
+
+### Changed
+- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.5.11`
+- **Documentation**: Updated version references across all documentation files
+
+## [1.4.0] - 2024-12-16
 
 ### Added
 - **Monorepo Modular Architecture**: Complete migration to modular package structure

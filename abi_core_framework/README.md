@@ -8,7 +8,7 @@
 
 **Agent-Based Infrastructure Core** — A comprehensive framework for building, deploying, and managing AI agent systems with semantic layers, orchestration, and security policies.
 
-> 🎉 **v1.2.0 Released!** — Now with modular architecture, enhanced Open WebUI compatibility, and improved web interfaces.
+> 🎉 **v1.5.8 Released!** — Now with modular architecture, enhanced Open WebUI compatibility, and improved web interfaces.
 
 ---
 
@@ -443,7 +443,7 @@ We welcome contributions! This is a beta release, so your feedback is especially
 
 ### Development Setup
 ```bash
-git clone https://github.com/Joselo-zn/abi-core-ai
+git clone https://github.com/Joselo-zn/abi-core
 cd abi-core-ai
 uv sync --dev
 ```
@@ -463,8 +463,8 @@ Apache 2.0 License — see [LICENSE](LICENSE) for details.
 
 ## 🆘 Support
 
-- **Issues** — [GitHub Issues](https://github.com/Joselo-zn/abi-core-ai/issues)  
-- **Discussions** — [GitHub Discussions](https://github.com/Joselo-zn/abi-core-ai/discussions)  
+- **Issues** — [GitHub Issues](https://github.com/Joselo-zn/abi-core/issues)  
+- **Discussions** — [GitHub Discussions](https://github.com/Joselo-zn/abi-core/issues/discussions)  
 - **Email** — jl.mrtz@gmail.com  
 
 ---

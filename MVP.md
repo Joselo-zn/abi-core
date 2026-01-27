@@ -6,7 +6,7 @@ The MVP is fully functional as a distributable Python framework for building mul
 
 ## 🧩 Implemented Components
 
-### 📦 Python Framework (PyPI: `abi-core-ai` v1.2.0)
+### 📦 Python Framework (PyPI: `abi-core-ai` v1.5.8)
 - ✅ **CLI Tool** - Command-line tool `abi-core`
 - ✅ **Scaffolding System** - Automatic project generation
 - ✅ **Modular Monorepo** - 5 integrated packages (abi-core, abi-agents, abi-services, abi-cli, abi-framework)
@@ -72,7 +72,7 @@ flowchart TD
     %% ─────── Layer 1: Developer Interface ───────
     subgraph L1["👨‍💻 Developer Interface"]
         CLI["ABI-Core CLI"]
-        PYPI["PyPI Package<br/>abi-core-ai"]
+        PYPI["PyPI Package<br/>abi-core-ai v1.5.8"]
     end
 
     %% ─────── Layer 2: Framework Core ───────
@@ -158,7 +158,7 @@ flowchart TD
 ## 🚀 MVP Status
 
 ### 📦 Python Framework (Distributed)
-- ✅ **PyPI Package Published** (`abi-core-ai` v1.2.0)
+- ✅ **PyPI Package Published** (`abi-core-ai` v1.5.8)
 - ✅ **Functional CLI** (`abi-core` command)
 - ✅ **Modular Monorepo Completed** (100% functional migration)
 - ✅ **Scaffolding System** (25+ Jinja2 templates)
@@ -299,5 +299,5 @@ abi-core remove agent --name MyAgent     # Remove components
 
 ---
 
-*Last updated: December 15, 2025*  
-*Framework v1.2.0 - Modular Monorepo + Complete A2A System* ✅
+*Last updated: December 20, 2024*  
+*Framework v1.5.8 - Modular Monorepo + Complete A2A System* ✅

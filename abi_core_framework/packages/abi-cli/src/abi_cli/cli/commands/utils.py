@@ -106,7 +106,7 @@ Base ABI Agent Class - Use abi_core.common.agent_executor instead
 """
 
 # This is a fallback - use the real implementation from abi_core
-from abi_core.common.agent_executor import AbiAgent
+from abi_core.agent.agent import AbiAgent
 
 __all__ = ['AbiAgent']
 '''

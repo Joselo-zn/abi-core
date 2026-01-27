@@ -105,7 +105,7 @@ abi-core --version
 
 You should see:
 ```
-abi-core version 1.4.0
+abi-core version 1.5.8
 ```
 
 Check available commands:
