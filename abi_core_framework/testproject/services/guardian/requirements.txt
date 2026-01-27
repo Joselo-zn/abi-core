@@ -15,4 +15,4 @@ aiofiles>=23.2.0
 python-json-logger>=2.0.0
 
 # ABI Core package
-abi-core-ai>=1.4.0
+abi-core-ai>=1.5.11
