@@ -1,0 +1,152 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abi-core-ai"
+version = "1.6.1"
+description = "Agent-Based Infrastructure Core - Runtime and CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [
+    {name = "José Luis Martínez Abundiz", email = "jl.mrtz@gmail.com"}
+]
+keywords = ["ai", "agents", "infrastructure", "semantic", "security"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "click>=8.0.0",
+    "rich>=13.0.0",
+    "jinja2>=3.1.0",
+    "pyyaml>=6.0.0",
+    "pydantic>=2.0.0",
+    "langchain>=0.1.0",
+    "langchain-core>=0.2.20",
+    "langchain-ollama>=0.1.0",
+    "langchain-community>=0.1.0",
+    "langgraph>=0.1.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "starlette>=0.27.0",
+    "requests>=2.31.0",
+    "httpx>=0.25.0",
+    "aiohttp>=3.8.0",
+    "a2a-sdk",
+    "mcp",
+    "fastmcp>=0.1.0",
+    "mcp-toolbox",
+    "networkx>=3.0.0",
+    "numpy>=1.24.0",
+    "redis>=4.5.0",
+    "tinydb>=4.7.0",
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+]
+
+semantic = [
+    "weaviate-client>=4.0.0",
+    "numpy>=1.24.0",
+]
+
+security = [
+    "opa-python-client>=1.0.0",
+    "cryptography>=41.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Joselo-zn/abi-core"
+Documentation = "https://abi-core.readthedocs.io"
+Repository = "https://github.com/Joselo-zn/abi-core"
+Issues = "https://github.com/Joselo-zn/abi-core/issues"
+Changelog = "https://github.com/Joselo-zn/abi-core/blob/main/CHANGELOG.md"
+
+[project.scripts]
+abi-core = "abi_cli.cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = [
+    "packages/abi-core/src",
+    "packages/abi-agents/src", 
+    "packages/abi-services/src",
+    "packages/abi-cli/src",
+    "packages/abi-framework/src"
+]
+
+[tool.setuptools.package-data]
+abi_core = [
+    "**/*.j2",
+    "**/*.json", 
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.rego",
+    "**/*.sh",
+    "**/*.md",
+    "**/Dockerfile",
+    "**/requirements.txt"
+]
+abi_agents = [
+    "**/*.j2",
+    "**/*.json",
+    "**/*.yaml", 
+    "**/*.yml",
+    "**/*.md",
+    "**/Dockerfile",
+    "**/requirements.txt"
+]
+abi_services = [
+    "**/*.j2",
+    "**/*.json",
+    "**/*.yaml",
+    "**/*.yml", 
+    "**/*.rego",
+    "**/*.sh",
+    "**/*.md",
+    "**/Dockerfile",
+    "**/requirements.txt"
+]
+abi_cli = [
+    "**/*.j2",
+    "**/*.json",
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.rego", 
+    "**/*.sh",
+    "**/*.md",
+    "**/Dockerfile",
+    "**/requirements.txt"
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.hatch.metadata.hooks.readme]
+path = "README.md"
+content-type = "text/markdown"

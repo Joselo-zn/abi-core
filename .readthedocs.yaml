@@ -1,14 +1,10 @@
-# Read the Docs configuration file
+# Read the Docs configuration file for ABI-Core
 # See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
 
+# Required
 version: 2
 
-# Build documentation in the docs/ directory with Sphinx
-sphinx:
-  configuration: docs/conf.py
-  fail_on_warning: false
-
-# Build documentation with Python
+# Set the OS, Python version and other tools you might need
 build:
   os: ubuntu-22.04
   tools:
@@ -19,18 +15,25 @@ build:
       # You can add any other files or directories that you'd like here as well,
       # like your docs requirements file, or other files that will change your docs build.
       - |
-        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- docs/ .readthedocs.yaml;
+        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- abi_core_framework/docs/ .readthedocs.yaml;
         then
-          echo "No changes to docs/ - exiting the build.";
+          echo "No changes to abi_core_framework/docs/ - exiting the build.";
           exit 183;
         fi
 
-# Install Python dependencies
-python:
-  install:
-    - requirements: docs/requirements.txt
+# Build documentation in the "abi_core_framework/docs/" directory with Sphinx
+sphinx:
+  configuration: abi_core_framework/docs/conf.py
+  fail_on_warning: false
 
-# Optionally declare the Python requirements required to build your docs
+# Optionally build your docs in additional formats such as PDF and ePub
 formats:
   - pdf
   - epub
+
+# Optional but recommended, declare the Python requirements required
+# to build your documentation
+# See https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
+python:
+  install:
+    - requirements: abi_core_framework/docs/requirements.txt

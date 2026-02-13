@@ -1,0 +1,84 @@
+"""
+Configuration module for Semantic Layer Service
+Centralizes all environment variables and configuration settings
+"""
+
+import os
+
+
+class SemanticLayerConfig:
+    """Configuration class for Semantic Layer Service"""
+    
+    # Service Identity
+    SERVICE_NAME: str = "Semantic Layer"
+    SERVICE_VERSION: str = "1.0.0"
+    
+    # Server Configuration
+    HOST: str = os.getenv('SEMANTIC_LAYER_HOST', '0.0.0.0')
+    PORT: int = int(os.getenv('SEMANTIC_LAYER_PORT', '10100'))
+    TRANSPORT: str = os.getenv('SEMANTIC_LAYER_TRANSPORT', 'sse')
+    
+    # Logging
+    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
+    
+    # Agent Cards
+    AGENT_CARDS_BASE: str = os.getenv('AGENT_CARDS_BASE', '/app/layer/mcp_server/agent_cards')
+    
+    # Validation Configuration
+    REQUIRE_USER_VALIDATION: bool = os.getenv('REQUIRE_USER_VALIDATION', 'false').lower() == 'true'
+    REQUIRE_AGENT_VALIDATION: bool = os.getenv('REQUIRE_AGENT_VALIDATION', 'true').lower() == 'true'
+    VALIDATION_MODE: str = os.getenv('VALIDATION_MODE', 'permissive')  # strict/permissive/disabled
+    
+    # Quota Management
+    SEMANTIC_LAYER_DAILY_QUOTA: int = int(os.getenv('SEMANTIC_LAYER_DAILY_QUOTA', '1000'))
+    ENABLE_QUOTA_MANAGEMENT: bool = os.getenv('ENABLE_QUOTA_MANAGEMENT', 'true').lower() == 'true'
+    
+    # Security
+    GUARDIAN_URL: str = os.getenv('GUARDIAN_URL', 'http://{{ project_dir }}-guardian:8100')
+    OPA_URL: str = os.getenv('OPA_URL', 'http://{{ project_dir }}-guardian:8181')
+    
+    # Cache Configuration
+    VALIDATION_CACHE_TTL: int = int(os.getenv('VALIDATION_CACHE_TTL', '300'))  # 5 minutes
+    
+    # Weaviate Configuration
+    WEAVIATE_HOST: str = os.getenv('WEAVIATE_HOST', 'http://{{ project_dir }}-weaviate:8080')
+    WEAVIATE_ENABLED: bool = os.getenv('WEAVIATE_ENABLED', 'true').lower() == 'true'
+    
+    # Embedding Configuration
+    EMBEDDING_MODEL: str = os.getenv('EMBEDDING_MODEL', 'nomic-embed-text:v1.5')
+    OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://{{ project_dir }}-ollama:11434')
+    
+    @classmethod
+    def is_validation_enabled(cls) -> bool:
+        """Check if any validation is enabled"""
+        return cls.VALIDATION_MODE != 'disabled' and (
+            cls.REQUIRE_AGENT_VALIDATION or cls.REQUIRE_USER_VALIDATION
+        )
+    
+    @classmethod
+    def is_strict_mode(cls) -> bool:
+        """Check if running in strict validation mode"""
+        return cls.VALIDATION_MODE == 'strict'
+    
+    @classmethod
+    def display_config(cls) -> dict:
+        """Return configuration as dictionary for display"""
+        return {
+            'service_name': cls.SERVICE_NAME,
+            'host': cls.HOST,
+            'port': cls.PORT,
+            'transport': cls.TRANSPORT,
+            'validation_mode': cls.VALIDATION_MODE,
+            'require_user_validation': cls.REQUIRE_USER_VALIDATION,
+            'require_agent_validation': cls.REQUIRE_AGENT_VALIDATION,
+            'quota_enabled': cls.ENABLE_QUOTA_MANAGEMENT,
+            'daily_quota': cls.SEMANTIC_LAYER_DAILY_QUOTA,
+            'guardian_url': cls.GUARDIAN_URL,
+            'opa_url': cls.OPA_URL,
+            'weaviate_enabled': cls.WEAVIATE_ENABLED,
+            'log_level': cls.LOG_LEVEL
+        }
+
+
+# Create a singleton instance
+config = SemanticLayerConfig()

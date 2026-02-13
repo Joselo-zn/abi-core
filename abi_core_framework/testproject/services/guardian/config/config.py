@@ -1,0 +1,106 @@
+"""
+Configuration module for Guardian Service
+Centralizes all environment variables and configuration settings
+"""
+
+import os
+
+
+class GuardianConfig:
+    """Configuration class for Guardian Service"""
+    
+    # Service Identity
+    SERVICE_NAME: str = "Guardian"
+    SERVICE_VERSION: str = "1.0.0"
+    
+    # Server Configuration
+    HOST: str = os.getenv('GUARDIAN_HOST', '0.0.0.0')
+    PORT: int = int(os.getenv('GUARDIAN_PORT', '11438'))
+    DASHBOARD_PORT: int = int(os.getenv('DASHBOARD_PORT', '8080'))
+    
+    # OPA Configuration
+    OPA_HOST: str = os.getenv('OPA_HOST', '0.0.0.0')
+    OPA_PORT: int = int(os.getenv('OPA_PORT', '8181'))
+    OPA_URL: str = os.getenv('OPA_URL', f'http://{OPA_HOST}:{OPA_PORT}')
+    
+    # Logging
+    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
+    
+    # Policy Configuration
+    POLICIES_DIR: str = os.getenv('POLICIES_DIR', '/app/policies')
+    AUTO_RELOAD_POLICIES: bool = os.getenv('AUTO_RELOAD_POLICIES', 'true').lower() == 'true'
+    POLICY_RELOAD_INTERVAL: int = int(os.getenv('POLICY_RELOAD_INTERVAL', '60'))  # seconds
+    
+    # Validation Configuration
+    ENABLE_AGENT_VALIDATION: bool = os.getenv('ENABLE_AGENT_VALIDATION', 'true').lower() == 'true'
+    ENABLE_USER_VALIDATION: bool = os.getenv('ENABLE_USER_VALIDATION', 'false').lower() == 'true'
+    ENABLE_RESOURCE_VALIDATION: bool = os.getenv('ENABLE_RESOURCE_VALIDATION', 'true').lower() == 'true'
+    
+    # Security
+    REQUIRE_AUTHENTICATION: bool = os.getenv('REQUIRE_AUTHENTICATION', 'true').lower() == 'true'
+    ENABLE_AUDIT_LOG: bool = os.getenv('ENABLE_AUDIT_LOG', 'true').lower() == 'true'
+    AUDIT_LOG_PATH: str = os.getenv('AUDIT_LOG_PATH', '/app/logs/audit.log')
+    
+    # Rate Limiting
+    ENABLE_RATE_LIMITING: bool = os.getenv('ENABLE_RATE_LIMITING', 'true').lower() == 'true'
+    RATE_LIMIT_REQUESTS: int = int(os.getenv('RATE_LIMIT_REQUESTS', '100'))
+    RATE_LIMIT_WINDOW: int = int(os.getenv('RATE_LIMIT_WINDOW', '60'))  # seconds
+    
+    # Risk Scoring
+    ENABLE_RISK_SCORING: bool = os.getenv('ENABLE_RISK_SCORING', 'true').lower() == 'true'
+    HIGH_RISK_THRESHOLD: float = float(os.getenv('HIGH_RISK_THRESHOLD', '0.7'))
+    MEDIUM_RISK_THRESHOLD: float = float(os.getenv('MEDIUM_RISK_THRESHOLD', '0.4'))
+    
+    # Model Configuration (for AI-based policy decisions)
+    OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://testproject-ollama:11434')
+    MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen2.5:3b')
+    ENABLE_AI_POLICY_ASSIST: bool = os.getenv('ENABLE_AI_POLICY_ASSIST', 'false').lower() == 'true'
+    
+    # Cache Configuration
+    ENABLE_DECISION_CACHE: bool = os.getenv('ENABLE_DECISION_CACHE', 'true').lower() == 'true'
+    DECISION_CACHE_TTL: int = int(os.getenv('DECISION_CACHE_TTL', '300'))  # 5 minutes
+    
+    # Monitoring
+    ENABLE_METRICS: bool = os.getenv('ENABLE_METRICS', 'true').lower() == 'true'
+    METRICS_PORT: int = int(os.getenv('METRICS_PORT', '9090'))
+    
+    @classmethod
+    def is_validation_enabled(cls) -> bool:
+        """Check if any validation is enabled"""
+        return (cls.ENABLE_AGENT_VALIDATION or 
+                cls.ENABLE_USER_VALIDATION or 
+                cls.ENABLE_RESOURCE_VALIDATION)
+    
+    @classmethod
+    def get_risk_level(cls, score: float) -> str:
+        """Get risk level based on score"""
+        if score >= cls.HIGH_RISK_THRESHOLD:
+            return "HIGH"
+        elif score >= cls.MEDIUM_RISK_THRESHOLD:
+            return "MEDIUM"
+        else:
+            return "LOW"
+    
+    @classmethod
+    def display_config(cls) -> dict:
+        """Return configuration as dictionary for display"""
+        return {
+            'service_name': cls.SERVICE_NAME,
+            'host': cls.HOST,
+            'port': cls.PORT,
+            'opa_url': cls.OPA_URL,
+            'enable_agent_validation': cls.ENABLE_AGENT_VALIDATION,
+            'enable_user_validation': cls.ENABLE_USER_VALIDATION,
+            'enable_resource_validation': cls.ENABLE_RESOURCE_VALIDATION,
+            'require_authentication': cls.REQUIRE_AUTHENTICATION,
+            'enable_audit_log': cls.ENABLE_AUDIT_LOG,
+            'enable_rate_limiting': cls.ENABLE_RATE_LIMITING,
+            'enable_risk_scoring': cls.ENABLE_RISK_SCORING,
+            'enable_ai_policy_assist': cls.ENABLE_AI_POLICY_ASSIST,
+            'auto_reload_policies': cls.AUTO_RELOAD_POLICIES,
+            'log_level': cls.LOG_LEVEL
+        }
+
+
+# Create a singleton instance
+config = GuardianConfig()

@@ -1,0 +1,35 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include pyproject.toml
+
+# Include all scaffolding templates
+recursive-include packages/abi-cli/src/abi_cli/scaffolding *
+
+# Include documentation (commented out - docs excluded from package)
+# recursive-include docs *.md
+
+# Include any additional data files
+recursive-include src/abi_core *.py
+recursive-include src/abi_core *.json
+recursive-include src/abi_core *.yaml
+recursive-include src/abi_core *.yml
+recursive-include src/abi_core *.j2
+recursive-include src/abi_core *.rego
+recursive-include src/abi_core *.sh
+recursive-include src/abi_core *.md
+
+# Exclude development files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *~
+global-exclude .git*
+global-exclude .DS_Store
+
+# Exclude specific directories from PyPI package
+prune test-env
+prune docs
+prune .venv
+prune abi-image
+prune abi_two
+# Note: .abi templates in scaffolding are needed, only exclude project .abi dirs
