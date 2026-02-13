@@ -1,6 +1,6 @@
 # Orchestrator Agent Dependencies
 # Ensure latest abi-core is installed
-abi-core-ai>=1.5.11
+abi-core-ai>=1.6.1
 
 # All other base dependencies inherited from abi-image
 # Add only orchestrator-specific dependencies here if needed

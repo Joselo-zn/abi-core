@@ -81,7 +81,7 @@ import re
 
 # Parse SEMANTIC_LAYER_HOST which may contain protocol and port
 SEMANTIC_LAYER_URL = os.getenv('SEMANTIC_LAYER_HOST', 'http://abi-semantic-layer:10100/sse')
-TRANSPORT = os.getenv('TRANSPORT', 'sse')
+MCP_TRANSPORT = os.getenv('MCP_TRANSPORT', 'streamable-http')
 
 # Extract host and port from URL if provided with protocol
 # Supports formats: http://host:port/path or just host
@@ -94,23 +94,23 @@ else:
     # Fallback: treat as plain hostname
     HOST = SEMANTIC_LAYER_URL.split(':')[0]
     PORT = int(os.getenv('SEMANTIC_LAYER_PORT', 10100))
-    URL = f'http://{HOST}:{PORT}/sse'
+    URL = f'http://{HOST}:{PORT}/{MCP_TRANSPORT}'
 
 def get_mcp_server_config() -> ServerConfig:
     """Get the MCP server configuration.
     
     Parses SEMANTIC_LAYER_HOST environment variable which can be:
-    - Full URL: http://hostname:port/sse
+    - Full URL: http://hostname:port/sse or streamable-http
     - Hostname only: hostname (uses SEMANTIC_LAYER_PORT or default 10100)
     
     Returns:
         ServerConfig with parsed host, port, transport, and url
     """
-    abi_logging(f'[*] MCP Config: Host={HOST}, Port={PORT}, Transport={TRANSPORT}')
+    abi_logging(f'[*] MCP Config: Host={HOST}, Port={PORT}, Transport={MCP_TRANSPORT}')
     return ServerConfig(
         host=HOST,
         port=PORT,
-        transport=TRANSPORT,
+        transport=MCP_TRANSPORT,
         url=URL,
     )
 
