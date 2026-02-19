@@ -7,11 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Dual Transport Support for MCP Client**: Added support for both SSE and Streamable HTTP transports
+  - `abi_core.abi_mcp.client.init_session()` now supports `transport='sse'` or `transport='streamable-http'`
+  - SSE transport uses `/sse` endpoint (default, unidirectional streaming)
+  - Streamable HTTP transport uses `/mcp` endpoint (bidirectional streaming)
+  - Environment variable `MCP_TRANSPORT` for dynamic transport selection
+  - Backward compatible - SSE remains the default transport
+- **Transport Documentation**: Added comprehensive guide at `docs/user-guide/mcp-transports.md`
+- **Transport Examples**: Added `examples/mcp_transport_examples.py` demonstrating both transports
+- **Transport Tests**: Added unit tests for both transport protocols
+
+### Changed
+- **MCP Client**: Enhanced `init_session()` to automatically select correct endpoint based on transport
+- **ServerConfig**: Updated documentation to clarify supported transports ('sse' and 'streamable-http')
+- **Utils**: Updated `get_mcp_server_config()` to support both transports via environment variables
+
+### Fixed
+- **Transport Validation**: Added proper validation for unsupported transport types
+
 ## [1.5.8] - 2024-12-20
 
 ### Fixed
 - **Version Synchronization**: Updated all version references to 1.5.8 for next PyPI release
-- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.6.1`
+- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.6.2`
 - **Documentation**: Updated version references across all documentation files to 1.5.8
 
 ## [1.5.7] - 2024-12-20
@@ -38,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation Version**: Updated Sphinx configuration to reflect current version
 
 ### Changed
-- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.6.1`
+- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.6.2`
 - **Documentation**: Updated version references across all documentation files
 
 ## [1.4.0] - 2024-12-16

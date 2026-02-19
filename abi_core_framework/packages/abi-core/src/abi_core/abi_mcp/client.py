@@ -7,24 +7,26 @@ import logging
 from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, ReadResourceResult
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def init_session(host, port, transport):
+async def init_session(host, port, transport='sse'):
     """Initializes and manages an MCP ClientSession based on the specified transport.
 
     This asynchronous context manager establishes a connection to an MCP server
-    using Server-Sent Events (SSE) transport.
+    using either Server-Sent Events (SSE) or Streamable HTTP transport.
     It handles the setup and teardown of the connection and yields an active
     `ClientSession` object ready for communication.
 
     Args:
-        host: The hostname or IP address of the MCP server (used for SSE).
-        port: The port number of the MCP server (used for SSE).
-        transport: The communication transport to use ('sse').
+        host: The hostname or IP address of the MCP server.
+        port: The port number of the MCP server.
+        transport: The communication transport to use ('sse' or 'streamable-http').
+                  Defaults to 'sse'.
 
     Yields:
         ClientSession: An initialized and ready-to-use MCP client session.
@@ -35,33 +37,57 @@ async def init_session(host, port, transport):
                    session setup.
     """
 
-    if transport != 'sse':
+    if transport not in ['sse', 'streamable-http']:
         logger.error(f'Unsupported Transport type {transport}')
         raise ValueError(
-            f"Unsupported transport type: {transport}. Must be 'sse'"
+            f"Unsupported transport type: {transport}. Must be 'sse' or 'streamable-http'"
         )
     
-    url = f'http://{host}:{port}/sse'
-    logger.info(f'Connecting to MCP server at {url}')
+    if transport == 'sse':
+        url = f'http://{host}:{port}/sse'
+        logger.info(f'Connecting to MCP server via SSE at {url}')
+        
+        try:
+            async with sse_client(url) as (read_stream, write_stream):
+                logger.info('SSE connection established')
+                try:
+                    async with ClientSession(
+                        read_stream=read_stream,
+                        write_stream=write_stream,
+                    ) as session:
+                        logger.info('SSE Client Session Initializing...')
+                        await session.initialize()
+                        logger.info('SSE Client Session Initialized Successfully')
+                        yield session
+                except Exception as e:
+                    logger.error(f'Error initializing ClientSession: {e}', exc_info=True)
+                    raise
+        except Exception as e:
+            logger.error(f'Error connecting to SSE server at {url}: {e}', exc_info=True)
+            raise
     
-    try:
-        async with sse_client(url) as (read_stream, write_stream):
-            logger.info('SSE connection established')
-            try:
-                async with ClientSession(
-                    read_stream=read_stream,
-                    write_stream=write_stream,
-                ) as session:
-                    logger.info('SSE Client Session Initializing...')
-                    await session.initialize()
-                    logger.info('SSE Client Session Initialized Successfully')
-                    yield session
-            except Exception as e:
-                logger.error(f'Error initializing ClientSession: {e}', exc_info=True)
-                raise
-    except Exception as e:
-        logger.error(f'Error connecting to SSE server at {url}: {e}', exc_info=True)
-        raise
+    elif transport == 'streamable-http':
+        url = f'http://{host}:{port}/mcp'
+        logger.info(f'Connecting to MCP server via Streamable HTTP at {url}')
+        
+        try:
+            async with streamable_http_client(url) as (read_stream, write_stream):
+                logger.info('Streamable HTTP connection established')
+                try:
+                    async with ClientSession(
+                        read_stream=read_stream,
+                        write_stream=write_stream,
+                    ) as session:
+                        logger.info('Streamable HTTP Client Session Initializing...')
+                        await session.initialize()
+                        logger.info('Streamable HTTP Client Session Initialized Successfully')
+                        yield session
+                except Exception as e:
+                    logger.error(f'Error initializing ClientSession: {e}', exc_info=True)
+                    raise
+        except Exception as e:
+            logger.error(f'Error connecting to Streamable HTTP server at {url}: {e}', exc_info=True)
+            raise
 
 async def find_agent(session: ClientSession, query: str, ctx) -> CallToolResult:
     """Call the tool 'find_agent' tool on the connected MCP server.
