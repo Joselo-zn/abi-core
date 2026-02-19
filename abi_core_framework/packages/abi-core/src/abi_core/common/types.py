@@ -18,14 +18,27 @@ class ServerConfig(BaseModel):
     Attributes:
         host: Server hostname or IP address
         port: Server port number
-        transport: Transport protocol (e.g., 'sse', 'http', 'websocket')
+        transport: Transport protocol ('sse' or 'streamable-http')
         url: Complete server URL
         
+    Transport Options:
+        - 'sse': Server-Sent Events (default) - Uses /sse endpoint
+        - 'streamable-http': Streamable HTTP - Uses /mcp endpoint
+        
     Example:
+        >>> # SSE transport (default)
         >>> config = ServerConfig(
         ...     host="localhost",
         ...     port=8080,
         ...     transport="sse",
+        ...     url="http://localhost:8080"
+        ... )
+        >>> 
+        >>> # Streamable HTTP transport
+        >>> config = ServerConfig(
+        ...     host="localhost",
+        ...     port=8080,
+        ...     transport="streamable-http",
         ...     url="http://localhost:8080"
         ... )
     """
@@ -39,7 +52,7 @@ class ServerConfig(BaseModel):
         lt=65536
     )
     transport: str = Field(
-        description="Transport protocol (sse, http, websocket)"
+        description="Transport protocol: 'sse' (Server-Sent Events) or 'streamable-http'"
     )
     url: str = Field(
         description="Complete server URL"
