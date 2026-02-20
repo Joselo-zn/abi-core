@@ -24,8 +24,10 @@ async def example_sse_transport():
     )
     
     print(f"Connecting via SSE to {config.url}")
+    print("Note: Both SSE and Streamable HTTP use the same API")
     
     try:
+        # Both transports return (read_stream, write_stream) tuple
         async with client.init_session(
             config.host,
             config.port,
@@ -59,8 +61,10 @@ async def example_streamable_http_transport():
     )
     
     print(f"Connecting via Streamable HTTP to {config.url}")
+    print("Note: Uses same API as SSE - returns (read_stream, write_stream)")
     
     try:
+        # Same API as SSE - returns (read_stream, write_stream) tuple
         async with client.init_session(
             config.host,
             config.port,

@@ -25,9 +25,14 @@ def serve(host, port, transport):
     Args:
         host: Hostname or IP address to bind the Server to.
         port: Port number to bind the server to.
+        transport: Transport protocol ('sse' or 'streamable-http')
     """
     abi_logging('[🔄] Starting Agents Cards MCP Server')
-    mcp = FastMCP('agent-cards', host=host, port=port)
+    abi_logging(f'[🌐] Server config: host={host}, port={port}, transport={transport}')
+    
+    # FastMCP() no longer accepts host/port in constructor
+    # Pass them to run() method instead
+    mcp = FastMCP('agent-cards')
 
     # Initialize Weaviate collections
     from layer.embedding_mesh.weaviate_store import ensure_collections, upsert_agent_cards, get_existing_agent_card_uris
@@ -519,4 +524,7 @@ def serve(host, port, transport):
     async def health(request: Request):
         return JSONResponse({"status": "ok"})
     
-    mcp.run(transport=transport)
+    # Run server with host, port, and transport
+    # FastMCP now requires passing host to run() method
+    abi_logging(f'[🚀] Starting MCP server on {host}:{port} with {transport} transport')
+    mcp.run(transport=transport, host=host, port=port)

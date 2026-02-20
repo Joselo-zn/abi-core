@@ -83,15 +83,18 @@ class TestMCPTransports:
     @patch('abi_core.abi_mcp.client.streamable_http_client')
     async def test_init_session_streamable_http(self, mock_http_client):
         """Test Streamable HTTP transport initialization."""
-        # Mock Streamable HTTP client
+        # Mock Streamable HTTP client - returns 3 elements (read, write, metadata)
         mock_read_stream = AsyncMock()
         mock_write_stream = AsyncMock()
+        mock_metadata = AsyncMock()  # Connection metadata (ignored)
         mock_session = AsyncMock()
         mock_session.initialize = AsyncMock()
         
+        # streamable_http_client returns (read_stream, write_stream, metadata) tuple
         mock_http_client.return_value.__aenter__.return_value = (
             mock_read_stream,
-            mock_write_stream
+            mock_write_stream,
+            mock_metadata
         )
         
         with patch('abi_core.abi_mcp.client.ClientSession') as mock_client_session:

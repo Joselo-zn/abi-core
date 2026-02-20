@@ -8,10 +8,10 @@ pydantic>=2.0.0
 starlette>=0.27.0
 
 # MCP Protocol Stack
-fastmcp>=0.1.0
-mcp>=1.0.0
-mcp-toolbox>=0.1.0
-a2a-sdk>=0.1.0
+fastmcp>=3.0.0
+mcp>=1.26.0
+mcp-toolbox>=0.1.7
+a2a-sdk>=0.3.23
 
 # LangChain AI Stack
 langchain>=0.1.0
