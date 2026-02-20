@@ -79,14 +79,14 @@ flowchart TD
     CheckTransport -->|invalid| Error[Raise ValueError]
     
     SSEPath --> SSEConnect[Connect to /sse]
-    SSEConnect --> SSEStream[Establish SSE Stream]
-    SSEStream --> SSESession[Create ClientSession]
+    SSEConnect --> SSEStream[Get Read/Write Streams]
+    SSEStream --> SSESession[Create ClientSession<br/>from Streams]
     SSESession --> SSEInit[Initialize Session]
     SSEInit --> Ready1([Ready for Operations])
     
     HTTPPath --> HTTPConnect[Connect to /mcp]
-    HTTPConnect --> HTTPStream[Establish HTTP Stream]
-    HTTPStream --> HTTPSession[Create ClientSession]
+    HTTPConnect --> HTTPStream[Get Read/Write Streams]
+    HTTPStream --> HTTPSession[Create ClientSession<br/>from Streams]
     HTTPSession --> HTTPInit[Initialize Session]
     HTTPInit --> Ready2([Ready for Operations])
     
@@ -97,7 +97,14 @@ flowchart TD
     style Error fill:#ffebee
     style Ready1 fill:#c8e6c9
     style Ready2 fill:#c8e6c9
+    style SSEStream fill:#bbdefb
+    style HTTPStream fill:#e1bee7
 ```
+
+**Key Point:**
+- **Both transports use the same API pattern**
+- Both return `(read_stream, write_stream)` tuples
+- Both require creating `ClientSession` from streams
 
 ## Environment Configuration Flow
 

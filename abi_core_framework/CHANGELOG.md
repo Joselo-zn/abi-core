@@ -25,12 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Transport Validation**: Added proper validation for unsupported transport types
+- **Streamable HTTP API**: Corrected implementation based on official MCP SDK documentation
+  - `streamable_http_client` returns **3 elements**: `(read_stream, write_stream, connection_metadata)`
+  - `sse_client` returns **2 elements**: `(read_stream, write_stream)`
+  - Updated `init_session()` to properly unpack 3 elements for Streamable HTTP
+  - Third element (connection metadata) is ignored with `_` placeholder
+  - Reference: [MCP Python SDK README](https://github.com/modelcontextprotocol/python-sdk)
+- **FastMCP API Update**: Updated all MCP server templates to use new FastMCP API
+  - `FastMCP()` constructor no longer accepts `host` and `port` parameters
+  - Host and port now passed to `mcp.run(transport=transport, host=host, port=port)`
+  - Updated templates: `service_semantic_layer/layer/mcp_server/server.py.j2`
+  - Updated scaffolding: `abi-cli/scaffolding/service_semantic_layer/layer/mcp_server/server.py.j2`
+  - Updated testproject: `testproject/services/semantic_layer/layer/mcp_server/server.py`
 
 ## [1.5.8] - 2024-12-20
 
 ### Fixed
 - **Version Synchronization**: Updated all version references to 1.5.8 for next PyPI release
-- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.6.2`
+- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.6.3`
 - **Documentation**: Updated version references across all documentation files to 1.5.8
 
 ## [1.5.7] - 2024-12-20
@@ -57,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation Version**: Updated Sphinx configuration to reflect current version
 
 ### Changed
-- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.6.2`
+- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.6.3`
 - **Documentation**: Updated version references across all documentation files
 
 ## [1.4.0] - 2024-12-16

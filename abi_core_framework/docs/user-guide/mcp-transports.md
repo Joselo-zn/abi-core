@@ -5,7 +5,40 @@ ABI-Core supports two transport protocols for MCP (Model Context Protocol) commu
 1. **SSE (Server-Sent Events)** - Default, unidirectional streaming
 2. **Streamable HTTP** - Bidirectional streaming with better performance
 
-## Transport Comparison
+## Transport Implementation Details
+
+### SSE Transport - 2 Elements
+
+SSE returns a tuple with 2 elements:
+
+```python
+from mcp.client.sse import sse_client
+from mcp import ClientSession
+
+# SSE returns (read_stream, write_stream)
+async with sse_client(url) as (read_stream, write_stream):
+    async with ClientSession(read_stream, write_stream) as session:
+        await session.initialize()
+        # Use session
+```
+
+### Streamable HTTP Transport - 3 Elements
+
+Streamable HTTP returns a tuple with 3 elements:
+
+```python
+from mcp.client.streamable_http import streamable_http_client
+from mcp import ClientSession
+
+# Streamable HTTP returns (read_stream, write_stream, connection_metadata)
+# The third element contains connection metadata and is typically ignored
+async with streamable_http_client(url) as (read_stream, write_stream, _):
+    async with ClientSession(read_stream, write_stream) as session:
+        await session.initialize()
+        # Use session
+```
+
+**Key Difference:** SSE returns 2 elements, Streamable HTTP returns 3 elements (the third is connection metadata).
 
 | Feature | SSE | Streamable HTTP |
 |---------|-----|-----------------|

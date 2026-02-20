@@ -71,7 +71,9 @@ async def init_session(host, port, transport='sse'):
         logger.info(f'Connecting to MCP server via Streamable HTTP at {url}')
         
         try:
-            async with streamable_http_client(url) as (read_stream, write_stream):
+            # streamable_http_client returns 3 elements: (read_stream, write_stream, connection_metadata)
+            # The third element contains connection metadata and is typically ignored
+            async with streamable_http_client(url) as (read_stream, write_stream, _):
                 logger.info('Streamable HTTP connection established')
                 try:
                     async with ClientSession(
