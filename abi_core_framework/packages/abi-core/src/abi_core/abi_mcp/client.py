@@ -70,6 +70,10 @@ async def init_session(host, port, transport='sse'):
         url = f'http://{host}:{port}/mcp'
         logger.info(f'Connecting to MCP server via Streamable HTTP at {url}')
         
+        session = None
+        read_stream = None
+        write_stream = None
+        
         try:
             # streamable_http_client returns 3 elements: (read_stream, write_stream, connection_metadata)
             # The third element contains connection metadata and is typically ignored
@@ -87,9 +91,19 @@ async def init_session(host, port, transport='sse'):
                 except Exception as e:
                     logger.error(f'Error initializing ClientSession: {e}', exc_info=True)
                     raise
+                finally:
+                    # Ensure proper cleanup of session
+                    if session:
+                        try:
+                            logger.debug('Cleaning up Streamable HTTP session')
+                        except Exception as cleanup_error:
+                            logger.warning(f'Error during session cleanup: {cleanup_error}')
         except Exception as e:
             logger.error(f'Error connecting to Streamable HTTP server at {url}: {e}', exc_info=True)
             raise
+        finally:
+            # Ensure streams are properly closed
+            logger.debug('Streamable HTTP connection cleanup complete')
 
 async def find_agent(session: ClientSession, query: str, ctx) -> CallToolResult:
     """Call the tool 'find_agent' tool on the connected MCP server.

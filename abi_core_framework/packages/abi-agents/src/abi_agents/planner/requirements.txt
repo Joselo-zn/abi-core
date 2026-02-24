@@ -1,6 +1,6 @@
 # Planner Agent Dependencies
 # Ensure latest abi-core is installed
-abi-core-ai>=1.6.3
+abi-core-ai>=1.6.5
 
 # All other base dependencies inherited from abi-image
 # Add only planner-specific dependencies here if needed

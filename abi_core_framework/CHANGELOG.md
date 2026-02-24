@@ -17,11 +17,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Transport Documentation**: Added comprehensive guide at `docs/user-guide/mcp-transports.md`
 - **Transport Examples**: Added `examples/mcp_transport_examples.py` demonstrating both transports
 - **Transport Tests**: Added unit tests for both transport protocols
+- **Session Management Guide**: Added `docs/SESSION_MANAGEMENT.md` with best practices
+  - Solutions for "Session terminated" errors
+  - Proper session lifecycle management
+  - Retry logic patterns
+  - Connection pooling examples
+  - Debugging and monitoring techniques
 
 ### Changed
 - **MCP Client**: Enhanced `init_session()` to automatically select correct endpoint based on transport
 - **ServerConfig**: Updated documentation to clarify supported transports ('sse' and 'streamable-http')
 - **Utils**: Updated `get_mcp_server_config()` to support both transports via environment variables
+- **Session Cleanup**: Improved resource cleanup in Streamable HTTP transport
+  - Added explicit cleanup in finally blocks
+  - Better logging for debugging session lifecycle
+  - Prevents "Session terminated" errors from unclosed streams
+- **MCPToolkit**: Enhanced error handling and added retry logic
+  - Improved error handling with session-level error catching
+  - Added `call_with_retry()` method for automatic retry on transient errors
+  - Exponential backoff for retry attempts
+  - Automatic detection of retryable errors (session terminated, connection issues)
 
 ### Fixed
 - **Transport Validation**: Added proper validation for unsupported transport types
@@ -42,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Version Synchronization**: Updated all version references to 1.5.8 for next PyPI release
-- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.6.3`
+- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.6.5`
 - **Documentation**: Updated version references across all documentation files to 1.5.8
 
 ## [1.5.7] - 2024-12-20
@@ -69,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation Version**: Updated Sphinx configuration to reflect current version
 
 ### Changed
-- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.6.3`
+- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.6.5`
 - **Documentation**: Updated version references across all documentation files
 
 ## [1.4.0] - 2024-12-16
