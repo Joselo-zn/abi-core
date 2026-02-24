@@ -55,6 +55,109 @@ class MCPToolkit:
         self.mcp_config = mcp_config or _mcp_config
         self._available_tools = None
     
+    async def call_with_retry(
+        self,
+        tool_name: str,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Call a custom MCP tool with automatic retry on transient errors.
+        
+        This method automatically retries on "Session terminated" and connection errors,
+        which are common with long-running operations or network issues.
+        
+        Args:
+            tool_name: Name of the MCP tool to call
+            max_retries: Maximum number of retry attempts (default: 3)
+            retry_delay: Base delay between retries in seconds (default: 1.0)
+                        Uses exponential backoff: delay * (attempt + 1)
+            **kwargs: Tool-specific parameters
+        
+        Returns:
+            Dictionary with the tool's response or error information
+        
+        Example:
+            # Retry up to 3 times with exponential backoff
+            result = await toolkit.call_with_retry(
+                "bigquery_search",
+                max_retries=3,
+                retry_delay=2.0,
+                query="SELECT * FROM table"
+            )
+        """
+        import asyncio
+        
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                result = await self.call(tool_name, **kwargs)
+                
+                # Check if result contains a retryable error
+                if isinstance(result, dict) and 'error' in result:
+                    error_msg = str(result['error']).lower()
+                    
+                    # Retry on session/connection errors
+                    if any(keyword in error_msg for keyword in [
+                        'session terminated',
+                        'session error',
+                        'connection',
+                        'timeout'
+                    ]):
+                        last_error = result['error']
+                        
+                        if attempt < max_retries - 1:
+                            wait_time = retry_delay * (attempt + 1)
+                            abi_logging(
+                                f"[⚠️] Retryable error on attempt {attempt + 1}/{max_retries}: "
+                                f"{result['error']}. Retrying in {wait_time}s..."
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue
+                        else:
+                            abi_logging(f"[❌] Max retries ({max_retries}) reached for tool '{tool_name}'")
+                            return result
+                    else:
+                        # Non-retryable error, return immediately
+                        return result
+                else:
+                    # Success
+                    if attempt > 0:
+                        abi_logging(f"[✅] Tool '{tool_name}' succeeded on attempt {attempt + 1}")
+                    return result
+                    
+            except Exception as e:
+                last_error = str(e)
+                error_msg = str(e).lower()
+                
+                # Retry on session/connection exceptions
+                if any(keyword in error_msg for keyword in [
+                    'session terminated',
+                    'session error',
+                    'connection',
+                    'timeout'
+                ]):
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delay * (attempt + 1)
+                        abi_logging(
+                            f"[⚠️] Exception on attempt {attempt + 1}/{max_retries}: "
+                            f"{e}. Retrying in {wait_time}s..."
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        abi_logging(f"[❌] Max retries ({max_retries}) reached for tool '{tool_name}'")
+                        return {"error": f"Failed after {max_retries} attempts: {str(e)}"}
+                else:
+                    # Non-retryable exception
+                    abi_logging(f"[❌] Non-retryable exception: {e}")
+                    return {"error": str(e)}
+        
+        # Should not reach here, but just in case
+        return {"error": f"Failed after {max_retries} attempts: {last_error}"}
+    
     async def call(self, tool_name: str, **kwargs) -> Dict[str, Any]:
         """
         Call a custom MCP tool with keyword arguments.
@@ -69,52 +172,58 @@ class MCPToolkit:
         Example:
             result = await toolkit.call("my_tool", param1="value", param2=123)
         """
-        async with client.init_session(
-            self.mcp_config.host,
-            self.mcp_config.port,
-            self.mcp_config.transport
-        ) as mcp_session:
-            abi_logging(f"[🔧] Calling MCP tool '{tool_name}' with args: {kwargs}")
-            
-            # Build context for authentication
-            context = build_semantic_context_from_card(
-                self.agent_card_path,
-                tool_name=tool_name,
-                query=json.dumps(kwargs)
-            )
-
-            try:
-                mcp_response = await client.custom_tool(
-                    mcp_session,
-                    tool_name,
-                    context,
-                    kwargs
-                )
+        try:
+            async with client.init_session(
+                self.mcp_config.host,
+                self.mcp_config.port,
+                self.mcp_config.transport
+            ) as mcp_session:
+                abi_logging(f"[🔧] Calling MCP tool '{tool_name}' with args: {kwargs}")
                 
-                if hasattr(mcp_response, 'content') and mcp_response.content:
-                    try:
-                        # Parse response content
-                        if isinstance(mcp_response.content, list) and mcp_response.content:
-                            result = json.loads(mcp_response.content[0].text)
-                        else:
-                            result = mcp_response.content
-                        
-                        abi_logging(f"[✅] Tool '{tool_name}' executed successfully")
-                        return result if result else {}
-                        
-                    except json.JSONDecodeError as e:
-                        abi_logging(f'[❌] Error parsing response from {tool_name}: {e}')
-                        return {"error": f"JSON parsing error: {str(e)}"}
-                    except Exception as e:
-                        abi_logging(f'[❌] Error processing response from {tool_name}: {e}')
-                        return {"error": str(e)}
-                else:
-                    abi_logging(f'[⚠️] No response from tool {tool_name}')
-                    return {"error": "No response from tool"}
+                # Build context for authentication
+                context = build_semantic_context_from_card(
+                    self.agent_card_path,
+                    tool_name=tool_name,
+                    query=json.dumps(kwargs)
+                )
+
+                try:
+                    mcp_response = await client.custom_tool(
+                        mcp_session,
+                        tool_name,
+                        context,
+                        kwargs
+                    )
                     
-            except Exception as e:
-                abi_logging(f'[❌] Error calling tool {tool_name}: {e}')
-                return {"error": f"Tool execution error: {str(e)}"}
+                    if hasattr(mcp_response, 'content') and mcp_response.content:
+                        try:
+                            # Parse response content
+                            if isinstance(mcp_response.content, list) and mcp_response.content:
+                                result = json.loads(mcp_response.content[0].text)
+                            else:
+                                result = mcp_response.content
+                            
+                            abi_logging(f"[✅] Tool '{tool_name}' executed successfully")
+                            return result if result else {}
+                            
+                        except json.JSONDecodeError as e:
+                            abi_logging(f'[❌] Error parsing response from {tool_name}: {e}')
+                            return {"error": f"JSON parsing error: {str(e)}"}
+                        except Exception as e:
+                            abi_logging(f'[❌] Error processing response from {tool_name}: {e}')
+                            return {"error": str(e)}
+                    else:
+                        abi_logging(f'[⚠️] No response from tool {tool_name}')
+                        return {"error": "No response from tool"}
+                        
+                except Exception as e:
+                    abi_logging(f'[❌] Error calling tool {tool_name}: {e}')
+                    return {"error": f"Tool execution error: {str(e)}"}
+                    
+        except Exception as e:
+            # Session-level error (connection, initialization, etc.)
+            abi_logging(f'[❌] Session error calling tool {tool_name}: {e}')
+            return {"error": f"Session error: {str(e)}"}
     
     async def list_tools(self) -> List[str]:
         """
