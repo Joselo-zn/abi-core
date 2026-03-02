@@ -28,6 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MCP Client**: Enhanced `init_session()` to automatically select correct endpoint based on transport
 - **ServerConfig**: Updated documentation to clarify supported transports ('sse' and 'streamable-http')
 - **Utils**: Updated `get_mcp_server_config()` to support both transports via environment variables
+
+### Fixed
+- **MCP Accept Header Compliance**: SSE transport now correctly includes both `application/json` and `text/event-stream` in Accept header as required by MCP specification
+  - SSE client now explicitly sets: `Accept: application/json, text/event-stream`
+  - Streamable HTTP transport already compliant (handled by SDK's StreamableHTTPTransport class)
+  - Ensures proper content negotiation with MCP servers
+- **Import Fix**: Corrected import from `streamable_http_client` to `streamablehttp_client` to match MCP SDK naming
+- **Session Termination Handling**: Implemented automatic reconnection on "Session terminated" errors
+  - New `call_tool_with_reconnect()` function implements MCP spec recommendation for 404/session-not-found
+  - Automatically creates fresh session and retries on session termination (up to 3 attempts)
+  - MCPToolkit now uses reconnection-aware calls by default
+  - Prevents "Session terminated" errors in long-running operations
+  - Fixes "Unclosed MemoryObjectReceiveStream" warnings by ensuring proper session lifecycle
+  - Resolves LangGraph INVALID_CHAT_HISTORY errors caused by incomplete tool responses
 - **Session Cleanup**: Improved resource cleanup in Streamable HTTP transport
   - Added explicit cleanup in finally blocks
   - Better logging for debugging session lifecycle

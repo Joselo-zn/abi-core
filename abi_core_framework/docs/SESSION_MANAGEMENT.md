@@ -1,5 +1,54 @@
 # MCP Session Management Best Practices
 
+## Automatic Reconnection (v1.5.11+)
+
+### ✅ Recommended: Use `call_tool_with_reconnect()`
+
+ABI-Core v1.5.11+ includes automatic reconnection on session termination, implementing the MCP spec recommendation:
+
+```python
+from abi_core.abi_mcp import client
+from abi_core.security.agent_auth import with_agent_context
+
+# Build authentication context
+ctx = with_agent_context(
+    agent_id="agent://example",
+    tool_name="bigquery_search",
+    mcp_method="callTool",
+    query="SELECT * FROM table"
+)
+
+# Automatically handles session termination and reconnects
+result = await client.call_tool_with_reconnect(
+    host="localhost",
+    port=10100,
+    tool_name="bigquery_search",
+    arguments={"query": "SELECT * FROM table", "_request_context": ctx},
+    transport="streamable-http",
+    max_attempts=3  # Will retry up to 3 times
+)
+```
+
+**Features:**
+- Creates fresh session for each attempt (never reuses dead sessions)
+- Detects "Session terminated", "404", and "session not found" errors
+- Automatic retry with exponential backoff (0.5s, 1s, 1.5s)
+- Distinguishes retryable vs non-retryable errors
+- Transparent to the user
+
+### MCPToolkit Integration
+
+The `MCPToolkit` class automatically uses reconnection:
+
+```python
+from abi_core.common.semantic_tools import MCPToolkit
+
+toolkit = MCPToolkit()
+
+# Automatic reconnection built-in
+result = await toolkit.bigquery_search(query="SELECT * FROM table")
+```
+
 ## Problem: "Session terminated" Error
 
 ### Symptoms

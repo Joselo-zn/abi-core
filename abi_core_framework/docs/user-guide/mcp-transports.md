@@ -16,6 +16,7 @@ from mcp.client.sse import sse_client
 from mcp import ClientSession
 
 # SSE returns (read_stream, write_stream)
+# Accept header is automatically set to: application/json, text/event-stream
 async with sse_client(url) as (read_stream, write_stream):
     async with ClientSession(read_stream, write_stream) as session:
         await session.initialize()
@@ -27,18 +28,28 @@ async with sse_client(url) as (read_stream, write_stream):
 Streamable HTTP returns a tuple with 3 elements:
 
 ```python
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 
 # Streamable HTTP returns (read_stream, write_stream, connection_metadata)
 # The third element contains connection metadata and is typically ignored
-async with streamable_http_client(url) as (read_stream, write_stream, _):
+# Accept header is automatically set to: application/json, text/event-stream
+async with streamablehttp_client(url) as (read_stream, write_stream, _):
     async with ClientSession(read_stream, write_stream) as session:
         await session.initialize()
         # Use session
 ```
 
 **Key Difference:** SSE returns 2 elements, Streamable HTTP returns 3 elements (the third is connection metadata).
+
+### MCP Specification Compliance
+
+Both transports comply with the MCP specification requirement:
+
+> The client MUST include an Accept header, listing both application/json and text/event-stream as supported content types.
+
+- **SSE Transport**: ABI-Core explicitly sets `Accept: application/json, text/event-stream`
+- **Streamable HTTP Transport**: The MCP SDK's `StreamableHTTPTransport` class automatically sets the correct Accept header
 
 | Feature | SSE | Streamable HTTP |
 |---------|-----|-----------------|

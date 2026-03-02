@@ -22,11 +22,11 @@ async with sse_client(url) as (read_stream, write_stream):
 ### Streamable HTTP Transport - Returns 3 Elements
 
 ```python
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 
 # Streamable HTTP returns (read_stream, write_stream, connection_metadata)
-async with streamable_http_client(url) as (read_stream, write_stream, _):
+async with streamablehttp_client(url) as (read_stream, write_stream, _):
     async with ClientSession(read_stream, write_stream) as session:
         await session.initialize()
         # Use session
@@ -41,12 +41,12 @@ From the [MCP Python SDK README](https://github.com/modelcontextprotocol/python-
 ```python
 import asyncio
 from mcp import ClientSession
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import streamablehttp_client
 
 async def main():
     # Connect to a streamable HTTP server
     # Note the 3 elements: read_stream, write_stream, and metadata (_)
-    async with streamable_http_client("http://localhost:8000/mcp") as (
+    async with streamablehttp_client("http://localhost:8000/mcp") as (
         read_stream,
         write_stream,
         _,  # Connection metadata (ignored)
@@ -85,7 +85,7 @@ async def init_session(host, port, transport='sse'):
         url = f'http://{host}:{port}/mcp'
         
         # Streamable HTTP: Same API as SSE!
-        async with streamable_http_client(url) as (read_stream, write_stream):
+        async with streamablehttp_client(url) as (read_stream, write_stream):
             async with ClientSession(
                 read_stream=read_stream,
                 write_stream=write_stream,
@@ -115,7 +115,7 @@ async with sse_client('http://localhost:10100/sse') as (read, write):
         result = await session.call_tool('find_agent', {'query': 'test'})
 
 # Streamable HTTP - Same pattern!
-async with streamable_http_client('http://localhost:10100/mcp') as (read, write):
+async with streamablehttp_client('http://localhost:10100/mcp') as (read, write):
     async with ClientSession(read_stream=read, write_stream=write) as session:
         await session.initialize()
         result = await session.call_tool('find_agent', {'query': 'test'})
@@ -152,7 +152,7 @@ async def test_sse(mock_sse):
         mock_client_session.return_value.__aenter__.return_value = mock_session
         # Test code
 
-@patch('abi_core.abi_mcp.client.streamable_http_client')
+@patch('abi_core.abi_mcp.client.streamablehttp_client')
 async def test_http(mock_http):
     mock_read = AsyncMock()
     mock_write = AsyncMock()
@@ -177,7 +177,7 @@ async def test_http(mock_http):
 2. Update to latest: `pip install --upgrade mcp`
 3. Verify you're using the correct import:
    ```python
-   from mcp.client.streamable_http import streamable_http_client
+   from mcp.client.streamable_http import streamablehttp_client
    ```
 
 ### Correct Usage for Both Transports
@@ -188,7 +188,7 @@ async with sse_client(url) as (read, write):
     async with ClientSession(read, write) as session:
         await session.initialize()
 
-async with streamable_http_client(url) as (read, write):
+async with streamablehttp_client(url) as (read, write):
     async with ClientSession(read, write) as session:
         await session.initialize()
 ```

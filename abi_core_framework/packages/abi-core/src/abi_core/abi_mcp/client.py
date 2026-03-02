@@ -7,10 +7,122 @@ import logging
 from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import CallToolResult, ReadResourceResult
 
 logger = logging.getLogger(__name__)
+
+
+def _is_session_terminated_error(error: Exception) -> bool:
+    """Check if an error indicates a terminated session.
+    
+    Args:
+        error: The exception to check.
+        
+    Returns:
+        True if the error indicates a terminated session, False otherwise.
+    """
+    error_msg = str(error).lower()
+    return (
+        'session terminated' in error_msg or
+        '404' in error_msg or
+        'session not found' in error_msg or
+        'session-not-found' in error_msg
+    )
+
+
+async def call_tool_with_reconnect(
+    host: str,
+    port: int,
+    tool_name: str,
+    arguments: dict,
+    transport: str = 'sse',
+    max_attempts: int = 3
+) -> CallToolResult:
+    """Call an MCP tool with automatic reconnection on session termination.
+    
+    This function implements the MCP spec recommendation for handling 404/session-terminated
+    errors by creating a fresh session and retrying the operation.
+    
+    According to the MCP specification, when a server terminates a session, it responds
+    with HTTP 404 for requests that continue to use that session ID. The client should
+    then initialize a new session (re-initialize without session ID).
+    
+    The Python MCP SDK does not automatically re-initialize sessions (there's an open
+    issue for this), so this function implements the recommended pattern:
+    1. Detect session termination error
+    2. Create a FRESH session (never reuse dead sessions)
+    3. Retry the operation
+    
+    Args:
+        host: The hostname or IP address of the MCP server.
+        port: The port number of the MCP server.
+        tool_name: Name of the tool to call.
+        arguments: Arguments to pass to the tool.
+        transport: The communication transport ('sse' or 'streamable-http').
+        max_attempts: Maximum number of retry attempts (default: 3).
+        
+    Returns:
+        The result of the tool call.
+        
+    Raises:
+        Exception: If all retry attempts fail or a non-retryable error occurs.
+        
+    Example:
+        >>> ctx = with_agent_context(agent_id="agent://example", ...)
+        >>> result = await call_tool_with_reconnect(
+        ...     host="localhost",
+        ...     port=10100,
+        ...     tool_name="bigquery_search",
+        ...     arguments={"query": "SELECT * FROM table", "_request_context": ctx}
+        ... )
+    """
+    last_error = None
+    
+    for attempt in range(1, max_attempts + 1):
+        try:
+            # CRITICAL: Create a FRESH session for each attempt
+            # Never reuse a dead session - this is the key fix
+            async with init_session(host, port, transport) as session:
+                logger.debug(f"Attempt {attempt}/{max_attempts}: Calling tool '{tool_name}'")
+                result = await session.call_tool(tool_name, arguments=arguments)
+                logger.debug(f"Tool '{tool_name}' completed successfully")
+                return result
+                
+        except Exception as e:
+            last_error = e
+            error_msg = str(e)
+            
+            # Check if this is a session termination error
+            if _is_session_terminated_error(e):
+                logger.warning(
+                    f"[{attempt}/{max_attempts}] Session terminated for tool '{tool_name}'. "
+                    f"Creating new session and retrying... Error: {error_msg}"
+                )
+                # Continue to next attempt with a fresh session
+                if attempt < max_attempts:
+                    # Small delay before retry to avoid overwhelming the server
+                    # Exponential backoff: 0.5s, 1s, 1.5s
+                    await asyncio.sleep(0.5 * attempt)
+                    continue
+                else:
+                    # All attempts exhausted
+                    logger.error(
+                        f"Failed to call tool '{tool_name}' after {max_attempts} attempts. "
+                        f"Last error: {last_error}"
+                    )
+                    raise
+            else:
+                # Non-retryable error, raise immediately
+                logger.error(f"Non-retryable error calling tool '{tool_name}': {error_msg}")
+                raise
+    
+    # Should not reach here, but just in case
+    logger.error(
+        f"Failed to call tool '{tool_name}' after {max_attempts} attempts. "
+        f"Last error: {last_error}"
+    )
+    raise last_error
 
 
 @asynccontextmanager
@@ -47,8 +159,13 @@ async def init_session(host, port, transport='sse'):
         url = f'http://{host}:{port}/sse'
         logger.info(f'Connecting to MCP server via SSE at {url}')
         
+        # MCP spec requires Accept header with both application/json and text/event-stream
+        headers = {
+            'Accept': 'application/json, text/event-stream'
+        }
+        
         try:
-            async with sse_client(url) as (read_stream, write_stream):
+            async with sse_client(url, headers=headers) as (read_stream, write_stream):
                 logger.info('SSE connection established')
                 try:
                     async with ClientSession(
@@ -75,9 +192,9 @@ async def init_session(host, port, transport='sse'):
         write_stream = None
         
         try:
-            # streamable_http_client returns 3 elements: (read_stream, write_stream, connection_metadata)
+            # streamablehttp_client returns 3 elements: (read_stream, write_stream, connection_metadata)
             # The third element contains connection metadata and is typically ignored
-            async with streamable_http_client(url) as (read_stream, write_stream, _):
+            async with streamablehttp_client(url) as (read_stream, write_stream, _):
                 logger.info('Streamable HTTP connection established')
                 try:
                     async with ClientSession(

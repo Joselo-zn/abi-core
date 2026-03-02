@@ -162,6 +162,9 @@ class MCPToolkit:
         """
         Call a custom MCP tool with keyword arguments.
         
+        This method now uses automatic reconnection on session termination,
+        implementing the MCP spec recommendation for handling 404/session-not-found errors.
+        
         Args:
             tool_name: Name of the MCP tool to call
             **kwargs: Tool-specific parameters
@@ -173,57 +176,57 @@ class MCPToolkit:
             result = await toolkit.call("my_tool", param1="value", param2=123)
         """
         try:
-            async with client.init_session(
-                self.mcp_config.host,
-                self.mcp_config.port,
-                self.mcp_config.transport
-            ) as mcp_session:
-                abi_logging(f"[🔧] Calling MCP tool '{tool_name}' with args: {kwargs}")
-                
-                # Build context for authentication
-                context = build_semantic_context_from_card(
-                    self.agent_card_path,
-                    tool_name=tool_name,
-                    query=json.dumps(kwargs)
-                )
-
+            abi_logging(f"[🔧] Calling MCP tool '{tool_name}' with args: {kwargs}")
+            
+            # Build context for authentication
+            context = build_semantic_context_from_card(
+                self.agent_card_path,
+                tool_name=tool_name,
+                query=json.dumps(kwargs)
+            )
+            
+            # Merge context with kwargs
+            arguments = {
+                '_request_context': context,
+                **kwargs
+            }
+            
+            # Use the new reconnection-aware function
+            # This automatically creates fresh sessions on retry
+            mcp_response = await client.call_tool_with_reconnect(
+                host=self.mcp_config.host,
+                port=self.mcp_config.port,
+                tool_name=tool_name,
+                arguments=arguments,
+                transport=self.mcp_config.transport,
+                max_attempts=3
+            )
+            
+            if hasattr(mcp_response, 'content') and mcp_response.content:
                 try:
-                    mcp_response = await client.custom_tool(
-                        mcp_session,
-                        tool_name,
-                        context,
-                        kwargs
-                    )
-                    
-                    if hasattr(mcp_response, 'content') and mcp_response.content:
-                        try:
-                            # Parse response content
-                            if isinstance(mcp_response.content, list) and mcp_response.content:
-                                result = json.loads(mcp_response.content[0].text)
-                            else:
-                                result = mcp_response.content
-                            
-                            abi_logging(f"[✅] Tool '{tool_name}' executed successfully")
-                            return result if result else {}
-                            
-                        except json.JSONDecodeError as e:
-                            abi_logging(f'[❌] Error parsing response from {tool_name}: {e}')
-                            return {"error": f"JSON parsing error: {str(e)}"}
-                        except Exception as e:
-                            abi_logging(f'[❌] Error processing response from {tool_name}: {e}')
-                            return {"error": str(e)}
+                    # Parse response content
+                    if isinstance(mcp_response.content, list) and mcp_response.content:
+                        result = json.loads(mcp_response.content[0].text)
                     else:
-                        abi_logging(f'[⚠️] No response from tool {tool_name}')
-                        return {"error": "No response from tool"}
-                        
+                        result = mcp_response.content
+                    
+                    abi_logging(f"[✅] Tool '{tool_name}' executed successfully")
+                    return result if result else {}
+                    
+                except json.JSONDecodeError as e:
+                    abi_logging(f'[❌] Error parsing response from {tool_name}: {e}')
+                    return {"error": f"JSON parsing error: {str(e)}"}
                 except Exception as e:
-                    abi_logging(f'[❌] Error calling tool {tool_name}: {e}')
-                    return {"error": f"Tool execution error: {str(e)}"}
+                    abi_logging(f'[❌] Error processing response from {tool_name}: {e}')
+                    return {"error": str(e)}
+            else:
+                abi_logging(f'[⚠️] No response from tool {tool_name}')
+                return {"error": "No response from tool"}
                     
         except Exception as e:
-            # Session-level error (connection, initialization, etc.)
-            abi_logging(f'[❌] Session error calling tool {tool_name}: {e}')
-            return {"error": f"Session error: {str(e)}"}
+            # All retries exhausted or non-retryable error
+            abi_logging(f'[❌] Error calling tool {tool_name}: {e}')
+            return {"error": f"Tool execution error: {str(e)}"}
     
     async def list_tools(self) -> List[str]:
         """
