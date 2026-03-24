@@ -74,9 +74,6 @@ def abi_logging(message: str, level: str = 'info'):
     else:
         logger.info(message)  # Default to info if invalid level
 
-# Legacy logger for backward compatibility
-logger = logging.getLogger(__name__)
-
 import re
 
 # Parse SEMANTIC_LAYER_HOST which may contain protocol and port

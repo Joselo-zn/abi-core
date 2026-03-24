@@ -1,5 +1,4 @@
 import json
-import logging
 from collections.abc import AsyncIterable
 
 from a2a.types import (
@@ -14,16 +13,12 @@ from abi_core.common.utils import abi_logging
 from abi_core.common.workflow import Status, WorkflowGraph, WorkflowNode
 from abi_core.common.semantic_tools import tool_find_agent
 from abi_core.agent.agent import AbiAgent
-
-from langchain_ollama import ChatOllama
-from langchain.agents import create_agent
+from abi_core.agent.agent_response import AgentResponse
 
 from a2a.types import AgentCard
 
 # Import configuration
 from config import config, AGENT_CARD 
-
-logger = logging.getLogger(__name__)
 
 
 class AbiOrchestratorAgent(AbiAgent):
@@ -33,26 +28,11 @@ class AbiOrchestratorAgent(AbiAgent):
         super().__init__(
             agent_name=config.AGENT_NAME,
             description=config.AGENT_DESCRIPTION,
+            llm_config=config.LLM_CONFIG,
+            tools=[tool_find_agent],
+            system_prompt=prompts.ORCHESTRATOR_COT_INSTRUCTIONS,
             content_types=['text', 'text/plain'],
         )
-        
-        # Initialize LLM
-        self.llm = ChatOllama(
-            model=config.MODEL_NAME,
-            base_url=config.OLLAMA_HOST,
-            temperature=0.1
-        )
-        
-        abi_logging(f'[✅] LLM initialized: {config.MODEL_NAME} at {config.OLLAMA_HOST}')
-        
-        # Create agent with tools
-        self.agent = create_agent(
-            model=self.llm,
-            tools=[tool_find_agent],
-            system_prompt=prompts.ORCHESTRATOR_COT_INSTRUCTIONS
-        )
-        
-        abi_logging(f'[🚀] Starting ABI {config.AGENT_DISPLAY_NAME}')
 
     def extract_plan_from_results(self, results: list) -> dict | None:
         """Extract plan JSON from Planner results"""
@@ -248,23 +228,14 @@ class AbiOrchestratorAgent(AbiAgent):
                 # Format the clarification message for better readability
                 formatted_msg = f"🤔 **Necesito más información para crear el mejor plan:**\n\n{clarification_msg}"
                 
-                yield {
-                    'response_type': 'text',
-                    'is_task_completed': False,
-                    'requires_input': True,
-                    'content': formatted_msg
-                }
+                yield AgentResponse.input_required(formatted_msg)
                 return
             
             # Step 2: Extract plan
             plan = self.extract_plan_from_results(planner_results)
             
             if not plan:
-                yield {
-                    'response_type': 'text',
-                    'is_task_completed': True,
-                    'content': "❌ Could not generate execution plan"
-                }
+                yield AgentResponse.error("Could not generate execution plan")
                 return
             
             abi_logging(f"[📋] Plan received with {len(plan.get('tasks', []))} tasks")
@@ -295,16 +266,8 @@ class AbiOrchestratorAgent(AbiAgent):
                                 if hasattr(msg, 'content') and msg.content:
                                     final_synthesis = msg.content
                 
-                yield {
-                    'response_type': 'text',
-                    'is_task_completed': True,
-                    'content': final_synthesis or "Workflow completed successfully"
-                }
+                yield AgentResponse.success(final_synthesis or "Workflow completed successfully")
             
         except Exception as e:
             abi_logging(f"[❌] Error in orchestration: {e}")
-            yield {
-                'response_type': 'text',
-                'is_task_completed': True,
-                'content': f"❌ Error: {str(e)}"
-            }
+            yield AgentResponse.error(str(e))

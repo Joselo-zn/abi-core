@@ -1,4 +1,3 @@
-import logging
 import json
 
 from collections.abc import AsyncIterable
@@ -14,9 +13,8 @@ from abi_core.common.utils import abi_logging
 from abi_core.common.semantic_tools import tool_find_agent, tool_recommend_agents
 from models.agent_models import PlannerResponse
 from abi_core.agent.agent import AbiAgent
+from abi_core.agent.agent_response import AgentResponse
 
-from langchain_ollama import ChatOllama
-from langchain.agents import create_agent
 from langchain_core.output_parsers import JsonOutputParser
 
 # Import configuration
@@ -29,29 +27,14 @@ class AbiPlannerAgent(AbiAgent):
         super().__init__(
             agent_name=config.AGENT_NAME,
             description=config.AGENT_DESCRIPTION,
-            content_types=['text', 'text/plain']
-        )
-        
-        # Initialize LLM
-        self.llm = ChatOllama(
-            model=config.MODEL_NAME,
-            base_url=config.OLLAMA_HOST,
-            temperature=0.1
-        )
-        
-        abi_logging(f'[✅] LLM initialized: {config.MODEL_NAME} at {config.OLLAMA_HOST}')
-        
-        # Create agent with tools
-        self.agent = create_agent(
-            model=self.llm,
+            llm_config=config.LLM_CONFIG,
             tools=[tool_find_agent, tool_recommend_agents],
-            system_prompt=prompts.PLANNER_COT_INSTRUCTIONS
+            system_prompt=prompts.PLANNER_COT_INSTRUCTIONS,
+            content_types=['text', 'text/plain'],
         )
         
         self.parser = JsonOutputParser()
         self.conversation_history = {}  # Store conversation per session
-        
-        abi_logging(f'[🚀] Starting ABI {config.AGENT_DISPLAY_NAME}')
 
     async def decompose_and_assign(self, query: str, session_id: str, user_answers: dict = None) -> dict:
         """
@@ -214,16 +197,11 @@ class AbiPlannerAgent(AbiAgent):
                     question_text += f"   Options: {', '.join(options)}\n"
                 question_text += f"   (Answer with: {q_id}: your answer)\n\n"
             
-            yield {
-                'response_type': 'text',
-                'is_task_completed': False,
-                'require_user_input': True,
-                'content': question_text,
-                'metadata': {
-                    'status': 'needs_clarification',
-                    'questions': questions
-                }
-            }
+            yield AgentResponse.input_required(
+                question_text,
+                status='needs_clarification',
+                questions=questions,
+            )
             
         elif result.get('status') == 'ready':
             # Plan is ready
@@ -234,37 +212,27 @@ class AbiPlannerAgent(AbiAgent):
             # Send plan summary
             summary = self._format_plan_summary(plan)
             
-            yield {
-                'response_type': 'text',
-                'is_task_completed': False,
-                'require_user_input': False,
-                'content': summary
-            }
+            yield AgentResponse(
+                content=summary,
+                response_type='text',
+                is_task_completed=False,
+                require_user_input=False,
+            )
             
             # Send complete plan data
-            yield {
-                'response_type': 'data',
-                'is_task_completed': True,
-                'require_user_input': False,
-                'content': plan,
-                'metadata': {
-                    'status': 'ready',
-                    'task_count': len(plan.get('tasks', [])),
-                    'execution_strategy': plan.get('execution_strategy', 'sequential')
-                }
-            }
+            yield AgentResponse.success(
+                plan,
+                status='ready',
+                task_count=len(plan.get('tasks', [])),
+                execution_strategy=plan.get('execution_strategy', 'sequential'),
+            )
             
         else:
             # Error
             error_msg = result.get('message', 'Unknown error occurred')
             abi_logging(f"[❌] Planning error: {error_msg}")
             
-            yield {
-                'response_type': 'text',
-                'is_task_completed': True,
-                'require_user_input': False,
-                'content': f"Error creating plan: {error_msg}"
-            }
+            yield AgentResponse.error(error_msg)
     
     def _format_plan_summary(self, plan: dict) -> str:
         """Format plan into human-readable summary"""

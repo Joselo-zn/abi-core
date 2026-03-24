@@ -1,5 +1,3 @@
-import logging
-
 from abi_core.common.utils import abi_logging
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -19,8 +17,6 @@ from a2a.types import (
     TextPart,
     UnsupportedOperationError
 )
-
-logger = logging.getLogger(__name__)
 
 
 class ABIAgentExecutor(AgentExecutor):

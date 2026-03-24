@@ -2,9 +2,8 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-import logging
+from abi_core.common.utils import abi_logging
 
-logger = logging.getLogger(__name__)
 
 class OPAConfig:
     """
@@ -74,7 +73,7 @@ class OPAConfig:
             if Path(location).exists():
                 file_config = self._load_config_file(location)
                 config = self._merge_configs(config, file_config)
-                logger.info(f"Loaded OPA config from {location}")
+                abi_logging(f"Loaded OPA config from {location}")
                 break
         
         # 4. Override with environment variables
@@ -82,7 +81,7 @@ class OPAConfig:
         config = self._merge_configs(config, env_config)
         
         self.config = config
-        logger.info("OPA configuration loaded successfully")
+        abi_logging("OPA configuration loaded successfully")
     
     def _load_config_file(self, path: str) -> Dict[str, Any]:
         """Load configuration from YAML file"""
@@ -90,7 +89,7 @@ class OPAConfig:
             with open(path, 'r') as f:
                 return yaml.safe_load(f) or {}
         except Exception as e:
-            logger.warning(f"Failed to load config file {path}: {e}")
+            abi_logging(f"Failed to load config file {path}: {e}", level="warning")
             return {}
     
     def _load_env_config(self) -> Dict[str, Any]:
@@ -211,9 +210,9 @@ class OPAConfig:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             with open(path, 'w') as f:
                 yaml.dump(self.config, f, default_flow_style=False)
-            logger.info(f"Configuration saved to {path}")
+            abi_logging(f"Configuration saved to {path}")
         except Exception as e:
-            logger.error(f"Failed to save configuration to {path}: {e}")
+            abi_logging(f"Failed to save configuration to {path}: {e}", level="error")
     
     def validate(self) -> List[str]:
         """

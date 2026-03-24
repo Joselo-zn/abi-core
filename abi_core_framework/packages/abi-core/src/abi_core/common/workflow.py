@@ -1,6 +1,5 @@
 import json
 import uuid
-import logging
 
 from collections.abc import AsyncIterable
 from enum import Enum
@@ -27,7 +26,7 @@ from a2a.types import (
     TaskStatusUpdateEvent,
 )
 
-logger = logging.getLogger(__name__)
+from abi_core.common.utils import abi_logging
 
 class Status(Enum):
     """Reprents the status of the workflow"""
@@ -84,7 +83,7 @@ class WorkflowNode:
         source_card: AgentCard,
     ) -> AsyncIterable[dict[str, any]]:
         """Execute node with assigned agent - does NOT search for agents"""
-        logger.info(f'Execute node {self.id} with agent {self.target_agent_card.name}')
+        abi_logging(f'Execute node {self.id} with agent {self.target_agent_card.name}')
         
         if not self.target_agent_card:
             raise ValueError(f"Node {self.id} has no agent assigned")
@@ -129,7 +128,7 @@ class WorkflowGraph:
 
     def add_node(self, node) -> None:
         """Add a node to the workflow graph"""
-        logger.info(f'Adding Node {node.id}')
+        abi_logging(f'Adding Node {node.id}')
         self.nodes[node.id] = node
         self.latest_node = node.id
         
@@ -143,7 +142,7 @@ class WorkflowGraph:
         # Create node function for LangGraph
         async def node_function(state: WorkflowState):
             """Execute this workflow node"""
-            logger.info(f'Executing node {node.id}')
+            abi_logging(f'Executing node {node.id}')
             node.state = Status.RUNNING
             
             # Get attributes
@@ -197,7 +196,7 @@ class WorkflowGraph:
         if from_node_id not in self.nodes or to_node_id not in self.nodes:
             raise ValueError('Invalid Node IDs')
         
-        logger.info(f'Adding edge from {from_node_id} to {to_node_id}')
+        abi_logging(f'Adding edge from {from_node_id} to {to_node_id}')
         
         # Track edges for later use
         if not hasattr(self, '_edges'):
@@ -242,7 +241,7 @@ class WorkflowGraph:
         self, start_node_id: str = None
     ) -> AsyncIterable[dict[str, any]]:
         """Run the workflow using LangGraph"""
-        logger.info('Running Workflow with LangGraph')
+        abi_logging('Running Workflow with LangGraph')
         
         # Compile graph if not already compiled
         graph = self.compile()

@@ -1,10 +1,9 @@
 import os
-import logging
 from pathlib import Path
 from typing import List, Dict, Any
 import importlib.util
+from abi_core.common.utils import abi_logging
 
-logger = logging.getLogger(__name__)
 
 class PolicyLoader:
     """
@@ -39,7 +38,7 @@ class PolicyLoader:
                 'description': 'Built-in ABI policies'
             })
         except ImportError:
-            logger.warning("Built-in ABI V2 policies not found")
+            abi_logging("Built-in ABI V2 policies not found", level="warning")
         
         # 2. Local policies directory
         local_policies = Path(self.base_policy_path)
@@ -72,9 +71,9 @@ class PolicyLoader:
         # Sort by priority (highest first)
         sources.sort(key=lambda x: x['priority'], reverse=True)
         
-        logger.info(f"Discovered {len(sources)} policy sources")
+        abi_logging(f"Discovered {len(sources)} policy sources")
         for source in sources:
-            logger.info(f"  - {source['name']}: {source['description']}")
+            abi_logging(f"  - {source['name']}: {source['description']}")
             
         return sources
     
@@ -104,10 +103,10 @@ class PolicyLoader:
                                 'description': f'Installed policy package: {dist.project_name}'
                             })
                     except Exception as e:
-                        logger.warning(f"Failed to load policy package {dist.project_name}: {e}")
+                        abi_logging(f"Failed to load policy package {dist.project_name}: {e}", level="warning")
                         
         except ImportError:
-            logger.debug("pkg_resources not available for policy discovery")
+            abi_logging("pkg_resources not available for policy discovery", level="debug")
             
         return sources
     
@@ -127,10 +126,10 @@ class PolicyLoader:
             # Handle conflicts (higher priority wins)
             for policy_name, policy_content in source_policies.items():
                 if policy_name in policies:
-                    logger.info(f"Policy '{policy_name}' overridden by {source['name']}")
+                    abi_logging(f"Policy '{policy_name}' overridden by {source['name']}")
                 policies[policy_name] = policy_content
                 
-        logger.info(f"Loaded {len(policies)} total policies")
+        abi_logging(f"Loaded {len(policies)} total policies")
         self.loaded_policies = policies
         return policies
     
@@ -140,7 +139,7 @@ class PolicyLoader:
         source_path = Path(source['path'])
         
         if not source_path.exists():
-            logger.warning(f"Policy source path does not exist: {source_path}")
+            abi_logging(f"Policy source path does not exist: {source_path}", level="warning")
             return policies
             
         # Find all .rego files recursively
@@ -156,12 +155,12 @@ class PolicyLoader:
                 policy_name = str(relative_path).replace('/', '_').replace('.rego', '')
                 
                 policies[policy_name] = content
-                logger.debug(f"Loaded policy '{policy_name}' from {source['name']}")
+                abi_logging(f"Loaded policy '{policy_name}' from {source['name']}", level="debug")
                 
             except Exception as e:
-                logger.error(f"Failed to load policy {rego_file}: {e}")
+                abi_logging(f"Failed to load policy {rego_file}: {e}", level="error")
                 
-        logger.info(f"Loaded {len(policies)} policies from {source['name']}")
+        abi_logging(f"Loaded {len(policies)} policies from {source['name']}")
         return policies
     
     def get_policy_manifest(self) -> Dict[str, Any]:

@@ -1,9 +1,9 @@
 # web_interface.py
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-import asyncio, json, time, logging
+import asyncio, json, time
 
-logger = logging.getLogger(__name__)
+from abi_core.common.utils import abi_logging
 
 class OrchestratorWebinterface:
     def __init__(self, orchestrator_agent):
@@ -42,7 +42,7 @@ class OrchestratorWebinterface:
                                 chunk_data = {"message": str(chunk), "type": type(chunk).__name__}
                             
                             # Add debug info to identify source
-                            logger.info(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...")
+                            abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...")
                             
                             yield (f"data: {json.dumps(chunk_data)}\n\n").encode()
                         except Exception as serialize_error:
@@ -60,7 +60,7 @@ class OrchestratorWebinterface:
                     raise
                 except Exception as e:
                     # 4) Log + evento de error para que curl reciba “algo” antes del cierre
-                    logger.exception("Error en SSE generate_response: %s", e)
+                    abi_logging(f"Error en SSE generate_response: {e}", level='error')
                     yield (f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n").encode()
                     # pequeña pausa para que se drene el buffer
                     await asyncio.sleep(0.05)

@@ -4,13 +4,12 @@ Validates agent-to-agent communication using OPA policies via Guardian
 """
 
 import os
-import logging
 import httpx
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 from functools import wraps
 
-logger = logging.getLogger(__name__)
+from abi_core.common.utils import abi_logging
 
 
 class A2AAccessValidator:
@@ -44,10 +43,10 @@ class A2AAccessValidator:
         self.validation_mode = validation_mode
         self.enable_audit_log = enable_audit_log
         
-        logger.info(f"[A2A Validator] Initialized with mode: {validation_mode}")
-        logger.info(f"[A2A Validator] OPA URL: {self.opa_url}")
-        logger.info(f"[A2A Validator] Guardian URL: {self.guardian_url}")
-        logger.info(f"[A2A Validator] Audit logging: {enable_audit_log}")
+        abi_logging(f"[A2A Validator] Initialized with mode: {validation_mode}")
+        abi_logging(f"[A2A Validator] OPA URL: {self.opa_url}")
+        abi_logging(f"[A2A Validator] Guardian URL: {self.guardian_url}")
+        abi_logging(f"[A2A Validator] Audit logging: {enable_audit_log}")
 
     def build_a2a_context(
         self,
@@ -137,7 +136,7 @@ class A2AAccessValidator:
         """
         # Disabled mode - always allow
         if self.validation_mode == "disabled":
-            logger.debug("[A2A Validator] Validation disabled - allowing access")
+            abi_logging("[A2A Validator] Validation disabled - allowing access", level="debug")
             return True, None
         
         # Build context
@@ -149,7 +148,7 @@ class A2AAccessValidator:
         )
         
         # Log validation attempt
-        logger.info(
+        abi_logging(
             f"[A2A Validator] Validating: {context['source_agent']['name']} -> "
             f"{context['target_agent']['name']}"
         )
@@ -164,11 +163,11 @@ class A2AAccessValidator:
                 
                 if response.status_code != 200:
                     error_msg = f"Guardian returned status {response.status_code}"
-                    logger.error(f"[A2A Validator] {error_msg}")
+                    abi_logging(f"[A2A Validator] {error_msg}", level="error")
                     
                     # Permissive mode - allow on error
                     if self.validation_mode == "permissive":
-                        logger.warning("[A2A Validator] Permissive mode - allowing despite error")
+                        abi_logging("[A2A Validator] Permissive mode - allowing despite error", level="warning")
                         return True, None
                     
                     return False, error_msg
@@ -195,35 +194,36 @@ class A2AAccessValidator:
                     await self._audit_log(context, is_allowed, reason)
                 
                 if is_allowed:
-                    logger.info(
+                    abi_logging(
                         f"[A2A Validator] ✅ Access granted: "
                         f"{context['source_agent']['name']} -> {context['target_agent']['name']}"
                     )
                 else:
-                    logger.warning(
+                    abi_logging(
                         f"[A2A Validator] ❌ Access denied: "
                         f"{context['source_agent']['name']} -> {context['target_agent']['name']} "
-                        f"Reason: {reason}"
+                        f"Reason: {reason}",
+                        level="warning"
                     )
                 
                 return is_allowed, reason
                 
         except httpx.TimeoutException:
-            logger.error("[A2A Validator] Guardian request timeout")
+            abi_logging("[A2A Validator] Guardian request timeout", level="error")
             
             # Permissive mode - allow on timeout
             if self.validation_mode == "permissive":
-                logger.warning("[A2A Validator] Permissive mode - allowing despite timeout")
+                abi_logging("[A2A Validator] Permissive mode - allowing despite timeout", level="warning")
                 return True, None
             
             return False, "Guardian timeout"
             
         except Exception as e:
-            logger.error(f"[A2A Validator] Error validating access: {e}")
+            abi_logging(f"[A2A Validator] Error validating access: {e}", level="error")
             
             # Permissive mode - allow on error
             if self.validation_mode == "permissive":
-                logger.warning("[A2A Validator] Permissive mode - allowing despite error")
+                abi_logging("[A2A Validator] Permissive mode - allowing despite error", level="warning")
                 return True, None
             
             return False, f"Validation error: {str(e)}"
@@ -252,7 +252,7 @@ class A2AAccessValidator:
                     json=audit_data
                 )
         except Exception as e:
-            logger.warning(f"[A2A Validator] Failed to send audit log: {e}")
+            abi_logging(f"[A2A Validator] Failed to send audit log: {e}", level="warning")
 
 
 # Global validator instance
