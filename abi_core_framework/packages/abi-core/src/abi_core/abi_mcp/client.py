@@ -8,12 +8,13 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, ReadResourceResult
+from abi_core.common.utils import abi_logging
 
 from abi_core.common.utils import abi_logging
 
 
 @asynccontextmanager
-async def init_session(host, port, transport='sse'):
+async def init_session(host, port, transport='streamable-http'):
     """Initializes and manages an MCP ClientSession based on the specified transport.
 
     This asynchronous context manager establishes a connection to an MCP server
@@ -25,7 +26,7 @@ async def init_session(host, port, transport='sse'):
         host: The hostname or IP address of the MCP server.
         port: The port number of the MCP server.
         transport: The communication transport to use ('sse' or 'streamable-http').
-                  Defaults to 'sse'.
+                  Defaults to 'streamable-http'.
 
     Yields:
         ClientSession: An initialized and ready-to-use MCP client session.
@@ -37,37 +38,38 @@ async def init_session(host, port, transport='sse'):
     """
 
     if transport not in ['sse', 'streamable-http']:
-        abi_logging(f'Unsupported Transport type {transport}', level='error')
+        abi_logging(f'[❌] Unsupported Transport type {transport}')
+
         raise ValueError(
             f"Unsupported transport type: {transport}. Must be 'sse' or 'streamable-http'"
         )
     
     if transport == 'sse':
         url = f'http://{host}:{port}/sse'
-        abi_logging(f'Connecting to MCP server via SSE at {url}')
+        abi_logging(f'[🔌] Connecting to MCP server via SSE at {url}')
         
         try:
             async with sse_client(url) as (read_stream, write_stream):
-                abi_logging('SSE connection established')
+                abi_logging('[✅] SSE connection established')
                 try:
                     async with ClientSession(
                         read_stream=read_stream,
                         write_stream=write_stream,
                     ) as session:
-                        abi_logging('SSE Client Session Initializing...')
+                        abi_logging('[⚙️] SSE Client Session Initializing...')
                         await session.initialize()
-                        abi_logging('SSE Client Session Initialized Successfully')
+                        abi_logging('[✅] SSE Client Session Initialized Successfully')
                         yield session
                 except Exception as e:
-                    abi_logging(f'Error initializing ClientSession: {e}', level='error')
+                    abi_logging(f'[❌] Error initializing ClientSession: {e}')
                     raise
         except Exception as e:
-            abi_logging(f'Error connecting to SSE server at {url}: {e}', level='error')
+            abi_logging(f'[❌] Error connecting to SSE server at {url}: {e}')
             raise
     
     elif transport == 'streamable-http':
         url = f'http://{host}:{port}/mcp'
-        abi_logging(f'Connecting to MCP server via Streamable HTTP at {url}')
+        abi_logging(f'[🔌] Connecting to MCP server via Streamable HTTP at {url}')
         
         session = None
         read_stream = None
@@ -77,32 +79,33 @@ async def init_session(host, port, transport='sse'):
             # streamable_http_client returns 3 elements: (read_stream, write_stream, connection_metadata)
             # The third element contains connection metadata and is typically ignored
             async with streamable_http_client(url) as (read_stream, write_stream, _):
-                abi_logging('Streamable HTTP connection established')
+                abi_logging('[✅] Streamable HTTP connection established')
+
                 try:
                     async with ClientSession(
                         read_stream=read_stream,
                         write_stream=write_stream,
                     ) as session:
-                        abi_logging('Streamable HTTP Client Session Initializing...')
+                        abi_logging('[⚙️] Streamable HTTP Client Session Initializing...')
                         await session.initialize()
-                        abi_logging('Streamable HTTP Client Session Initialized Successfully')
+                        abi_logging('[✅] Streamable HTTP Client Session Initialized Successfully')
                         yield session
                 except Exception as e:
-                    abi_logging(f'Error initializing ClientSession: {e}', level='error')
+                    abi_logging(f'[❌] Error initializing ClientSession: {e}')
                     raise
                 finally:
                     # Ensure proper cleanup of session
                     if session:
                         try:
-                            abi_logging('Cleaning up Streamable HTTP session', level='debug')
+                            abi_logging('[🧹] Cleaning up Streamable HTTP session')
                         except Exception as cleanup_error:
-                            abi_logging(f'Error during session cleanup: {cleanup_error}', level='warning')
+                            abi_logging(f'[⚠️] Error during session cleanup: {cleanup_error}')
         except Exception as e:
-            abi_logging(f'Error connecting to Streamable HTTP server at {url}: {e}', level='error')
+            abi_logging(f'[❌] Error connecting to Streamable HTTP server at {url}: {e}')
             raise
         finally:
             # Ensure streams are properly closed
-            abi_logging('Streamable HTTP connection cleanup complete', level='debug')
+            abi_logging('[🧹] Streamable HTTP connection cleanup complete')
 
 async def find_agent(session: ClientSession, query: str, ctx) -> CallToolResult:
     """Call the tool 'find_agent' tool on the connected MCP server.
@@ -133,7 +136,7 @@ async def find_resource(session: ClientSession, resource: str) -> ReadResourceRe
     Returns:
         The result of the resource read operation.
     """
-    abi_logging(f'Reading resource: {resource}')
+    abi_logging(f'[📖] Reading resource: {resource}')
     return await session.read_resource(resource)
 
 
@@ -264,7 +267,7 @@ async def custom_tool(
         **payload  # Unpack payload directly into arguments
     }
     
-    abi_logging(f'Calling custom tool: {tool_name}')
+    abi_logging(f'[🔧] Calling custom tool: {tool_name}')
     return await session.call_tool(
         name=tool_name,
         arguments=arguments,

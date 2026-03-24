@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from abi_core.common.utils import abi_logging
 
+from abi_core.common.utils import abi_logging
+
 
 class OPAConfig:
     """

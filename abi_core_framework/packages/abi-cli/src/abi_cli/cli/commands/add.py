@@ -142,7 +142,8 @@ def add_agent(name, description, model, with_web_interface):
         
         progress.update(task, description="Agent created successfully!", completed=True)
     
-    console.print(f"\n✅ Agent '{name}' added successfully!", style="green")
+    # ── Skills / Agent Card interactive session ─────────────────
+    console.print(f"\n✅ Agent '{name}' created!", style="green")
     console.print(f"📁 Location: {agent_dir}", style="blue")
     console.print(f"🚀 Port: {agent_port}", style="cyan")
     
@@ -153,7 +154,91 @@ def add_agent(name, description, model, with_web_interface):
         console.print(f"   - POST /query - Single query", style="cyan")
         console.print(f"   - GET /health - Health check", style="cyan")
     
-    console.print(f"📦 Docker service added to compose file", style="green")
+    console.print(f"\n🎯 Now let's define the agent's skills and create its agent card.", style="cyan")
+    
+    # Prompt for tasks/skills
+    tasks_input = Prompt.ask(
+        "Supported tasks/skills (comma-separated)",
+        default="process_request,analyze_data"
+    )
+    task_list = [t.strip() for t in tasks_input.split(',') if t.strip()]
+    
+    # Build agent URL for Docker inter-container communication
+    agent_name_normalized = name.lower().replace(' ', '_').replace('-', '_')
+    default_url = f"http://{project_dir}-{agent_name_normalized}:{agent_port}"
+    agent_url = Prompt.ask("Agent URL", default=default_url)
+    
+    # Generate agent card
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        task = progress.add_task("Creating agent card...", total=None)
+        
+        agent_card = _generate_agent_card(name, description, model, agent_url, task_list)
+        agent_card_filename = f"{agent_name_normalized}_agent.json"
+        
+        # Save agent card in agent directory
+        agent_cards_dir = agent_dir / 'agent_cards'
+        agent_cards_dir.mkdir(exist_ok=True)
+        
+        import json
+        agent_card_path = agent_cards_dir / agent_card_filename
+        with open(agent_card_path, 'w') as f:
+            json.dump(agent_card, f, indent=2)
+        
+        agent_card_locations = [str(agent_card_path)]
+        
+        # Copy to semantic layer if it exists
+        progress.update(task, description="Checking semantic layer...")
+        semantic_service_dir = None
+        services_dir = Path('services')
+        if services_dir.exists():
+            for service_path in services_dir.iterdir():
+                if service_path.is_dir():
+                    mcp_server_dir = service_path / 'layer' / 'mcp_server'
+                    if mcp_server_dir.exists():
+                        semantic_service_dir = service_path
+                        break
+        
+        if semantic_service_dir:
+            progress.update(task, description="Copying agent card to semantic layer...")
+            semantic_agent_cards_dir = semantic_service_dir / 'layer' / 'mcp_server' / 'agent_cards'
+            semantic_agent_cards_dir.mkdir(parents=True, exist_ok=True)
+            semantic_card_path = semantic_agent_cards_dir / agent_card_filename
+            with open(semantic_card_path, 'w') as f:
+                json.dump(agent_card, f, indent=2)
+            agent_card_locations.append(str(semantic_card_path))
+        
+        # Register agent card in runtime config
+        progress.update(task, description="Updating runtime configuration...")
+        update_runtime_config('agent_cards', {
+            agent_name_normalized: {
+                'name': name,
+                'description': description,
+                'model': model,
+                'url': agent_url,
+                'tasks': task_list,
+                'locations': agent_card_locations
+            }
+        })
+        
+        # Update docker-compose with AGENT_CARD env var
+        _update_compose_with_agent_card(agent_name_normalized, agent_card_filename)
+        
+        progress.update(task, description="Agent card created!", completed=True)
+    
+    console.print(f"\n🃏 Agent card created:", style="green")
+    console.print(f"   📁 Agent: {agent_card_path}", style="blue")
+    if semantic_service_dir:
+        console.print(f"   📁 Semantic layer: {semantic_card_path}", style="blue")
+    else:
+        console.print(f"   💡 Add a semantic layer to enable agent discovery: abi-core add semantic-layer", style="yellow")
+    console.print(f"   🎯 Skills: {', '.join(task_list)}", style="cyan")
+    console.print(f"\n📦 Docker service added to compose file", style="green")
     console.print(f"   Run: docker-compose up {context['agent_name']}-agent", style="blue")
 
 

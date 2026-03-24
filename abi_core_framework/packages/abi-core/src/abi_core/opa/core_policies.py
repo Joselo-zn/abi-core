@@ -14,6 +14,7 @@ from typing import Dict, Any
 from datetime import datetime
 from abi_core.common.utils import abi_logging
 
+from abi_core.common.utils import abi_logging
 
 class CorePolicyGenerator:
     """
@@ -457,8 +458,9 @@ audit_log = {{
         except Exception as e:
             abi_logging(f"🚨 Failed to generate core policies: {e}", level="error")
             import traceback
+
             abi_logging(f"🚨 Traceback: {traceback.format_exc(, level="error")}")
-            return False
+            abi_logging(f"🚨 Traceback: {traceback.format_exc()}", level="error")
     
     def validate_core_policies_exist(self, policy_path: str) -> bool:
         """

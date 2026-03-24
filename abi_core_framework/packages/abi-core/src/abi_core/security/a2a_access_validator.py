@@ -12,6 +12,7 @@ from functools import wraps
 from abi_core.common.utils import abi_logging
 
 
+
 class A2AAccessValidator:
     """Validates A2A communication access using OPA policies"""
     

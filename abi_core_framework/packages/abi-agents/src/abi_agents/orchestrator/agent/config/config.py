@@ -53,7 +53,7 @@ class AgentConfig:
     SEMANTIC_LAYER_HOST: str = os.getenv('SEMANTIC_LAYER_HOST', 'http://localhost:10100')
     MCP_HOST: str = os.getenv('MCP_HOST', 'localhost')
     MCP_PORT: int = int(os.getenv('MCP_PORT', '10100'))
-    MCP_TRANSPORT: str = os.getenv('MCP_TRANSPORT', 'sse')
+    MCP_TRANSPORT: str = os.getenv('MCP_TRANSPORT', 'streamable-http')
     
     # Agent Card
     AGENT_CARD: str = os.getenv('AGENT_CARD', './agent_cards/orchestrator_agent.json')

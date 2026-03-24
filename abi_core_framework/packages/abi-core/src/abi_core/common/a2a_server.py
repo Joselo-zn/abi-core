@@ -21,6 +21,7 @@ from abi_core.agent.agent import AbiAgent
 from abi_core.common.agent_executor import ABIAgentExecutor
 from abi_core.common.utils import abi_logging
 
+
 def _attach_card_route(app: Starlette, card_dict: dict) -> None:
     async def card(_request):
         return JSONResponse(card_dict, status_code=200)
@@ -61,7 +62,11 @@ def _attach_health_route(app: Starlette) -> None:
     try:
         app.add_route("/health", health, methods=["GET"])
     except Exception as e:
+<<<<<<< HEAD
         abi_logging(f"[!] Could not attach /health route: {e}", level='warning')
+=======
+        abi_logging(f"[!] Could not attach /health route: {e}", level="warning")
+>>>>>>> main
 
 def start_server(host: str, port: int, agent_card, agent: AbiAgent):
     """
@@ -118,6 +123,7 @@ def start_server(host: str, port: int, agent_card, agent: AbiAgent):
         uvicorn.run(asgi_app, host=host, port=port)
 
     except FileNotFoundError:
+<<<<<<< HEAD
         abi_logging(f"Error: File '{agent_card}' not found.", level='error')
         sys.exit(1)
     except json.JSONDecodeError:
@@ -125,4 +131,13 @@ def start_server(host: str, port: int, agent_card, agent: AbiAgent):
         sys.exit(1)
     except Exception as e:
         abi_logging(f"An error occurred during server startup: {e}", level='error')
+=======
+        abi_logging(f"Error: File '{agent_card}' not found.", level="error")
+        sys.exit(1)
+    except json.JSONDecodeError:
+        abi_logging(f"Error: File '{agent_card}' contains invalid JSON.", level="error")
+        sys.exit(1)
+    except Exception as e:
+        abi_logging(f"An error occurred during server startup: {e}", level="error")
+>>>>>>> main
         sys.exit(1)

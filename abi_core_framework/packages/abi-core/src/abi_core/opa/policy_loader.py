@@ -4,6 +4,8 @@ from typing import List, Dict, Any
 import importlib.util
 from abi_core.common.utils import abi_logging
 
+from abi_core.common.utils import abi_logging
+
 
 class PolicyLoader:
     """
