@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 import importlib.util
 
 from .core_policies import get_core_policy_generator
+from abi_core.common.utils import abi_logging
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class PolicyLoaderV2:
             True if system is secure and can start
             False if system MUST NOT start due to missing security policies
         """
-        logger.info(" Validating system security policies...")
+        abi_logging(" Validating system security policies...")
         
         # Ensure core policies directory exists
         core_policy_dir = Path(self.base_policy_path)
@@ -40,11 +41,11 @@ class PolicyLoaderV2:
         
         # Ensure core policies exist and are valid
         if not self.core_generator.ensure_core_policies(str(core_policy_dir)):
-            logger.error("[!] CRITICAL SECURITY FAILURE: Core policies unavailable")
-            logger.error("[!] SYSTEM STARTUP BLOCKED FOR SECURITY")
+            abi_logging("[!] CRITICAL SECURITY FAILURE: Core policies unavailable", level="error")
+            abi_logging("[!] SYSTEM STARTUP BLOCKED FOR SECURITY", level="error")
             return False
         
-        logger.info("[Y] System security validation passed")
+        abi_logging("[Y] System security validation passed")
         return True
         
     def discover_policy_sources(self) -> List[Dict[str, Any]]:
@@ -81,7 +82,7 @@ class PolicyLoaderV2:
                 'required': False
             })
         except ImportError:
-            logger.warning("Built-in ABI V2 policies not found")
+            abi_logging("Built-in ABI V2 policies not found", level="warning")
         
         # 2. Environment-specified policy paths
         env_policies = os.getenv('ABI_POLICY_PATHS', '')
@@ -116,10 +117,10 @@ class PolicyLoaderV2:
         # Sort by priority (highest first)
         sources.sort(key=lambda x: x['priority'], reverse=True)
         
-        logger.info(f"Discovered {len(sources)} policy sources")
+        abi_logging(f"Discovered {len(sources)} policy sources")
         for source in sources:
             required_marker = " [REQUIRED]" if source.get('required') else ""
-            logger.info(f"  - {source['name']}: {source['description']}{required_marker}")
+            abi_logging(f"  - {source['name']}: {source['description']}{required_marker}")
             
         return sources
     
@@ -150,10 +151,10 @@ class PolicyLoaderV2:
                                 'required': False
                             })
                     except Exception as e:
-                        logger.warning(f"Failed to load policy package {dist.project_name}: {e}")
+                        abi_logging(f"Failed to load policy package {dist.project_name}: {e}", level="warning")
                         
         except ImportError:
-            logger.debug("pkg_resources not available for policy discovery")
+            abi_logging("pkg_resources not available for policy discovery", level="debug")
             
         return sources
     
@@ -184,17 +185,17 @@ class PolicyLoaderV2:
                 if not source_policies:
                     raise RuntimeError(f"CRITICAL: Required core policies not found in {source['path']}")
                 core_policies_loaded = True
-                logger.info(f"[Y] Loaded MANDATORY core policies from {source['name']}")
+                abi_logging(f"[Y] Loaded MANDATORY core policies from {source['name']}")
             
             # Handle conflicts (higher priority wins, but core policies cannot be overridden)
             for policy_name, policy_content in source_policies.items():
                 if policy_name in policies:
                     # Check if trying to override core policies
                     if 'abi_policies' in policy_name and source['priority'] < 1000:
-                        logger.warning(f"[X] BLOCKED: Attempt to override core policy '{policy_name}' by {source['name']}")
+                        abi_logging(f"[X] BLOCKED: Attempt to override core policy '{policy_name}' by {source['name']}", level="warning")
                         continue
                     else:
-                        logger.info(f"Policy '{policy_name}' overridden by {source['name']}")
+                        abi_logging(f"Policy '{policy_name}' overridden by {source['name']}")
                 
                 policies[policy_name] = policy_content
         
@@ -202,7 +203,7 @@ class PolicyLoaderV2:
         if not core_policies_loaded:
             raise RuntimeError("CRITICAL: Core security policies not loaded - system cannot operate safely")
                 
-        logger.info(f"[Y] Loaded {len(policies)} total policies (including mandatory core policies)")
+        abi_logging(f"[Y] Loaded {len(policies)} total policies (including mandatory core policies)")
         self.loaded_policies = policies
         return policies
     
@@ -213,10 +214,10 @@ class PolicyLoaderV2:
         
         if not source_path.exists():
             if source.get('required'):
-                logger.error(f"CRITICAL: Required policy source path does not exist: {source_path}")
+                abi_logging(f"CRITICAL: Required policy source path does not exist: {source_path}", level="error")
                 raise RuntimeError(f"Required policy source missing: {source_path}")
             else:
-                logger.warning(f"Policy source path does not exist: {source_path}")
+                abi_logging(f"Policy source path does not exist: {source_path}", level="warning")
                 return policies
             
         # Find all .rego files recursively
@@ -232,17 +233,17 @@ class PolicyLoaderV2:
                 policy_name = str(relative_path).replace('/', '_').replace('.rego', '')
                 
                 policies[policy_name] = content
-                logger.debug(f"Loaded policy '{policy_name}' from {source['name']}")
+                abi_logging(f"Loaded policy '{policy_name}' from {source['name']}", level="debug")
                 
             except Exception as e:
                 error_msg = f"Failed to load policy {rego_file}: {e}"
                 if source.get('required'):
-                    logger.error(f"CRITICAL: {error_msg}")
+                    abi_logging(f"CRITICAL: {error_msg}", level="error")
                     raise RuntimeError(error_msg)
                 else:
-                    logger.error(error_msg)
+                    abi_logging(error_msg, level="error")
                 
-        logger.info(f"Loaded {len(policies)} policies from {source['name']}")
+        abi_logging(f"Loaded {len(policies)} policies from {source['name']}")
         return policies
     
     def validate_policies(self) -> List[Dict[str, Any]]:
@@ -300,9 +301,9 @@ class PolicyLoaderV2:
         # Log critical issues
         critical_issues = [i for i in issues if i.get('severity') == 'CRITICAL']
         if critical_issues:
-            logger.error(f"[!] CRITICAL POLICY ISSUES FOUND: {len(critical_issues)}")
+            abi_logging(f"[!] CRITICAL POLICY ISSUES FOUND: {len(critical_issues)}", level="error")
             for issue in critical_issues:
-                logger.error(f"[!] {issue['message']}")
+                abi_logging(f"[!] {issue['message']}", level="error")
                 
         return issues
     

@@ -20,6 +20,7 @@ from a2a.server.tasks import (
 
 from abi_core.agent.agent import AbiAgent
 from abi_core.common.agent_executor import ABIAgentExecutor
+from abi_core.common.utils import abi_logging
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def _attach_health_route(app: Starlette) -> None:
     try:
         app.add_route("/health", health, methods=["GET"])
     except Exception as e:
-        logger.warning(f"[!] Could not attach /health route: {e}")
+        abi_logging(f"[!] Could not attach /health route: {e}", level="warning")
 
 def start_server(host: str, port: int, agent_card, agent: AbiAgent):
     """
@@ -116,15 +117,15 @@ def start_server(host: str, port: int, agent_card, agent: AbiAgent):
         _attach_card_route(asgi_app, card_dict)
         _attach_routes_route(asgi_app) 
 
-        logger.info(f"[🚀] Starting A2A {agent_card_obj.name} Client on {host}:{port}")
+        abi_logging(f"[🚀] Starting A2A {agent_card_obj.name} Client on {host}:{port}")
         uvicorn.run(asgi_app, host=host, port=port)
 
     except FileNotFoundError:
-        logger.error(f"Error: File '{agent_card}' not found.")
+        abi_logging(f"Error: File '{agent_card}' not found.", level="error")
         sys.exit(1)
     except json.JSONDecodeError:
-        logger.error(f"Error: File '{agent_card}' contains invalid JSON.")
+        abi_logging(f"Error: File '{agent_card}' contains invalid JSON.", level="error")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"An error occurred during server startup: {e}", exc_info=True)
+        abi_logging(f"An error occurred during server startup: {e}", level="error")
         sys.exit(1)

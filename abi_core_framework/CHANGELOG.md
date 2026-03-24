@@ -23,9 +23,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Retry logic patterns
   - Connection pooling examples
   - Debugging and monitoring techniques
+- **ToolExecutionGraph**: Deterministic tool execution graph built on LangGraph
+  - DAG-based execution with topological ordering
+  - `$-reference` resolution between nodes (e.g. `$input.user_query`, `$step1.result`)
+  - Retry with exponential backoff per node
+  - Checkpoint/resume on failures
+  - Construction from JSON config or programmatic API
+  - Dual execution mode: MCP tools (`tool` param) and local functions (`fn` param, sync or async)
+  - `register_fn("name", callable)` for JSON-defined graphs with local functions
+- **Automatic Agent Card Creation**: `abi-core add agent` now includes interactive skills session
+  - Prompts for supported tasks/skills during agent creation
+  - Generates signed agent card automatically
+  - Saves card to agent directory and semantic layer (if exists)
+  - Registers card in `runtime.yaml` and updates docker-compose
+  - No need to run `add agent-card` separately
 
 ### Changed
 - **MCP Client**: Enhanced `init_session()` to automatically select correct endpoint based on transport
+- **Default MCP Transport**: Changed from `sse` to `streamable-http` across all components
+  - Env var `MCP_TRANSPORT=sse` still works for override
+- **Logging**: Migrated all `logger.*` calls to `abi_logging()` across the framework
+- **Workflow Classes**: Renamed for clarity
+  - `WorkflowGraph` → `AgentInteractionFlow` (backward-compatible aliases maintained)
+  - `WorkflowNode` → `InteractionFlowNode`
+  - `WorkflowState` → `InteractionFlowState`
 - **ServerConfig**: Updated documentation to clarify supported transports ('sse' and 'streamable-http')
 - **Utils**: Updated `get_mcp_server_config()` to support both transports via environment variables
 - **Session Cleanup**: Improved resource cleanup in Streamable HTTP transport

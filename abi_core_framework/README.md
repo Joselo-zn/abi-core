@@ -42,11 +42,8 @@ cd my-ai-system
 # Provision models (automatically starts services and downloads models)
 abi-core provision-models
 
-# Create an agent
+# Create an agent (includes interactive skills session + automatic agent card creation)
 abi-core add agent my-agent --description "My first AI agent"
-
-# Create an agent card for semantic discovery
-abi-core add agent-card my-agent --description "General purpose AI assistant" --url http://localhost:8000
 
 # Run your project
 abi-core run
@@ -201,7 +198,7 @@ abi-core info                      # Show project information
 
 ### Agent Development
 ```bash
-# Create and manage agents
+# Create and manage agents (includes interactive skills session + automatic agent card)
 abi-core add agent <name> [--description <desc>] [--model <model>] [--with-web-interface]
 abi-core remove agent <name>       # Remove an agent
 abi-core info agents               # List all agents
@@ -221,7 +218,8 @@ abi-core remove service <name>                     # Remove any service
 
 ### Agent Cards & Semantic Layer
 ```bash
-# Manage agent cards for semantic discovery
+# Agent cards are created automatically with 'add agent'
+# Use 'add agent-card' only for manual/custom card creation
 abi-core add agent-card <name> [--description <desc>] [--model <model>] [--url <url>] [--tasks <tasks>]
 abi-core add policies <name> [--domain <domain>]   # Add security policies
 ```
@@ -236,10 +234,12 @@ cd fintech-ai
 abi-core provision-models
 
 # Add a specialized trading agent (automatically uses centralized Ollama)
+# → Interactive session will prompt for skills and agent URL
 abi-core add agent trader --description "AI trading assistant" --model qwen2.5:3b
 
-# Create agent card for semantic discovery
-abi-core add agent-card trader --description "Execute trading operations" --url http://localhost:8001 --tasks "trade,analyze,risk-assessment"
+# Agent card is created automatically during 'add agent'
+# Use 'add agent-card' only if you need a custom card later:
+# abi-core add agent-card trader --description "Execute trading operations" --url http://localhost:8001 --tasks "trade,analyze,risk-assessment"
 
 # Add semantic layer to existing project (Weaviate included automatically)
 abi-core add semantic-layer --domain finance
@@ -272,7 +272,7 @@ my-project/
 │       ├── agent.py        # Agent implementation
 │       ├── main.py         # Entry point
 │       ├── models.py       # Data models
-│       └── agent_cards/    # Agent cards for semantic discovery
+│       └── agent_cards/    # Agent card (auto-created with 'add agent')
 ├── services/               # Supporting services
 │   ├── web_api/            # Main web application
 │   │   ├── config/         # Application configuration

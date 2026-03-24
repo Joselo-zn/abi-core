@@ -7,8 +7,12 @@ in the workflow system.
 
 import asyncio
 from config import config, AGENT_CARD
-from abi_core.common.workflow import WorkflowGraph, WorkflowNode
+from abi_core.common.workflow import AgentInteractionFlow, InteractionFlowNode
 from abi_core.common.agent_card_init import load_agent_card
+
+# Backward-compat aliases used in this example
+WorkflowGraph = AgentInteractionFlow
+WorkflowNode = InteractionFlowNode
 
 
 async def main():
