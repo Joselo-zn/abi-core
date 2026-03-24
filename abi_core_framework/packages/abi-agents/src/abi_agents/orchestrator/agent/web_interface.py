@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 import asyncio, json, time, logging
 
+from abi_core.common.utils import abi_logging
+
 logger = logging.getLogger(__name__)
 
 class OrchestratorWebinterface:
@@ -29,24 +31,18 @@ class OrchestratorWebinterface:
                         # Convert chunk to serializable format
                         try:
                             if hasattr(chunk, 'model_dump'):
-                                # Pydantic model
                                 chunk_data = chunk.model_dump()
                             elif hasattr(chunk, 'dict'):
-                                # Pydantic model (older version)
                                 chunk_data = chunk.dict()
                             elif hasattr(chunk, '__dict__'):
-                                # Regular object
                                 chunk_data = chunk.__dict__
                             else:
-                                # Fallback to string representation
                                 chunk_data = {"message": str(chunk), "type": type(chunk).__name__}
-                            
-                            # Add debug info to identify source
-                            logger.info(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...")
-                            
+
+                            abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...", level="debug")
+
                             yield (f"data: {json.dumps(chunk_data)}\n\n").encode()
                         except Exception as serialize_error:
-                            # If serialization fails, send error info
                             error_data = {
                                 "error": "Serialization failed",
                                 "chunk_type": type(chunk).__name__,
@@ -56,13 +52,11 @@ class OrchestratorWebinterface:
                     # 3) Cierre normal
                     yield b"event: done\ndata: {}\n\n"
                 except asyncio.CancelledError:
-                    # Cliente cerró la conexión; salimos silenciosos
                     raise
                 except Exception as e:
-                    # 4) Log + evento de error para que curl reciba “algo” antes del cierre
-                    logger.exception("Error en SSE generate_response: %s", e)
+                    # 4) Log + evento de error para que curl reciba "algo" antes del cierre
+                    abi_logging(f"Error en SSE generate_response: {e}", level="error")
                     yield (f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n").encode()
-                    # pequeña pausa para que se drene el buffer
                     await asyncio.sleep(0.05)
 
             return StreamingResponse(

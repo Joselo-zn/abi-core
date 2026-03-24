@@ -7,6 +7,8 @@ import logging
 from typing import Dict, Any, AsyncIterable
 from abc import ABC, abstractmethod
 
+from abi_core.common.utils import abi_logging
+
 logger = logging.getLogger(__name__)
 
 class AbiAgent(ABC):
@@ -16,7 +18,7 @@ class AbiAgent(ABC):
         self.agent_name = agent_name
         self.description = description
         self.content_types = content_types
-        logger.info(f"🤖 Initialized {agent_name}: {description}")
+        abi_logging(f"🤖 Initialized {agent_name}: {description}")
     
     @abstractmethod
     async def stream(self, query: str, context_id: str, task_id: str) -> AsyncIterable[Dict[str, Any]]:

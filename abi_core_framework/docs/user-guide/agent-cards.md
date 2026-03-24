@@ -121,7 +121,24 @@ Agent cards follow the A2A (Agent-to-Agent) protocol specification and include:
 
 ABI-Core automatically generates signed agent cards when you:
 
-### 1. Add Orchestration Layer
+### 1. Add an Agent (Recommended)
+
+```bash
+abi-core add agent my-agent --description "Data analysis agent"
+```
+
+The `add agent` command now includes an interactive skills session that:
+1. Prompts for supported tasks/skills (comma-separated)
+2. Prompts for the agent URL (defaults to Docker service name)
+3. Generates a signed agent card automatically
+4. Saves the card to `agents/my_agent/agent_cards/my_agent_agent.json`
+5. Copies the card to `services/semantic_layer/layer/mcp_server/agent_cards/` (if semantic layer exists)
+6. Registers the card in `runtime.yaml`
+7. Updates `docker-compose` with `AGENT_CARD` environment variable
+
+No need to run `add agent-card` separately — it's all part of the agent creation flow.
+
+### 2. Add Orchestration Layer
 
 ```bash
 abi-core add agentic-orchestration-layer
@@ -136,7 +153,9 @@ Cards are saved to:
 - `agents/orchestrator/agent_cards/orchestrator_agent.json`
 - `services/semantic_layer/layer/mcp_server/agent_cards/` (both)
 
-### 2. Add Agent Card Manually
+### 3. Add Agent Card Manually
+
+If you need to create a card for an existing agent or with custom parameters:
 
 ```bash
 abi-core add agent-card my-agent \
@@ -214,10 +233,15 @@ The semantic layer matches tasks to agents using:
 ### 1. Generation
 
 ```bash
+# Automatic with agent creation (recommended)
+abi-core add agent my-agent --description "My agent"
+# → Interactive session prompts for skills and URL
+# → Agent card created automatically
+
 # Automatic (orchestration layer)
 abi-core add agentic-orchestration-layer
 
-# Manual (custom agent)
+# Manual (custom agent card)
 abi-core add agent-card my-agent --tasks "task1,task2"
 ```
 

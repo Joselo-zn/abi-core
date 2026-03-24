@@ -82,7 +82,7 @@ import re
 # Parse SEMANTIC_LAYER_HOST which may contain protocol and port
 SEMANTIC_LAYER_URL = os.getenv('SEMANTIC_LAYER_HOST', 'http://abi-semantic-layer:10100')
 # MCP_TRANSPORT supports 'sse' or 'streamable-http'
-MCP_TRANSPORT = os.getenv('MCP_TRANSPORT', 'sse')
+MCP_TRANSPORT = os.getenv('MCP_TRANSPORT', 'streamable-http')
 
 # Extract host and port from URL if provided with protocol
 # Supports formats: http://host:port/path or just host

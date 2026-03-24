@@ -13,7 +13,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
 from a2a.client import A2AClient
-from abi_core.common.utils import get_mcp_server_config
+from abi_core.common.utils import get_mcp_server_config, abi_logging
 from abi_core.abi_mcp import client
 from abi_core.common.abi_a2a import agent_connection
 
@@ -39,8 +39,14 @@ class Status(Enum):
     INITIALIZED = 'INITIALIZED'
 
 
-class WorkflowNode:
-    """Represents a single node in a Workflow Graph.
+class InteractionFlowNode:
+    """
+    Represents a single interaction point in an agent flow.
+    
+    Each node encapsulates a task to be executed by a specific agent,
+    including the task description, assigned agent, and execution state.
+    
+    Previously known as WorkflowNode.
 
     Each node encapsulates a specific task to be executed, 
     such as finding an Agent Capabilities. It manages its own state
@@ -84,7 +90,7 @@ class WorkflowNode:
         source_card: AgentCard,
     ) -> AsyncIterable[dict[str, any]]:
         """Execute node with assigned agent - does NOT search for agents"""
-        logger.info(f'Execute node {self.id} with agent {self.target_agent_card.name}')
+        abi_logging(f'[⚙️] Execute node {self.id} with agent {self.target_agent_card.name}')
         
         if not self.target_agent_card:
             raise ValueError(f"Node {self.id} has no agent assigned")
@@ -103,8 +109,15 @@ class WorkflowNode:
             yield chunk
         
 
-class WorkflowState(TypedDict):
-    """State for LangGraph workflow"""
+class InteractionFlowState(TypedDict):
+    """
+    State management for agent interaction flows.
+    
+    Tracks the current execution state, completed nodes, and flow status
+    throughout the multi-agent interaction lifecycle.
+    
+    Previously known as WorkflowState.
+    """
     current_node_id: str
     completed_nodes: list[str]
     paused_node_id: str | None
@@ -114,11 +127,18 @@ class WorkflowState(TypedDict):
     results: dict[str, any]
 
 
-class WorkflowGraph:
-    """Representation of Graph for a workflow node using LangGraph"""
+class AgentInteractionFlow:
+    """
+    Orchestrates multi-agent interactions and task execution flows.
+    
+    This class manages the coordination between multiple agents, handling
+    task delegation, execution sequencing, and result aggregation using LangGraph.
+    
+    Previously known as WorkflowGraph.
+    """
 
     def __init__(self):
-        self.graph_builder = StateGraph(WorkflowState)
+        self.graph_builder = StateGraph(InteractionFlowState)
         self.nodes = {}
         self.latest_node = None
         self.node_type = None
@@ -129,7 +149,7 @@ class WorkflowGraph:
 
     def add_node(self, node) -> None:
         """Add a node to the workflow graph"""
-        logger.info(f'Adding Node {node.id}')
+        abi_logging(f'[➕] Adding Node {node.id}')
         self.nodes[node.id] = node
         self.latest_node = node.id
         
@@ -141,9 +161,9 @@ class WorkflowGraph:
         }
         
         # Create node function for LangGraph
-        async def node_function(state: WorkflowState):
+        async def node_function(state: InteractionFlowState):
             """Execute this workflow node"""
-            logger.info(f'Executing node {node.id}')
+            abi_logging(f'[▶️] Executing node {node.id}')
             node.state = Status.RUNNING
             
             # Get attributes
@@ -197,7 +217,7 @@ class WorkflowGraph:
         if from_node_id not in self.nodes or to_node_id not in self.nodes:
             raise ValueError('Invalid Node IDs')
         
-        logger.info(f'Adding edge from {from_node_id} to {to_node_id}')
+        abi_logging(f'[🔗] Adding edge from {from_node_id} to {to_node_id}')
         
         # Track edges for later use
         if not hasattr(self, '_edges'):
@@ -242,13 +262,13 @@ class WorkflowGraph:
         self, start_node_id: str = None
     ) -> AsyncIterable[dict[str, any]]:
         """Run the workflow using LangGraph"""
-        logger.info('Running Workflow with LangGraph')
+        abi_logging('[🚀] Running Workflow with LangGraph')
         
         # Compile graph if not already compiled
         graph = self.compile()
         
         # Initialize state
-        initial_state: WorkflowState = {
+        initial_state: InteractionFlowState = {
             'current_node_id': start_node_id or list(self.nodes.keys())[0],
             'completed_nodes': [],
             'paused_node_id': None,

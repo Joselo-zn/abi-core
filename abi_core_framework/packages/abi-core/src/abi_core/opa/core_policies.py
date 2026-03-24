@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
 
+from abi_core.common.utils import abi_logging
+
 logger = logging.getLogger(__name__)
 
 class CorePolicyGenerator:
@@ -429,36 +431,36 @@ audit_log = {{
             True if successful, False otherwise
         """
         try:
-            logger.info(f"📝 Writing core policies to: {output_path}")
+            abi_logging(f"📝 Writing core policies to: {output_path}")
             output_file = Path(output_path)
             
             # Ensure parent directory exists
-            logger.info(f"📁 Ensuring parent directory exists: {output_file.parent}")
+            abi_logging(f"📁 Ensuring parent directory exists: {output_file.parent}")
             output_file.parent.mkdir(parents=True, exist_ok=True)
             
             # Generate policy content
-            logger.info("🔧 Generating core policy content...")
+            abi_logging("🔧 Generating core policy content...")
             policy_content = self.generate_core_policies()
-            logger.info(f"📊 Generated policy content length: {len(policy_content)} characters")
+            abi_logging(f"📊 Generated policy content length: {len(policy_content)} characters")
             
             # Write to file
-            logger.info(f"💾 Writing to file: {output_file}")
+            abi_logging(f"💾 Writing to file: {output_file}")
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(policy_content)
             
             # Verify file was written
             if output_file.exists():
                 file_size = output_file.stat().st_size
-                logger.info(f"✅ Core policies written successfully: {output_path} ({file_size} bytes)")
+                abi_logging(f"✅ Core policies written successfully: {output_path} ({file_size} bytes)")
                 return True
             else:
-                logger.error(f"🚨 File was not created: {output_path}")
+                abi_logging(f"🚨 File was not created: {output_path}", level="error")
                 return False
             
         except Exception as e:
-            logger.error(f"🚨 Failed to generate core policies: {e}")
+            abi_logging(f"🚨 Failed to generate core policies: {e}", level="error")
             import traceback
-            logger.error(f"🚨 Traceback: {traceback.format_exc()}")
+            abi_logging(f"🚨 Traceback: {traceback.format_exc()}", level="error")
             return False
     
     def validate_core_policies_exist(self, policy_path: str) -> bool:
@@ -474,7 +476,7 @@ audit_log = {{
         core_policy_file = Path(policy_path) / "abi_policies.rego"
         
         if not core_policy_file.exists():
-            logger.error(f"CRITICAL: Core policies not found at {core_policy_file}")
+            abi_logging(f"CRITICAL: Core policies not found at {core_policy_file}", level="error")
             return False
         
         try:
@@ -492,14 +494,14 @@ audit_log = {{
             
             for element in required_elements:
                 if element not in content:
-                    logger.error(f"CRITICAL: Core policy missing required element: {content}")
+                    abi_logging(f"CRITICAL: Core policy missing required element: {content}", level="error")
                     return False
             
-            logger.info("Core policies validation passed")
+            abi_logging("Core policies validation passed")
             return True
             
         except Exception as e:
-            logger.error(f"CRITICAL: Failed to validate core policies: {e}")
+            abi_logging(f"CRITICAL: Failed to validate core policies: {e}", level="error")
             return False
     
     def ensure_core_policies(self, policy_directory: str) -> bool:
@@ -512,52 +514,52 @@ audit_log = {{
         Returns:
             True if core policies are available, False if system should not start
         """
-        logger.info(f"🔐 Ensuring core policies in directory: {policy_directory}")
+        abi_logging(f"🔐 Ensuring core policies in directory: {policy_directory}")
         policy_file = Path(policy_directory) / "abi_policies.rego"
-        logger.info(f"🔍 Looking for core policy file: {policy_file}")
+        abi_logging(f"🔍 Looking for core policy file: {policy_file}")
         
         # Load existing integrity state
-        logger.info("📋 Loading existing integrity state...")
+        abi_logging("📋 Loading existing integrity state...")
         self.load_integrity_state(policy_directory)
         
         # Check if policies exist
         if not policy_file.exists():
-            logger.warning("⚠️ Core policies missing, generating...")
+            abi_logging("⚠️ Core policies missing, generating...", level="warning")
             success = self.write_core_policies(str(policy_file))
             
             if not success:
-                logger.error("🚨 CRITICAL: Failed to generate core policies - SYSTEM CANNOT START")
+                abi_logging("🚨 CRITICAL: Failed to generate core policies - SYSTEM CANNOT START", level="error")
                 return False
-            logger.info("✅ Core policies generated successfully")
+            abi_logging("✅ Core policies generated successfully")
         else:
-            logger.info("📄 Core policy file exists, validating...")
+            abi_logging("📄 Core policy file exists, validating...")
         
         # Validate policy integrity
-        logger.info("🔍 Validating policy integrity...")
+        abi_logging("🔍 Validating policy integrity...")
         if not self.validate_policy_integrity(str(policy_file)):
-            logger.error("🚨 CRITICAL: Core policy integrity validation failed")
+            abi_logging("🚨 CRITICAL: Core policy integrity validation failed", level="error")
             
             # Attempt automatic regeneration
-            logger.warning("🔄 Attempting automatic policy regeneration...")
+            abi_logging("🔄 Attempting automatic policy regeneration...", level="warning")
             if not self.regenerate_corrupted_policies(policy_directory):
-                logger.error("🚨 CRITICAL: Failed to regenerate corrupted policies - SYSTEM CANNOT START")
+                abi_logging("🚨 CRITICAL: Failed to regenerate corrupted policies - SYSTEM CANNOT START", level="error")
                 return False
             
-            logger.info("✅ Core policies successfully regenerated after corruption detection")
+            abi_logging("✅ Core policies successfully regenerated after corruption detection")
         else:
-            logger.info("✅ Policy integrity validation passed")
+            abi_logging("✅ Policy integrity validation passed")
         
         # Final validation check
-        logger.info("🔍 Performing final policy validation...")
+        abi_logging("🔍 Performing final policy validation...")
         if not self.validate_core_policies_exist(policy_directory):
-            logger.error("🚨 CRITICAL: Final policy validation failed - SYSTEM CANNOT START")
+            abi_logging("🚨 CRITICAL: Final policy validation failed - SYSTEM CANNOT START", level="error")
             return False
         
         # Save integrity state
-        logger.info("💾 Saving integrity state...")
+        abi_logging("💾 Saving integrity state...")
         self.save_integrity_state(policy_directory)
         
-        logger.info("✅ Core policies validated and integrity confirmed")
+        abi_logging("✅ Core policies validated and integrity confirmed")
         return True
     
     def calculate_policy_checksum(self, policy_content: str) -> str:
@@ -578,11 +580,11 @@ audit_log = {{
             with open(state_file, 'w') as f:
                 json.dump(state, f, indent=2)
             
-            logger.info(f"Policy integrity state saved: {state_file}")
+            abi_logging(f"Policy integrity state saved: {state_file}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to save integrity state: {e}")
+            abi_logging(f"Failed to save integrity state: {e}", level="error")
             return False
     
     def load_integrity_state(self, policy_directory: str) -> bool:
@@ -591,7 +593,7 @@ audit_log = {{
             state_file = Path(policy_directory) / self.integrity_state_file
             
             if not state_file.exists():
-                logger.info("No existing integrity state found")
+                abi_logging("No existing integrity state found")
                 return False
             
             with open(state_file, 'r') as f:
@@ -601,11 +603,11 @@ audit_log = {{
             last_val = state.get('last_validation')
             self.last_validation = datetime.fromisoformat(last_val) if last_val else None
             
-            logger.info(f"Policy integrity state loaded: {len(self.policy_checksums)} checksums")
+            abi_logging(f"Policy integrity state loaded: {len(self.policy_checksums)} checksums")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to load integrity state: {e}")
+            abi_logging(f"Failed to load integrity state: {e}", level="error")
             return False
     
     def validate_policy_integrity(self, policy_path: str) -> bool:
@@ -614,7 +616,7 @@ audit_log = {{
             policy_file = Path(policy_path)
             
             if not policy_file.exists():
-                logger.error(f"Policy file not found: {policy_file}")
+                abi_logging(f"Policy file not found: {policy_file}", level="error")
                 return False
             
             # Read current policy content
@@ -629,8 +631,8 @@ audit_log = {{
             stored_checksum = self.policy_checksums.get(policy_name)
             
             if stored_checksum and stored_checksum != current_checksum:
-                logger.error(f"Policy integrity violation detected: {policy_name}")
-                logger.error(f"Expected: {stored_checksum}, Got: {current_checksum}")
+                abi_logging(f"Policy integrity violation detected: {policy_name}", level="error")
+                abi_logging(f"Expected: {stored_checksum}, Got: {current_checksum}", level="error")
                 return False
             
             # Validate required elements
@@ -644,46 +646,46 @@ audit_log = {{
             
             for element in required_elements:
                 if element not in current_content:
-                    logger.error(f"Policy missing required element: {element}")
+                    abi_logging(f"Policy missing required element: {element}", level="error")
                     return False
             
             # Update checksum and validation time
             self.policy_checksums[policy_name] = current_checksum
             self.last_validation = datetime.utcnow()
             
-            logger.info(f"Policy integrity validation passed: {policy_name}")
+            abi_logging(f"Policy integrity validation passed: {policy_name}")
             return True
             
         except Exception as e:
-            logger.error(f"Policy integrity validation failed: {e}")
+            abi_logging(f"Policy integrity validation failed: {e}", level="error")
             return False
     
     def regenerate_corrupted_policies(self, policy_directory: str) -> bool:
         """Regenerate policies when corruption is detected"""
         try:
-            logger.warning("Regenerating corrupted core policies...")
+            abi_logging("Regenerating corrupted core policies...", level="warning")
             
             # Generate new policies
             policy_file = Path(policy_directory) / "abi_policies.rego"
             success = self.write_core_policies(str(policy_file))
             
             if not success:
-                logger.error("Failed to regenerate core policies")
+                abi_logging("Failed to regenerate core policies", level="error")
                 return False
             
             # Validate regenerated policies
             if not self.validate_policy_integrity(str(policy_file)):
-                logger.error("Regenerated policies failed validation")
+                abi_logging("Regenerated policies failed validation", level="error")
                 return False
             
             # Save new integrity state
             self.save_integrity_state(policy_directory)
             
-            logger.info("Core policies successfully regenerated")
+            abi_logging("Core policies successfully regenerated")
             return True
             
         except Exception as e:
-            logger.error(f"Policy regeneration failed: {e}")
+            abi_logging(f"Policy regeneration failed: {e}", level="error")
             return False
 
 # Singleton instance

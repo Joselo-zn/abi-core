@@ -11,7 +11,7 @@ from a2a.types import (
 
 from abi_core.common import prompts
 from abi_core.common.utils import abi_logging
-from abi_core.common.workflow import Status, WorkflowGraph, WorkflowNode
+from abi_core.common.workflow import Status, AgentInteractionFlow, InteractionFlowNode
 from abi_core.common.semantic_tools import tool_find_agent
 from abi_core.agent.agent import AbiAgent
 
@@ -136,9 +136,9 @@ class AbiOrchestratorAgent(AbiAgent):
         
         return False, None
 
-    async def create_workflow_from_plan(self, plan: dict, context_id: str, task_id: str) -> WorkflowGraph:
-        """Create WorkflowGraph from Planner's plan"""
-        workflow = WorkflowGraph()
+    async def create_workflow_from_plan(self, plan: dict, context_id: str, task_id: str) -> AgentInteractionFlow:
+        """Create AgentInteractionFlow from Planner's plan"""
+        workflow = AgentInteractionFlow()
         nodes = {}
         tasks = plan.get('tasks', [])
         
@@ -159,7 +159,7 @@ class AbiOrchestratorAgent(AbiAgent):
             agent_dict = agents[0]
             target_agent_card = AgentCard(**agent_dict) if isinstance(agent_dict, dict) else agent_dict
             
-            node = WorkflowNode(
+            node = InteractionFlowNode(
                 task=description,
                 source_agent_card=AGENT_CARD,
                 target_agent_card=target_agent_card,
@@ -202,8 +202,8 @@ class AbiOrchestratorAgent(AbiAgent):
             raise ValueError("Could not find Planner agent")
         
         # Create workflow with planner node
-        workflow = WorkflowGraph()
-        planner_node = WorkflowNode(
+        workflow = AgentInteractionFlow()
+        planner_node = InteractionFlowNode(
             task=query,
             source_agent_card=AGENT_CARD,
             target_agent_card=planner_agent_card,
