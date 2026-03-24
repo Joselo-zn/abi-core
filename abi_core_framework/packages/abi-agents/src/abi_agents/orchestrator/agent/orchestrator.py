@@ -1,28 +1,29 @@
+import asyncio
 import json
 from collections.abc import AsyncIterable
 
-from a2a.types import (
-    SendStreamingMessageSuccessResponse,
-    TaskArtifactUpdateEvent,
-    TaskState,
-    TaskStatusUpdateEvent,
-)
-
 from abi_core.common import prompts
 from abi_core.common.utils import abi_logging
-from abi_core.common.workflow import Status, AgentInteractionFlow, InteractionFlowNode
+from abi_core.common.workflow import Status
 from abi_core.common.semantic_tools import tool_find_agent
-from abi_core.agent.agent import AbiAgent
+from abi_core.agent.agent import AbiAgent, _HEARTBEAT_INTERVAL
 from abi_core.agent.agent_response import AgentResponse
 
-from a2a.types import AgentCard
-
-# Import configuration
-from config import config, AGENT_CARD 
+from config import config
 
 
 class AbiOrchestratorAgent(AbiAgent):
-    """Orchestrator Agent - coordinates multi-agent workflows using LangGraph"""
+    """Orchestrator Agent — coordinates multi-agent workflows.
+
+    The planning pipeline (call_planner -> extract_plan -> build_workflow)
+    is registered as @agent.task() decorators in main.py and injected
+    as self.tool_graph by AbiCore.
+
+    This class provides a custom stream() that executes the DAG,
+    handles branching (clarification, errors), and synthesizes results.
+    Heartbeat keepalives are sent during long-running phases (DAG
+    execution and synthesis) to prevent proxy timeouts.
+    """
 
     def __init__(self):
         super().__init__(
@@ -34,240 +35,137 @@ class AbiOrchestratorAgent(AbiAgent):
             content_types=['text', 'text/plain'],
         )
 
-    def extract_plan_from_results(self, results: list) -> dict | None:
-        """Extract plan JSON from Planner results"""
-        for result in results:
-            try:
-                abi_logging(f"[🔍] Extracting plan from result type: {type(result)}")
-                
-                # El objeto tiene root=SendMessageSuccessResponse
-                if hasattr(result, 'root'):
-                    response = result.root  # SendMessageSuccessResponse
-                    
-                    if hasattr(response, 'result'):
-                        task = response.result  # Task
-                        
-                        if hasattr(task, 'artifacts'):
-                            for artifact in task.artifacts:
-                                if hasattr(artifact, 'parts'):
-                                    for part in artifact.parts:
-                                        # Part tiene root=DataPart
-                                        if hasattr(part, 'root'):
-                                            data_part = part.root
-                                            if hasattr(data_part, 'data') and isinstance(data_part.data, dict):
-                                                if 'tasks' in data_part.data:
-                                                    abi_logging(f"[✅] Plan extracted successfully")
-                                                    return data_part.data
-                                        
-                                        # Fallback: intentar con text
-                                        elif hasattr(part, 'text'):
-                                            try:
-                                                data = json.loads(part.text)
-                                                if isinstance(data, dict) and 'tasks' in data:
-                                                    return data
-                                            except:
-                                                pass
-                                                
-            except Exception as e:
-                abi_logging(f"[⚠️] Error extracting plan: {e}")
-                continue
-        
-        return None
-    
-    def check_for_clarification(self, results: list) -> tuple[bool, str | None]:
+    async def _run_with_heartbeat(self, coro, context_id, task_id, status_msg="Still working..."):
+        """Run a coroutine with periodic heartbeat yields.
+
+        Returns (result, heartbeats) where heartbeats is a list of
+        AgentResponse.status() that should be yielded by the caller.
         """
-        Check if Planner is requesting clarification
-        
-        Returns:
-            Tuple of (needs_clarification, clarification_message)
-        """
-        for result in results:
+        heartbeats = []
+        task = asyncio.create_task(coro)
+
+        while not task.done():
             try:
-                if hasattr(result, 'root'):
-                    response = result.root
-                    
-                    # Check for input_required status
-                    if hasattr(response, 'result'):
-                        task = response.result
-                        
-                        # Check task status
-                        if hasattr(task, 'status') and hasattr(task.status, 'state'):
-                            # Check if state is input_required (can be string or enum)
-                            state = task.status.state
-                            state_str = str(state).lower() if hasattr(state, 'value') else str(state).lower()
-                            
-                            if 'input' in state_str and 'required' in state_str:
-                                abi_logging("[❓] Planner requires clarification")
-                                
-                                # Extract clarification message from status.message.parts
-                                if hasattr(task.status, 'message') and hasattr(task.status.message, 'parts'):
-                                    for part in task.status.message.parts:
-                                        if hasattr(part, 'root') and hasattr(part.root, 'text'):
-                                            abi_logging(f"[✅] Clarification message extracted")
-                                            return True, part.root.text
-                                        elif hasattr(part, 'text'):
-                                            return True, part.text
-                                
-                                return True, "Planner requires clarification (no message found)"
-                                                
-            except Exception as e:
-                abi_logging(f"[⚠️] Error checking clarification: {e}")
-                continue
-        
-        return False, None
+                await asyncio.wait_for(
+                    asyncio.shield(task), timeout=_HEARTBEAT_INTERVAL
+                )
+            except asyncio.TimeoutError:
+                if not task.done():
+                    heartbeats.append(AgentResponse.status(
+                        status_msg,
+                        agent=self.agent_name,
+                        context_id=context_id,
+                        task_id=task_id,
+                    ))
 
-    async def create_workflow_from_plan(self, plan: dict, context_id: str, task_id: str) -> AgentInteractionFlow:
-        """Create AgentInteractionFlow from Planner's plan"""
-        workflow = AgentInteractionFlow()
-        nodes = {}
-        tasks = plan.get('tasks', [])
-        
-        abi_logging(f"[🔨] Creating workflow with {len(tasks)} tasks")
-        
-        # Create nodes with assigned agents
-        for task in tasks:
-            task_id_key = task.get('task_id')
-            description = task.get('description', '')
-            agents = task.get('agents', [])
-            
-            # Get AgentCard from Planner's assignment
-            if not agents or not agents[0]:
-                abi_logging(f"[⚠️] Task {task_id_key} has no agent assigned")
-                continue
-            
-            # Convert dict to AgentCard if needed
-            agent_dict = agents[0]
-            target_agent_card = AgentCard(**agent_dict) if isinstance(agent_dict, dict) else agent_dict
-            
-            node = InteractionFlowNode(
-                task=description,
-                source_agent_card=AGENT_CARD,
-                target_agent_card=target_agent_card,
-                node_key=task_id_key,
-                node_label=f"{task_id_key}: {description[:40]}"
-            )
-            
-            workflow.add_node(node)
-            nodes[task_id_key] = node
-            
-            workflow.set_node_attributes(node.id, {
-                'task_id': task_id,
-                'context_id': context_id,
-                'query': description
-            })
-        
-        # Create edges from dependencies
-        for task in tasks:
-            task_id_key = task.get('task_id')
-            dependencies = task.get('dependencies', [])
-            
-            for dep in dependencies:
-                if dep in nodes and task_id_key in nodes:
-                    workflow.add_edge(nodes[dep].id, nodes[task_id_key].id)
-                    abi_logging(f"[🔗] Edge: {dep} → {task_id_key}")
-        
-        # Set source card for A2A validation
-        workflow.set_source_card(AGENT_CARD)
-        
-        return workflow
+        return task.result(), heartbeats
 
-    async def call_planner(self, query: str, context_id: str, task_id: str) -> list:
-        """Call Planner and return results"""
-        abi_logging(f"[📞] Calling Planner: {query}")
-        
-        # Use tool_find_agent to get Planner
-        planner_agent_card = await tool_find_agent.ainvoke({"query": "planner"})
-        
-        if not planner_agent_card:
-            raise ValueError("Could not find Planner agent")
-        
-        # Create workflow with planner node
-        workflow = AgentInteractionFlow()
-        planner_node = InteractionFlowNode(
-            task=query,
-            source_agent_card=AGENT_CARD,
-            target_agent_card=planner_agent_card,
-            node_key='planner',
-            node_label='Planning Phase'
-        )
-        workflow.add_node(planner_node)
-        workflow.set_node_attributes(planner_node.id, {
-            'context_id': context_id,
-            'task_id': task_id,
-            'query': query
-        })
-        
-        # Set source card for A2A validation
-        workflow.set_source_card(AGENT_CARD)
-        
-        results = []
-        async for chunk in workflow.run_workflow():
-            results.append(chunk)
-        
-        return results
+    async def stream(
+        self, query: str, context_id: str, task_id: str
+    ) -> AsyncIterable[dict[str, any]]:
+        """Orchestrate workflow execution using the task DAG."""
 
-    async def stream(self, query: str, context_id: str, task_id: str) -> AsyncIterable[dict[str, any]]:
-        """Main entry point - orchestrate workflow execution using LangGraph"""
-        
         abi_logging(f'[*] Orchestrator stream - context: {context_id}, task: {task_id}')
         abi_logging(f'[📝] Query: {query}')
-        
+
         if not query:
             raise ValueError('Please provide a Query')
-        
+
         try:
-            # Step 1: Call Planner
-            planner_results = await self.call_planner(query, context_id, task_id)
-            
-            # Step 1.5: Check if Planner needs clarification
-            needs_clarification, clarification_msg = self.check_for_clarification(planner_results)
-            
-            if needs_clarification:
+            if self.tool_graph is None:
+                yield AgentResponse.error("No tool_graph configured")
+                return
+
+            # ── Phase 1: Planning pipeline (with heartbeat) ─────
+            yield AgentResponse.status(
+                "Planning...",
+                agent=self.agent_name,
+                context_id=context_id,
+                task_id=task_id,
+            )
+
+            dag_coro = self.tool_graph.execute({
+                "query": query,
+                "context_id": context_id,
+                "task_id": task_id,
+            })
+            dag_result, heartbeats = await self._run_with_heartbeat(
+                dag_coro, context_id, task_id, "Planning in progress..."
+            )
+            for hb in heartbeats:
+                yield hb
+
+            # Check for DAG failure
+            if dag_result.get("failed_node"):
+                error = dag_result.get("error", "Pipeline failed")
+                abi_logging(f"[❌] DAG failed at {dag_result['failed_node']}: {error}")
+                yield AgentResponse.error(error)
+                return
+
+            # Get build_workflow output
+            outputs = dag_result.get("node_outputs", {})
+            build_result = outputs.get("build_workflow", {})
+
+            # Handle clarification
+            if "clarification" in build_result:
                 abi_logging("[❓] Forwarding clarification request to user")
-                
-                # Format the clarification message for better readability
-                formatted_msg = f"🤔 **Necesito más información para crear el mejor plan:**\n\n{clarification_msg}"
-                
-                yield AgentResponse.input_required(formatted_msg)
+                formatted = (
+                    "🤔 **Necesito mas informacion para crear el mejor plan:**"
+                    f"\n\n{build_result['clarification']}"
+                )
+                yield AgentResponse.input_required(formatted)
                 return
-            
-            # Step 2: Extract plan
-            plan = self.extract_plan_from_results(planner_results)
-            
-            if not plan:
-                yield AgentResponse.error("Could not generate execution plan")
+
+            # Handle extraction error
+            if "error" in build_result:
+                yield AgentResponse.error(build_result["error"])
                 return
-            
-            abi_logging(f"[📋] Plan received with {len(plan.get('tasks', []))} tasks")
-            
-            # Step 3: Create and execute workflow using LangGraph
-            workflow = await self.create_workflow_from_plan(plan, context_id, task_id)
-            
-            # Step 4: Stream workflow execution (LangGraph handles state)
+
+            # ── Phase 2: Execute agent workflow (yields keep SSE alive) ──
+            workflow = build_result["workflow"]
+            plan = build_result["plan"]
+
+            abi_logging(f"[📋] Executing plan with {len(plan.get('tasks', []))} tasks")
+
             results = []
             async for chunk in workflow.run_workflow():
                 results.append(chunk)
                 yield chunk
-            
-            # Step 5: Synthesize results if completed
+
+            # ── Phase 3: Synthesize results (with heartbeat) ────
             if workflow.state == Status.COMPLETED:
                 abi_logging(f"[✅] Workflow completed with {len(results)} results")
-                
-                # Use agent to synthesize results
-                synthesis_query = f"Synthesize the following workflow results:\nPlan: {json.dumps(plan, indent=2)}\nResults count: {len(results)}"
-                
-                inputs = {"messages": [{"role": "user", "content": synthesis_query}]}
-                
-                final_synthesis = None
-                async for chunk in self.agent.astream(inputs, stream_mode="updates"):
-                    for node_name, node_data in chunk.items():
-                        if "messages" in node_data:
-                            for msg in node_data["messages"]:
-                                if hasattr(msg, 'content') and msg.content:
-                                    final_synthesis = msg.content
-                
-                yield AgentResponse.success(final_synthesis or "Workflow completed successfully")
-            
+
+                synthesis_query = (
+                    f"Synthesize the following workflow results:\n"
+                    f"Plan: {json.dumps(plan, indent=2)}\n"
+                    f"Results count: {len(results)}"
+                )
+
+                result_holder = {}
+
+                async def _synthesize():
+                    inputs = {"messages": [{"role": "user", "content": synthesis_query}]}
+                    final = None
+                    async for chunk in self.agent.astream(inputs, stream_mode="updates"):
+                        for _node, node_data in chunk.items():
+                            if "messages" in node_data:
+                                for msg in node_data["messages"]:
+                                    if hasattr(msg, 'content') and msg.content:
+                                        final = msg.content
+                    result_holder['synthesis'] = final
+
+                synth_coro = _synthesize()
+                _, heartbeats = await self._run_with_heartbeat(
+                    synth_coro, context_id, task_id, "Synthesizing results..."
+                )
+                for hb in heartbeats:
+                    yield hb
+
+                yield AgentResponse.success(
+                    result_holder.get('synthesis') or "Workflow completed successfully"
+                )
+
         except Exception as e:
             abi_logging(f"[❌] Error in orchestration: {e}")
             yield AgentResponse.error(str(e))

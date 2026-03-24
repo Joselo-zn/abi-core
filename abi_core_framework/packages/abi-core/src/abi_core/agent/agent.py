@@ -4,7 +4,7 @@ Core agent functionality for ABI Framework
 """
 
 import asyncio
-from typing import Any, Dict, List, AsyncIterable
+from typing import Any, Dict, List, AsyncIterable, Optional
 
 from abi_core.common.utils import abi_logging
 from abi_core.agent.llm_provider import create_llm
@@ -20,6 +20,11 @@ class AbiAgent:
     Handles LLM creation, LangChain agent wiring, and a default
     ``stream()`` implementation so subclasses only need to pass
     configuration.  Override ``stream()`` for custom behaviour.
+
+    The optional ``tool_graph`` attribute is injected by ``AbiCore``
+    when tasks/tools are registered via ``@app.task()`` / ``@app.tool()``
+    decorators.  Subclasses can use ``self.tool_graph`` to execute
+    deterministic DAG pipelines.
 
     Args:
         agent_name: Identifier for this agent.
@@ -44,15 +49,22 @@ class AbiAgent:
         self.llm_config = llm_config
         self.content_types = content_types or ["text", "text/plain"]
 
+        # Injected by AbiCore when @app.task()/@app.tool() are used
+        self.tool_graph = None  # Optional[ToolExecutionGraph]
+        self.extra_tools: List = []  # LangChain tools from @app.tool()
+
         # Create LLM via unified provider
         self.llm = create_llm(llm_config)
+
+        # Merge explicit tools with any injected by AbiCore later
+        self._base_tools = tools or []
 
         # Create LangChain agent with tools
         from langchain.agents import create_agent
 
         self.agent = create_agent(
             model=self.llm,
-            tools=tools or [],
+            tools=self._base_tools,
             system_prompt=system_prompt,
         )
 

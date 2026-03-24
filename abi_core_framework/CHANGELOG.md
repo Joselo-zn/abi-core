@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **AbiCore Application Runner**: FastAPI-style `agent = AbiCore()` with auto-config import
+  - Auto-imports `config` and `AGENT_CARD` from the local `config` package
+  - `agent.run(MyAgent())` starts the A2A server with zero boilerplate
+  - Supports `web_interface_cls` and `interface_name` for web interfaces
+- **Decorator-Based Task/Tool Registration**:
+  - `@agent.task(name, depends_on, input_map)` — deterministic DAG step
+  - `@agent.tool(name, depends_on, input_map)` — DAG step + LangChain tool for LLM
+  - `@agent.mcp_tool(name, input_map)` — remote MCP tool via MCPToolkit with HMAC auth
+  - `input_map` supports `$references` (e.g. `$clean_data.result`, `$input.query`)
+  - Tasks/tools are wired into `ToolExecutionGraph` DAG automatically on `agent.run()`
+- **AbiAgent Base Class Enhancements**:
+  - Default `stream()` with SSE heartbeat (15s keepalive for CloudFront)
+  - `self.tool_graph` — injected by AbiCore when decorators are used
+  - `self.extra_tools` — LangChain tools from `@agent.tool()` decorators
+  - `AgentResponse` typed responses: `.success()`, `.error()`, `.status()`, `.empty()`, `.input_required()`
+- **LLM Provider**: `create_llm(llm_config)` supporting Ollama, OpenAI, Anthropic, Bedrock, Azure, Vertex AI, Grok
+- **Agent Factory**: `agent_factory()` encapsulates all startup boilerplate (logging, web interface, A2A server)
 - **Dual Transport Support for MCP Client**: Added support for both SSE and Streamable HTTP transports
   - `abi_core.abi_mcp.client.init_session()` now supports `transport='sse'` or `transport='streamable-http'`
   - SSE transport uses `/sse` endpoint (default, unidirectional streaming)

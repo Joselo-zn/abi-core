@@ -4,9 +4,129 @@
 from orchestrator import AbiOrchestratorAgent
 from web_interface import OrchestratorWebinterface
 from abi_core.agent import AbiCore
+from abi_core.common.utils import abi_logging
+from abi_core.common.a2a_response import A2AResponse
+from abi_core.common.semantic_tools import tool_find_agent
+from abi_core.common.workflow import AgentInteractionFlow, InteractionFlowNode
+from a2a.types import AgentCard
+from config import AGENT_CARD
 
-app = AbiCore(
+agent = AbiCore(
     web_interface_cls=OrchestratorWebinterface,
     interface_name="Orchestrator Web Interface",
 )
-app.run(AbiOrchestratorAgent())
+
+
+@agent.task(
+    name="call_planner",
+    input_map={
+        "query": "$input.query",
+        "context_id": "$input.context_id",
+        "task_id": "$input.task_id",
+    },
+)
+async def call_planner(query, context_id, task_id):
+    """Call Planner agent and return raw A2A results."""
+    abi_logging(f"[📞] Calling Planner: {query}")
+
+    planner_card = await tool_find_agent.ainvoke({"query": "planner"})
+    if not planner_card:
+        raise ValueError("Could not find Planner agent")
+
+    workflow = AgentInteractionFlow()
+    node = InteractionFlowNode(
+        task=query,
+        source_agent_card=AGENT_CARD,
+        target_agent_card=planner_card,
+        node_key="planner",
+        node_label="Planning Phase",
+    )
+    workflow.add_node(node)
+    workflow.set_node_attributes(
+        node.id, {"context_id": context_id, "task_id": task_id, "query": query}
+    )
+    workflow.set_source_card(AGENT_CARD)
+
+    results = []
+    async for chunk in workflow.run_workflow():
+        results.append(chunk)
+    return results
+
+
+@agent.task(
+    name="extract_plan",
+    depends_on=["call_planner"],
+    input_map={"planner_results": "$call_planner"},
+)
+def extract_plan(planner_results):
+    """Extract execution plan from Planner results using A2AResponse."""
+    needs_clarification, msg = A2AResponse.find_clarification(planner_results)
+    if needs_clarification:
+        return {"clarification": msg}
+
+    plan = A2AResponse.find_plan(planner_results)
+    if not plan:
+        return {"error": "Could not generate execution plan"}
+
+    abi_logging(f"[📋] Plan received with {len(plan.get('tasks', []))} tasks")
+    return {"plan": plan}
+
+
+@agent.task(
+    name="build_workflow",
+    depends_on=["extract_plan"],
+    input_map={
+        "plan_result": "$extract_plan",
+        "context_id": "$input.context_id",
+        "task_id": "$input.task_id",
+    },
+)
+async def build_workflow(plan_result, context_id, task_id):
+    """Build AgentInteractionFlow from the extracted plan."""
+    if "clarification" in plan_result or "error" in plan_result:
+        return plan_result  # Pass through — orchestrator handles in stream()
+
+    plan = plan_result["plan"]
+    workflow = AgentInteractionFlow()
+    nodes = {}
+    tasks = plan.get("tasks", [])
+
+    abi_logging(f"[🔨] Creating workflow with {len(tasks)} tasks")
+
+    for task in tasks:
+        tid = task.get("task_id")
+        desc = task.get("description", "")
+        agents = task.get("agents", [])
+
+        if not agents or not agents[0]:
+            abi_logging(f"[⚠️] Task {tid} has no agent assigned")
+            continue
+
+        agent_dict = agents[0]
+        target = AgentCard(**agent_dict) if isinstance(agent_dict, dict) else agent_dict
+
+        node = InteractionFlowNode(
+            task=desc,
+            source_agent_card=AGENT_CARD,
+            target_agent_card=target,
+            node_key=tid,
+            node_label=f"{tid}: {desc[:40]}",
+        )
+        workflow.add_node(node)
+        nodes[tid] = node
+        workflow.set_node_attributes(
+            node.id, {"task_id": task_id, "context_id": context_id, "query": desc}
+        )
+
+    for task in tasks:
+        tid = task.get("task_id")
+        for dep in task.get("dependencies", []):
+            if dep in nodes and tid in nodes:
+                workflow.add_edge(nodes[dep].id, nodes[tid].id)
+                abi_logging(f"[🔗] Edge: {dep} → {tid}")
+
+    workflow.set_source_card(AGENT_CARD)
+    return {"workflow": workflow, "plan": plan}
+
+
+agent.run(AbiOrchestratorAgent())

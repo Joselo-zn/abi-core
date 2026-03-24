@@ -156,6 +156,11 @@ ABI-Core-AI is a production-ready framework for building **Agent-Based Infrastru
 - **Custom Tools** — Extend agents with domain-specific capabilities  
 - **Workflow System** — LangGraph-based workflow orchestration with built-in A2A validation
 - **Centralized Config** — All agents have config/ directory for type-safe configuration  
+- **AbiCore Runner** — FastAPI-style `agent = AbiCore()` with auto-config import
+- **Decorator API** — `@agent.task()`, `@agent.tool()`, `@agent.mcp_tool()` for DAG-based execution
+- **ToolExecutionGraph** — Deterministic DAG that prevents LLM hallucination in tool ordering
+- **SSE Heartbeat** — Automatic keepalive for CloudFront/proxy compatibility
+- **AgentResponse** — Typed response objects with factory methods (success, error, status, etc.)
 
 ### 🧠 Semantic Layer
 - **Agent Discovery** — MCP-based agent finding and routing  
@@ -392,26 +397,72 @@ kubectl apply -f ./k8s/
 
 ## 🧪 Examples
 
-### Simple Agent
+### Minimal Agent (main.py)
+
 ```python
-from abi_core.agent.agent import AbiAgent
-from abi_core.common.utils import abi_logging
+from my_agent import MyAgent
+from abi_core.agent import AbiCore
+
+agent = AbiCore()
+agent.run(MyAgent())
+```
+
+### Agent Class
+
+```python
+from abi_core.agent import AbiAgent
+from abi_core.common import prompts
+from config import config
 
 class MyAgent(AbiAgent):
     def __init__(self):
         super().__init__(
-            agent_name='my-agent',
-            description='A helpful AI assistant'
+            agent_name=config.AGENT_NAME,
+            description=config.AGENT_DESCRIPTION,
+            llm_config=config.LLM_CONFIG,
+            tools=[],
+            system_prompt=prompts.WORKER_PROMPT,
         )
-    
-    async def stream(self, query: str, context_id: str, task_id: str):
-        abi_logging(f"Processing: {query}")
-        response = await self.llm.ainvoke(query)
-        yield {
-            'content': response.content,
-            'response_type': 'text',
-            'is_task_completed': True
-        }
+    # stream() is inherited — override only if you need custom behaviour
+```
+
+### Decorator-Based Tasks & Tools
+
+Register deterministic tasks and tools directly on the `AbiCore` instance:
+
+```python
+from my_agent import MyAgent
+from abi_core.agent import AbiCore
+
+agent = AbiCore()
+
+# Deterministic task — runs in strict DAG order
+@agent.task(name="clean_data")
+def clean_data(raw_input):
+    return {"cleaned": raw_input.strip()}
+
+# Task with dependencies and $references
+@agent.task(
+    name="store_data",
+    depends_on=["clean_data"],
+    input_map={"data": "$clean_data.result"},
+)
+def store_data(data):
+    return {"stored": True}
+
+# Tool — also available for the LLM to invoke on demand
+@agent.tool(name="search_db")
+def search_db(query):
+    """Search the database."""
+    return {"results": []}
+
+# MCP remote tool — no local function, calls via MCPToolkit with HMAC auth
+@agent.mcp_tool(
+    name="bigquery_search",
+    input_map={"query": "$input.user_query"},
+)
+
+agent.run(MyAgent())
 ```
 
 ### Agent Communication

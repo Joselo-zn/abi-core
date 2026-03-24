@@ -6,17 +6,18 @@ This guide covers building custom AI agents in ABI-Core, from basic implementati
 
 ## Agent Architecture
 
-ABI-Core provides two base classes for agents:
+ABI-Core provides:
 
-1. **`BaseAgent`** - Simple agent with lifecycle management
-2. **`AbiAgent`** - Enhanced agent with semantic enrichment and policy evaluation
+- **`AbiAgent`** — Base class with LLM creation, streaming with heartbeat, and tool graph support
+- **`AbiCore`** — Application runner with decorator-based task/tool registration
+- **`AgentResponse`** — Typed response objects (success, error, status, input_required, empty)
+- **`ToolExecutionGraph`** — Deterministic DAG for strict tool execution order
 
 ## Creating Your First Agent
 
 ### Step 1: Generate Agent Scaffold
 
 ```bash
-# In your ABI project
 abi-core add agent my_agent \
   --description "My custom agent" \
   --model qwen2.5:3b
@@ -25,191 +26,161 @@ abi-core add agent my_agent \
 This creates:
 ```
 agents/my_agent/
-├── __init__.py
-├── agent_my_agent.py    # Your agent implementation
-├── main.py              # Entry point
-├── models.py            # Data models
+├── config/
+│   ├── __init__.py
+│   └── config.py          # Centralized config (LLM_CONFIG, ports, etc.)
+├── agent_my_agent.py       # Your agent implementation
+├── main.py                 # Entry point (AbiCore runner)
+├── agent_cards/            # Agent card (auto-created)
+├── models.py
 ├── Dockerfile
 └── requirements.txt
 ```
 
-### Step 2: Implement Agent Logic
+### Step 2: Understand the Code
 
-**File:** `agents/my_agent/agent_my_agent.py`
+**`main.py`** — Ultra-minimal entry point:
 
 ```python
-from abi_core.agent.agent import AbiAgent
-from abi_core.common.utils import abi_logging
+from agent_my_agent import MyAgentAgent
+from abi_core.agent import AbiCore
 
-class MyAgent(AbiAgent):
-    """Custom agent implementation"""
-    
+agent = AbiCore()
+agent.run(MyAgentAgent())
+```
+
+`AbiCore()` auto-imports `config` and `AGENT_CARD` from the local `config/` package. `agent.run()` starts the A2A server.
+
+**`agent_my_agent.py`** — Agent class:
+
+```python
+from abi_core.agent import AbiAgent
+from abi_core.common import prompts
+from config import config
+
+
+class MyAgentAgent(AbiAgent):
+    """My custom agent"""
+
     def __init__(self):
         super().__init__(
-            agent_name='my_agent',
-            description='My custom agent',
-            content_types=['text/plain']
+            agent_name=config.AGENT_NAME,
+            description=config.AGENT_DESCRIPTION,
+            llm_config=config.LLM_CONFIG,
+            tools=[],  # Add your LangChain tools here
+            system_prompt=prompts.WORKER_PROMPT,
         )
-        # Initialize your agent here
-        self.setup_llm()
-    
-    def setup_llm(self):
-        """Setup LLM with Ollama"""
-        from langchain_ollama import ChatOllama
-        import os
-        
-        model = os.getenv('MODEL_NAME', 'qwen2.5:3b')
-        ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
-        
-        self.llm = ChatOllama(
-            model=model,
-            base_url=ollama_host,
-            temperature=0.1
-        )
-    
-    def process(self, enriched_input):
-        """Process enriched input and return result"""
-        query = enriched_input['query']
-        
-        abi_logging(f"Processing query: {query}")
-        
-        # Use LLM to process query
-        response = self.llm.invoke(query)
-        
-        return {
-            'result': response.content,
-            'query': query
-        }
-    
-    async def stream(self, query: str, context_id: str, task_id: str):
-        """Stream responses for A2A protocol"""
-        
-        # Process with semantic enrichment and policy check
-        result = self.handle_input(query)
-        
-        # Yield response in A2A format
-        yield {
-            'content': result['result'],
-            'response_type': 'text',
-            'is_task_completed': True,
-            'require_user_input': False
-        }
+
+    # stream() is inherited from AbiAgent with heartbeat support.
+    # Override only if you need custom behaviour:
+    #
+    # async def stream(self, query, context_id, task_id):
+    #     yield AgentResponse.success("custom response", agent=self.agent_name)
 ```
 
 ### Step 3: Test Your Agent
 
 ```bash
-# Start services
 docker-compose up -d
-
-# Test agent
 curl -X POST http://localhost:8000/stream \
   -H "Content-Type: application/json" \
-  -d '{
-    "query": "Hello, how can you help me?",
-    "context_id": "test-001",
-    "task_id": "task-001"
-  }'
+  -d '{"query": "Hello!", "context_id": "test-001", "task_id": "task-001"}'
 ```
 
-## Agent with Tools
+## Decorator-Based Tasks & Tools
 
-### Adding LangChain Tools
+Register deterministic tasks and tools directly on the `AbiCore` instance in `main.py`:
+
+### Tasks (Deterministic DAG)
+
+Tasks run in strict topological order — the LLM never decides when to call them:
 
 ```python
-from abi_core.agent.agent import AbiAgent
-from langchain.tools import tool
-from langchain_ollama import ChatOllama
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate
-import os
+from my_agent import MyAgent
+from abi_core.agent import AbiCore
 
-# Define custom tools
+agent = AbiCore()
+
+@agent.task(name="fetch_data")
+def fetch_data(query):
+    return {"rows": db.execute(query)}
+
+@agent.task(
+    name="clean_data",
+    depends_on=["fetch_data"],
+    input_map={"raw": "$fetch_data.rows"},
+)
+def clean_data(raw):
+    return {"cleaned": [r for r in raw if r["valid"]]}
+
+agent.run(MyAgent())
+```
+
+### Tools (DAG + LLM-invocable)
+
+Tools are DAG nodes that are also exposed as LangChain tools for the LLM:
+
+```python
+@agent.tool(name="calculate")
+def calculate(expression: str) -> str:
+    """Calculate a mathematical expression."""
+    return str(eval(expression))
+```
+
+### MCP Remote Tools
+
+Call remote MCP tools via `MCPToolkit` with HMAC authentication — no local function needed:
+
+```python
+@agent.mcp_tool(
+    name="bigquery_search",
+    input_map={"query": "$input.user_query"},
+)
+```
+
+Or with a wrapper for pre/post processing:
+
+```python
+@agent.mcp_tool(name="bigquery_search")
+async def bigquery_search(query):
+    return {"query": sanitize(query)}
+```
+
+### How it works
+
+1. Decorators register functions before `agent.run()` is called
+2. `run()` builds a `ToolExecutionGraph` (LangGraph DAG) from all registered nodes
+3. The DAG is injected into the agent as `self.tool_graph`
+4. `@agent.tool()` functions are also converted to LangChain `StructuredTool` and injected as `self.extra_tools`
+5. `@agent.mcp_tool()` nodes are resolved via `MCPToolkit` with HMAC auth from the agent card
+
+## Agent with LangChain Tools (Classic)
+
+You can also pass tools directly to `AbiAgent` in the constructor:
+
+```python
+from langchain.tools import tool
+
 @tool
 def calculate(expression: str) -> str:
     """Calculate a mathematical expression"""
-    try:
-        result = eval(expression)
-        return f"Result: {result}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+    return str(eval(expression))
 
 @tool
 def get_weather(city: str) -> str:
     """Get weather for a city"""
-    # In real implementation, call weather API
     return f"Weather in {city}: Sunny, 72°F"
 
 class ToolAgent(AbiAgent):
-    """Agent with tool calling capabilities"""
-    
     def __init__(self):
         super().__init__(
-            agent_name='tool_agent',
-            description='Agent with tool calling',
-            content_types=['text/plain']
+            agent_name=config.AGENT_NAME,
+            description=config.AGENT_DESCRIPTION,
+            llm_config=config.LLM_CONFIG,
+            tools=[calculate, get_weather],
+            system_prompt="You are a helpful assistant with access to tools.",
         )
-        self.setup_agent_with_tools()
-    
-    def setup_agent_with_tools(self):
-        """Setup agent with tools"""
-        
-        # Initialize LLM
-        model = os.getenv('MODEL_NAME', 'qwen2.5:3b')
-        ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
-        
-        llm = ChatOllama(
-            model=model,
-            base_url=ollama_host,
-            temperature=0.1
-        )
-        
-        # Define tools
-        tools = [calculate, get_weather]
-        
-        # Create prompt
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a helpful assistant with access to tools."),
-            ("human", "{input}"),
-            ("placeholder", "{agent_scratchpad}"),
-        ])
-        
-        # Create agent
-        agent = create_tool_calling_agent(llm, tools, prompt)
-        
-        # Create executor
-        self.agent_executor = AgentExecutor(
-            agent=agent,
-            tools=tools,
-            verbose=True
-        )
-    
-    def process(self, enriched_input):
-        """Process with tool calling"""
-        query = enriched_input['query']
-        
-        # Execute with tools
-        result = self.agent_executor.invoke({"input": query})
-        
-        return {
-            'result': result['output'],
-            'query': query
-        }
 ```
-
-**Usage:**
-```python
-agent = ToolAgent()
-result = agent.handle_input("What is 25 * 4?")
-print(result)  # Uses calculate tool
-
-result = agent.handle_input("What's the weather in New York?")
-print(result)  # Uses get_weather tool
-```
-
-## Agent with Memory
-
-### Conversation Memory
 
 ```python
 from abi_core.agent.agent import AbiAgent
@@ -282,7 +253,9 @@ curl -X POST http://localhost:8000/stream \
 # Response: "Your name is Alice."
 ```
 
-## Agent-to-Agent Communication
+## Agent with Memory
+
+### Conversation Memory
 
 ### Calling Another Agent
 
@@ -384,127 +357,59 @@ class OrchestratorAgent(AbiAgent):
 
 ### Streaming Responses
 
+`AbiAgent` provides a default `stream()` with SSE heartbeat support. Override only when needed:
+
 ```python
-from abi_core.agent.agent import AbiAgent
-from langchain_ollama import ChatOllama
-import os
+from abi_core.agent import AbiAgent, AgentResponse
 
 class StreamingAgent(AbiAgent):
-    """Agent with streaming responses"""
-    
-    def __init__(self):
-        super().__init__(
-            agent_name='streaming_agent',
-            description='Streams responses',
-            content_types=['text/plain']
-        )
-        self.setup_llm()
-    
-    def setup_llm(self):
-        model = os.getenv('MODEL_NAME', 'qwen2.5:3b')
-        ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
-        
-        self.llm = ChatOllama(
-            model=model,
-            base_url=ollama_host,
-            temperature=0.7,
-            streaming=True
-        )
-    
+    """Agent with custom streaming"""
+
     async def stream(self, query: str, context_id: str, task_id: str):
-        """Stream response token by token"""
-        
-        accumulated = ""
-        
-        # Stream from LLM
-        async for chunk in self.llm.astream(query):
-            accumulated += chunk.content
-            
-            # Yield each chunk
-            yield {
-                'content': chunk.content,
-                'response_type': 'text',
-                'is_task_completed': False,
-                'require_user_input': False
-            }
-        
-        # Final message
-        yield {
-            'content': "",
-            'response_type': 'text',
-            'is_task_completed': True,
-            'require_user_input': False
-        }
+        """Custom stream with progress updates"""
+
+        yield AgentResponse.status(
+            "Analyzing query...",
+            agent=self.agent_name,
+            context_id=context_id,
+            task_id=task_id,
+        )
+
+        # Your custom logic here
+        result = await self.llm.ainvoke(query)
+
+        yield AgentResponse.success(
+            result.content,
+            agent=self.agent_name,
+            model=self.llm_config.get("model", "unknown"),
+            context_id=context_id,
+            task_id=task_id,
+        )
 ```
 
 ### Error Handling
 
+`AbiAgent.stream()` handles errors automatically. For custom error handling:
+
 ```python
-from abi_core.agent.agent import AbiAgent
-from abi_core.common.utils import abi_logging
+from abi_core.agent import AbiAgent, AgentResponse
 
 class RobustAgent(AbiAgent):
-    """Agent with robust error handling"""
-    
-    def process(self, enriched_input):
-        """Process with error handling"""
-        try:
-            query = enriched_input['query']
-            
-            # Validate input
-            if not query or len(query) < 3:
-                raise ValueError("Query too short")
-            
-            # Process
-            result = self.llm.invoke(query)
-            
-            return {
-                'result': result.content,
-                'status': 'success'
-            }
-            
-        except ValueError as e:
-            abi_logging(f"Validation error: {e}")
-            return {
-                'error': str(e),
-                'status': 'validation_error'
-            }
-        
-        except Exception as e:
-            abi_logging(f"Processing error: {e}")
-            return {
-                'error': 'Internal processing error',
-                'status': 'error'
-            }
-    
     async def stream(self, query: str, context_id: str, task_id: str):
-        """Stream with error handling"""
         try:
-            result = self.handle_input(query)
-            
-            if result.get('status') == 'error':
-                yield {
-                    'content': f"Error: {result['error']}",
-                    'response_type': 'error',
-                    'is_task_completed': True,
-                    'require_user_input': False
-                }
-            else:
-                yield {
-                    'content': result['result'],
-                    'response_type': 'text',
-                    'is_task_completed': True,
-                    'require_user_input': False
-                }
-        
+            if len(query) < 3:
+                yield AgentResponse.input_required(
+                    "Please provide a more specific query.",
+                    agent=self.agent_name,
+                )
+                return
+
+            result = await self.llm.ainvoke(query)
+            yield AgentResponse.success(result.content, agent=self.agent_name)
+
         except Exception as e:
-            abi_logging(f"Stream error: {e}")
-            yield {
-                'content': f"Fatal error: {str(e)}",
-                'response_type': 'error',
-                'is_task_completed': True,
-                'require_user_input': False
-            }
+            abi_logging(f"[❌] Error: {e}", level="error")
+            yield AgentResponse.error(str(e), agent=self.agent_name)
 ```
 
 ## Testing Agents
@@ -564,79 +469,70 @@ async def test_agent_http_endpoint():
 
 ## Best Practices
 
-### 1. Use Semantic Enrichment
+### 1. Use AbiCore Runner
 
 ```python
-# ✅ Good - Uses AbiAgent with enrichment
-class MyAgent(AbiAgent):
-    def process(self, enriched_input):
-        # enriched_input has semantic context
-        pass
+# ✅ Good — minimal main.py
+from my_agent import MyAgent
+from abi_core.agent import AbiCore
 
-# ❌ Bad - Bypasses enrichment
-class MyAgent(BaseAgent):
-    def process(self, raw_input):
-        # Missing semantic context
-        pass
+agent = AbiCore()
+agent.run(MyAgent())
+
+# ❌ Bad — manual boilerplate
+from config import config, AGENT_CARD
+from abi_core.agent.agent_factory import agent_factory
+def main():
+    return agent_factory(MyAgent(), config, AGENT_CARD)
 ```
 
-### 2. Handle Errors Gracefully
+### 2. Use AgentResponse
 
 ```python
-# ✅ Good
-try:
-    result = self.llm.invoke(query)
-except Exception as e:
-    abi_logging(f"Error: {e}")
-    return {'error': 'Processing failed'}
+# ✅ Good — typed responses
+yield AgentResponse.success("Answer", agent=self.agent_name)
+yield AgentResponse.error("Something broke", agent=self.agent_name)
+yield AgentResponse.status("Working...", agent=self.agent_name)
 
-# ❌ Bad
-result = self.llm.invoke(query)  # Can crash
+# ❌ Bad — raw dicts
+yield {"content": "Answer", "is_task_completed": True}
 ```
 
-### 3. Log Important Events
+### 3. Use Centralized Config
+
+```python
+# ✅ Good — config from config/config.py
+from config import config
+llm = create_llm(config.LLM_CONFIG)
+
+# ❌ Bad — hardcoded values
+model = 'qwen2.5:3b'
+ollama_host = 'http://localhost:11434'
+```
+
+### 4. Use abi_logging
 
 ```python
 # ✅ Good
 from abi_core.common.utils import abi_logging
-
-abi_logging(f"Processing query: {query}")
-abi_logging(f"Result: {result}")
+abi_logging(f"Processing: {query}")
 
 # ❌ Bad
-print(f"Processing: {query}")  # Won't appear in logs
+print(f"Processing: {query}")
 ```
 
-### 4. Use Environment Variables
+### 5. Use Decorators for Tools
 
 ```python
-# ✅ Good
-model = os.getenv('MODEL_NAME', 'qwen2.5:3b')
-ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
+# ✅ Good — declarative, wired to DAG
+@agent.task(name="clean", depends_on=["fetch"])
+def clean(data): ...
 
-# ❌ Bad
-model = 'qwen2.5:3b'  # Hardcoded
-ollama_host = 'http://localhost:11434'  # Hardcoded
-```
+@agent.mcp_tool(name="bigquery_search")
 
-### 5. Implement Proper Streaming
-
-```python
-# ✅ Good
-async def stream(self, query, context_id, task_id):
-    # Process
-    result = self.process_query(query)
-    
-    # Yield result
-    yield {
-        'content': result,
-        'is_task_completed': True,
-        'require_user_input': False
-    }
-
-# ❌ Bad
-async def stream(self, query, context_id, task_id):
-    return self.process_query(query)  # Not streaming
+# ❌ Bad — manual tool graph construction
+graph = ToolExecutionGraph()
+graph.add_node(ToolGraphNode(id="clean", fn=clean, ...))
 ```
 
 ## Deployment

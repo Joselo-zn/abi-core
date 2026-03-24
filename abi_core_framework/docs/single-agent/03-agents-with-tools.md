@@ -10,7 +10,69 @@ Agents can use tools to perform specific actions like calculating, searching inf
 - Call external APIs
 - Access databases
 
-## Create an Agent with Tools
+## Decorator-Based Tools (Recommended)
+
+The simplest way to add tools is using `@agent.tool()` and `@agent.mcp_tool()` decorators on the `AbiCore` instance:
+
+```python
+from my_agent import MyAgent
+from abi_core.agent import AbiCore
+
+agent = AbiCore()
+
+# Local tool — available to the LLM + runs in the DAG
+@agent.tool(name="calculate")
+def calculate(expression: str) -> str:
+    """Calculate a mathematical expression"""
+    try:
+        result = eval(expression)
+        return f"Result: {result}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# MCP remote tool — calls your semantic layer via MCPToolkit
+@agent.mcp_tool(
+    name="bigquery_search",
+    input_map={"query": "$input.user_query"},
+)
+
+agent.run(MyAgent())
+```
+
+### Deterministic Task Pipelines
+
+Use `@agent.task()` for strict execution order (the LLM never decides when to run these):
+
+```python
+agent = AbiCore()
+
+@agent.task(name="fetch_data")
+def fetch_data(query):
+    return {"rows": db.execute(query)}
+
+@agent.task(
+    name="clean_data",
+    depends_on=["fetch_data"],
+    input_map={"raw": "$fetch_data.rows"},
+)
+def clean_data(raw):
+    return {"cleaned": [r for r in raw if r["valid"]]}
+
+@agent.task(
+    name="store_results",
+    depends_on=["clean_data"],
+    input_map={"data": "$clean_data.cleaned"},
+)
+def store_results(data):
+    db.insert(data)
+    return {"stored": len(data)}
+
+agent.run(MyAgent())
+```
+
+The tasks run in topological order via `ToolExecutionGraph` — a LangGraph-based DAG that prevents the LLM from executing steps out of order.
+
+## LangChain Tools (Classic Approach)
 
 ### Step 1: Define Tools
 
