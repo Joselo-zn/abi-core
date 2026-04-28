@@ -11,6 +11,7 @@ from a2a.types import (
     TaskState,
     TaskStatusUpdateEvent
 )
+from abi_core.common.utils import abi_logging
 from abi_core.common import prompts
 from abi_core.agent.agent import AbiAgent
 from agent.models.agent_models import (
@@ -26,7 +27,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
 # Import configuration
-from config import config
+from config.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -46,21 +47,22 @@ class AbiGuardianSecure(AbiAgent):
     
     def __init__(self):
         super().__init__(
-            agent_name='ABI Guardian Agent (Secure)',
-            description='Mandatory policy enforcement and compliance validation using secure OPA',
-            content_types=['text', 'text/plain', 'application/json']
+            agent_name=config.AGENT_NAME,
+            description=config.AGENT_DESCRIPTION,
+            llm_config=config.LLM_CONFIG,
+            system_prompt=prompts.GUARDIAL_COT_INSTRUCTIONS,
+            content_types=['text', 'text/plain', 'application/json'],
         )
 
         self.policy_engine = get_secure_policy_engine()
         self.mcp_tool = get_guardial_mcp_tool()
-        self.llm = ChatOllama(model=MODEL_NAME, temperature=0.0)
         self.system_secure = False
-        
-        logger.info(f'🛡️ Starting ABI Guardian Agent with Secure OPA')
-        
+
+        abi_logging('🛡️ Starting ABI Guardian Agent with Secure OPA')
+
         self.abi_guardial = create_react_agent(
             self.llm,
-            tools=[],  # Empty tools list for now - Guardian uses OPA for policy decisions
+            tools=[],
             checkpointer=memory,
             prompt=prompts.GUARDIAL_COT_INSTRUCTIONS,
             response_format=GuardialResponse

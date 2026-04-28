@@ -94,28 +94,35 @@ class AbiCore:
         host: str = "0.0.0.0",
         web_interface_cls: Optional[Type] = None,
         interface_name: Optional[str] = None,
+        config: Optional[Any] = None,
+        agent_card: Optional[Any] = None,
     ):
         self.host = host
         self.web_interface_cls = web_interface_cls
         self.interface_name = interface_name
         self._registered_nodes: List[_RegisteredNode] = []
 
-        # Auto-import config and AGENT_CARD from the agent's config package
-        try:
-            import config as _cfg_module
+        # Use provided config/agent_card or auto-import from config package
+        if config is not None:
+            self.config = config
+            self.agent_card = agent_card
+        else:
+            try:
+                import config as _cfg_module
 
-            self.config = _cfg_module.config
-            self.agent_card = _cfg_module.AGENT_CARD
-        except ImportError as e:
-            raise ImportError(
-                "AbiCore requires a 'config' package with 'config' and "
-                "'AGENT_CARD' exports. Make sure config/ is on PYTHONPATH."
-            ) from e
-        except AttributeError as e:
-            raise AttributeError(
-                "The 'config' package must export both 'config' (AgentConfig) "
-                "and 'AGENT_CARD' (AgentCard)."
-            ) from e
+                self.config = _cfg_module.config
+                self.agent_card = _cfg_module.AGENT_CARD
+            except ImportError as e:
+                raise ImportError(
+                    "AbiCore requires a 'config' package with 'config' and "
+                    "'AGENT_CARD' exports. Make sure config/ is on PYTHONPATH, "
+                    "or pass config= and agent_card= to AbiCore()."
+                ) from e
+            except AttributeError as e:
+                raise AttributeError(
+                    "The 'config' package must export both 'config' (AgentConfig) "
+                    "and 'AGENT_CARD' (AgentCard)."
+                ) from e
 
     # ── Decorators ──────────────────────────────────────────────
 

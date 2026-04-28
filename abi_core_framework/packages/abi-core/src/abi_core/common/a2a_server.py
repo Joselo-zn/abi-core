@@ -62,11 +62,29 @@ def _attach_health_route(app: Starlette) -> None:
     try:
         app.add_route("/health", health, methods=["GET"])
     except Exception as e:
-<<<<<<< HEAD
-        abi_logging(f"[!] Could not attach /health route: {e}", level='warning')
-=======
         abi_logging(f"[!] Could not attach /health route: {e}", level="warning")
->>>>>>> main
+
+def _attach_audit_route(app: Starlette) -> None:
+    """POST /audit/log — receive and persist audit events from A2A validators."""
+    async def audit_log(request):
+        try:
+            data = await request.json()
+            event_type = data.get("event_type", "unknown")
+            source = data.get("source_agent", "unknown")
+            target = data.get("target_agent", "unknown")
+            allowed = data.get("allowed", None)
+            reason = data.get("reason", "")
+            abi_logging(
+                f"[📋 AUDIT] {event_type}: {source} → {target} | allowed={allowed} | {reason}"
+            )
+            return JSONResponse({"status": "logged"}, status_code=200)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    try:
+        app.add_route("/audit/log", audit_log, methods=["POST"])
+    except Exception as e:
+        abi_logging(f"[!] Could not attach /audit/log route: {e}", level="warning")
 
 def start_server(host: str, port: int, agent_card, agent: AbiAgent):
     """
@@ -117,21 +135,13 @@ def start_server(host: str, port: int, agent_card, agent: AbiAgent):
         _attach_health_route(asgi_app)
         _attach_root_head(asgi_app)
         _attach_card_route(asgi_app, card_dict)
+        _attach_audit_route(asgi_app)
         _attach_routes_route(asgi_app) 
 
         abi_logging(f"[🚀] Starting A2A {agent_card_obj.name} Client on {host}:{port}")
         uvicorn.run(asgi_app, host=host, port=port)
 
     except FileNotFoundError:
-<<<<<<< HEAD
-        abi_logging(f"Error: File '{agent_card}' not found.", level='error')
-        sys.exit(1)
-    except json.JSONDecodeError:
-        abi_logging(f"Error: File '{agent_card}' contains invalid JSON.", level='error')
-        sys.exit(1)
-    except Exception as e:
-        abi_logging(f"An error occurred during server startup: {e}", level='error')
-=======
         abi_logging(f"Error: File '{agent_card}' not found.", level="error")
         sys.exit(1)
     except json.JSONDecodeError:
@@ -139,5 +149,4 @@ def start_server(host: str, port: int, agent_card, agent: AbiAgent):
         sys.exit(1)
     except Exception as e:
         abi_logging(f"An error occurred during server startup: {e}", level="error")
->>>>>>> main
         sys.exit(1)

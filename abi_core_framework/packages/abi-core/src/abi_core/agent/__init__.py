@@ -10,7 +10,7 @@ from .abi_core_app import AbiCore
 from .agent import AbiAgent
 from .agent_factory import agent_factory
 from .agent_response import AgentResponse
-from .llm_provider import create_llm
+from .llm_provider import create_llm, invoke
 
 __all__ = [
     "AbiCore",
@@ -18,4 +18,5 @@ __all__ = [
     "AgentResponse",
     "agent_factory",
     "create_llm",
+    "invoke",
 ]

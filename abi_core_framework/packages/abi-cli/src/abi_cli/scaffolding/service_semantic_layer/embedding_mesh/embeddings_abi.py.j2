@@ -58,38 +58,45 @@ def _normalize(vec: np.ndarray) -> np.ndarray:
     return vec / n
 
 def load_agent_cards() -> Tuple[List[str], List[dict]]:
-    """Retrieves all Agent Cards stored as JSON files in the configured directory.
+    """Retrieves all identity cards (agent, service, tool) from configured directories.
     
     Returns:
         tuple:
-            - card_uris (List[str]): List of file paths for each Agent Card JSON.
-            - agent_cards (List[dict]): List of parsed JSON dictionaries representing Agent Cards.
+            - card_uris (List[str]): List of file paths for each card JSON.
+            - agent_cards (List[dict]): List of parsed JSON dictionaries.
     
     Behavior:
+        - Scans agent_cards/, service_cards/, and tool_cards/ directories.
         - Skips unreadable or malformed JSON files with a warning.
-        - Returns empty lists if no Agent Cards are found.
+        - Returns empty lists if no cards are found.
     """
     AGENT_CARDS_DIR = os.getenv("AGENT_CARDS_BASE", "/app/agent_cards")
-    dir_path = Path(AGENT_CARDS_DIR)
+    base_dir = Path(AGENT_CARDS_DIR).parent  # e.g. /app
 
-    if not dir_path.is_dir():
-        abi_logging(f"❌ Agent Cards directory not found or is not a directory: {AGENT_CARDS_DIR}")
-        return [], []
+    dirs_to_scan = [
+        Path(AGENT_CARDS_DIR),
+        base_dir / "service_cards",
+        base_dir / "tool_cards",
+    ]
 
     card_uris = []
     agent_cards = []
 
-    for file_path in dir_path.glob("*.json"):
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                card_data = json.load(f)
-                card_uris.append(str(file_path))
-                agent_cards.append(card_data)
-        except json.JSONDecodeError:
-            abi_logging(f"⚠️ Invalid JSON format in file: {file_path}")
-        except Exception as e:
-            abi_logging(f"❌ Error reading {file_path}: {e}")
+    for dir_path in dirs_to_scan:
+        if not dir_path.is_dir():
+            continue
+        for file_path in dir_path.glob("*.json"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    card_data = json.load(f)
+                    card_uris.append(str(file_path))
+                    agent_cards.append(card_data)
+            except json.JSONDecodeError:
+                abi_logging(f"⚠️ Invalid JSON format in file: {file_path}")
+            except Exception as e:
+                abi_logging(f"❌ Error reading {file_path}: {e}")
 
+    abi_logging(f"[📋] Loaded {len(agent_cards)} cards from {[str(d) for d in dirs_to_scan if d.is_dir()]}")
     return card_uris, agent_cards
 
 def build_agent_card_embeddings(force_reload: bool = False) -> Optional[pd.DataFrame]:

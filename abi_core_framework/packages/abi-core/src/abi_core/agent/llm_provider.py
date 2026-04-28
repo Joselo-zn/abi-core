@@ -188,3 +188,72 @@ def create_llm(llm_config: Dict[str, Any]):
         f"Unknown LLM provider: '{provider}'. "
         f"Supported: ollama, openai, anthropic, gemini, grok, bedrock, azure, vertex"
     )
+
+
+async def invoke(
+    llm_config: Dict[str, Any],
+    prompt: str,
+    tools: list = None,
+    thread_id: str = None,
+    system_prompt: str = None,
+) -> str:
+    """Unified LLM invocation for any node in the system.
+
+    Covers 4 use cases:
+    - LLM only, no context:    invoke(config, "classify this")
+    - LLM only, with context:  invoke(config, "summarize", thread_id="abc")
+    - Agent + tools, no ctx:   invoke(config, "verify tool", tools=[search])
+    - Agent + tools, with ctx:  invoke(config, query, tools=[find], thread_id="s1")
+
+    Args:
+        llm_config: Provider config dict for create_llm().
+        prompt: The user/system message to send.
+        tools: Optional list of LangChain tools. If provided, creates
+               a full agent that can call tools. If None, uses LLM directly.
+        thread_id: Optional session ID for conversation memory.
+               If provided, uses MemorySaver checkpointer so the LLM
+               retains history across calls with the same thread_id.
+        system_prompt: Optional system instructions prepended to the call.
+
+    Returns:
+        The text content of the LLM response.
+    """
+    llm = create_llm(llm_config)
+
+    # ── Path A: LLM only (no tools) ────────────────────────────
+    if not tools:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        response = await llm.ainvoke(messages)
+        return response.content if hasattr(response, "content") else str(response)
+
+    # ── Path B: Agent with tools ────────────────────────────────
+    from langchain.agents import create_agent
+
+    checkpointer = None
+    if thread_id:
+        from langgraph.checkpoint.memory import MemorySaver
+        checkpointer = MemorySaver()
+
+    agent = create_agent(
+        model=llm,
+        tools=tools,
+        system_prompt=system_prompt or "",
+        checkpointer=checkpointer,
+    )
+    abi_logging(f'CREATE AGENT CALLED WITH TOOLS {tools}')
+    inputs = {"messages": [{"role": "user", "content": prompt}]}
+    config = {"configurable": {"thread_id": thread_id}} if thread_id else {}
+
+    final_response = None
+    async for chunk in agent.astream(inputs, config=config, stream_mode="updates"):
+        for _node, node_data in chunk.items():
+            if "messages" in node_data:
+                for msg in node_data["messages"]:
+                    if hasattr(msg, "content") and msg.content:
+                        final_response = msg.content
+
+    return final_response or ""

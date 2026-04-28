@@ -1,5 +1,5 @@
 # Planner Agent Dockerfile
-# Part of ABI-Core Agentic Orchestration Layer
+# Part of ABI Swarm
 
 FROM smarbuy/abi-image:latest
 

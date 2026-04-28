@@ -55,6 +55,22 @@ class GuardianConfig:
     OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://{{ project_dir }}-ollama:11434')
     MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen2.5:3b')
     ENABLE_AI_POLICY_ASSIST: bool = os.getenv('ENABLE_AI_POLICY_ASSIST', 'false').lower() == 'true'
+
+    # LLM Configuration (unified dict for create_llm)
+    LLM_CONFIG: dict = {
+        "provider": os.getenv("LLM_PROVIDER", "ollama"),
+        "model": os.getenv("MODEL_NAME", "qwen2.5:3b"),
+        "temperature": 0.0,
+        "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://{{ project_dir }}-ollama:11434")),
+        "api_key": os.getenv("LLM_API_KEY", ""),
+    }
+
+    # Agent Identity
+    AGENT_NAME: str = "guardian"
+    AGENT_DISPLAY_NAME: str = "{{ project_name }} Guardian"
+    AGENT_DESCRIPTION: str = "Security policy enforcement and compliance validation"
+    AGENT_PORT: int = int(os.getenv('GUARDIAN_PORT', '11438'))
+    AGENT_CARD: str = os.getenv('AGENT_CARD', './agent/agent_cards/guardian_agent.json')
     
     # Cache Configuration
     ENABLE_DECISION_CACHE: bool = os.getenv('ENABLE_DECISION_CACHE', 'true').lower() == 'true'
@@ -104,3 +120,22 @@ class GuardianConfig:
 
 # Create a singleton instance
 config = GuardianConfig()
+
+
+# Load agent card at module import time
+def _load_agent_card():
+    import json
+    from pathlib import Path
+    from a2a.types import AgentCard
+
+    card_path = Path(config.AGENT_CARD)
+    if not card_path.exists():
+        raise FileNotFoundError(f"Agent card not found: {config.AGENT_CARD}")
+
+    with card_path.open() as f:
+        data = json.load(f)
+
+    return AgentCard(**data)
+
+
+AGENT_CARD = _load_agent_card()

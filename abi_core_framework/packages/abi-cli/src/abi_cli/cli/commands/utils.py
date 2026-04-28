@@ -225,7 +225,7 @@ fastapi>=0.100.0
 uvicorn>=0.20.0
 
 # MCP Protocol
-fastmcp>=0.1.0
+fastmcp>=3.2.0
 
 # Data and Validation
 pydantic>=2.0.0

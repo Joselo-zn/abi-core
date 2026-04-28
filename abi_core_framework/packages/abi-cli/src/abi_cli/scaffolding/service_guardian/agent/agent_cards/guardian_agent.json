@@ -1,7 +1,7 @@
 {
-  "name": "Abi Guardial Agent",
+  "name": "Guardian Agent",
   "description": "Guards execution by validating intents, actions, and artifacts against organizational and regulatory policies (OPA + semantic layer). Blocks, allows, or requests revision with traceable justifications.",
-  "url": "http://guardial:8003/",
+  "url": "http://guardian:11438",
   "version": "1.0.0",
 
   "capabilities": {

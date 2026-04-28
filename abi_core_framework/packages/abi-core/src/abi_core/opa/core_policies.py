@@ -459,7 +459,6 @@ audit_log = {{
             abi_logging(f"🚨 Failed to generate core policies: {e}", level="error")
             import traceback
 
-            abi_logging(f"🚨 Traceback: {traceback.format_exc(, level="error")}")
             abi_logging(f"🚨 Traceback: {traceback.format_exc()}", level="error")
     
     def validate_core_policies_exist(self, policy_path: str) -> bool:

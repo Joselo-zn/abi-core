@@ -64,6 +64,20 @@ class AgentConfig:
     GUARDIAN_URL: str = os.getenv('GUARDIAN_URL', 'http://localhost:11438')
     OPA_URL: str = os.getenv('OPA_URL', 'http://localhost:8181')
     
+    # Logging & Observability
+    LOG_TO_ARTIFACT_STORE: bool = os.getenv('LOG_TO_ARTIFACT_STORE', 'true').lower() == 'true'
+    LOG_AGENT_NAME: str = os.getenv('LOG_AGENT_NAME', 'orchestrator')
+    LOG_BUCKET: str = os.getenv('LOG_BUCKET', 'abi-logs')
+    
+    # Artifact Store (MinIO/S3)
+    ARTIFACT_ENDPOINT: str = os.getenv('ARTIFACT_ENDPOINT', 'http://localhost:9000')
+    ARTIFACT_ACCESS_KEY: str = os.getenv('ARTIFACT_ACCESS_KEY', 'minioadmin')
+    ARTIFACT_SECRET_KEY: str = os.getenv('ARTIFACT_SECRET_KEY', 'minioadmin')
+    ARTIFACT_BUCKET: str = os.getenv('ARTIFACT_BUCKET', 'abi-artifacts')
+    
+    # Ephemeral Agent Control
+    EPHEMERAL_AUTO_DESTROY: bool = os.getenv('EPHEMERAL_AUTO_DESTROY', 'true').lower() == 'true'
+    
     # Ollama Configuration (for distributed mode)
     START_OLLAMA: bool = os.getenv('START_OLLAMA', 'false').lower() == 'true'
     LOAD_MODELS: bool = os.getenv('LOAD_MODELS', 'false').lower() == 'true'

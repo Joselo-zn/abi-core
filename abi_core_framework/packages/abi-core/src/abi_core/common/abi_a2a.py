@@ -12,6 +12,7 @@ from a2a.types import (
     SendStreamingMessageRequest,
     SendStreamingMessageSuccessResponse,
     TaskArtifactUpdateEvent,
+    TaskStatusUpdateEvent,
 )
 
 
@@ -98,7 +99,7 @@ async def agent_connection(
             abi_logging("Streaming async iterator...")
             async for chunk in response_stream:
                 if isinstance(chunk.root, SendStreamingMessageSuccessResponse) and \
-                   isinstance(chunk.root.result, TaskArtifactUpdateEvent):
+                   isinstance(chunk.root.result, (TaskArtifactUpdateEvent, TaskStatusUpdateEvent)):
                     yield chunk
         else:
             abi_logging(f"⚠️ Unexpected response type: {type(response_stream)}")

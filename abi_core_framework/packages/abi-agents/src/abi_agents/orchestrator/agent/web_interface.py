@@ -4,11 +4,7 @@ from fastapi.responses import StreamingResponse
 import asyncio, json, time
 
 from abi_core.common.utils import abi_logging
-<<<<<<< HEAD
-=======
 
-logger = logging.getLogger(__name__)
->>>>>>> main
 
 class OrchestratorWebinterface:
     def __init__(self, orchestrator_agent):
@@ -24,14 +20,11 @@ class OrchestratorWebinterface:
             task_id = request.get("task_id", f"task-{int(time.time())}")
 
             async def generate_response():
-                # 1) Abrir el canal
                 yield b"event: ping\ndata: {}\n\n"
                 try:
-                    # 2) Stream real del agente (DEBE ser async generator)
                     async for chunk in self.orchestrator_agent.stream(
                         query=query, context_id=context_id, task_id=task_id
                     ):
-                        # Convert chunk to serializable format
                         try:
                             if hasattr(chunk, 'model_dump'):
                                 chunk_data = chunk.model_dump()
@@ -41,37 +34,23 @@ class OrchestratorWebinterface:
                                 chunk_data = chunk.__dict__
                             else:
                                 chunk_data = {"message": str(chunk), "type": type(chunk).__name__}
-<<<<<<< HEAD
-                            
-                            # Add debug info to identify source
-                            abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...")
-                            
-=======
 
                             abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...", level="debug")
 
->>>>>>> main
-                            yield (f"data: {json.dumps(chunk_data)}\n\n").encode()
+                            yield (f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n").encode()
                         except Exception as serialize_error:
                             error_data = {
                                 "error": "Serialization failed",
                                 "chunk_type": type(chunk).__name__,
                                 "details": str(serialize_error)
                             }
-                            yield (f"data: {json.dumps(error_data)}\n\n").encode()
-                    # 3) Cierre normal
+                            yield (f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n").encode()
                     yield b"event: done\ndata: {}\n\n"
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
-<<<<<<< HEAD
-                    # 4) Log + evento de error para que curl reciba “algo” antes del cierre
-                    abi_logging(f"Error en SSE generate_response: {e}", level='error')
-=======
-                    # 4) Log + evento de error para que curl reciba "algo" antes del cierre
                     abi_logging(f"Error en SSE generate_response: {e}", level="error")
->>>>>>> main
-                    yield (f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n").encode()
+                    yield (f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n").encode()
                     await asyncio.sleep(0.05)
 
             return StreamingResponse(

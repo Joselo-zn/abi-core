@@ -1,0 +1,25 @@
+{
+  "service_id": "service://{{ project_dir }}-webapp",
+  "name": "{{ project_dir }}-webapp",
+  "description": "Web application for {{ project_name }}",
+  "service_type": "webapp",
+  "url": "http://{{ project_dir }}-app:{{ web_port | default('8000') }}",
+  "version": "1.0.0",
+  "auth": {
+    "method": "hmac_sha256",
+    "key_id": "service://{{ project_dir }}-webapp-default",
+    "shared_secret": "{{ webapp_shared_secret | default('change-me-in-production') }}"
+  },
+  "actions": [
+    "find_agent",
+    "list_agents",
+    "search_tool_registry"
+  ],
+  "checksum": "",
+  "install_key": "service://{{ project_dir }}-webapp@1.0.0",
+  "origin": "{{ project_dir }}",
+  "metadata": {
+    "domain": "{{ domain }}",
+    "created_by": "abi-core-cli"
+  }
+}

@@ -77,14 +77,50 @@ class A2AResponse:
 
     @classmethod
     def parse(cls, result) -> "A2AResponse":
-        """Parse a single raw A2A streaming result into an A2AResponse."""
+        """Parse a single raw A2A streaming result into an A2AResponse.
+
+        Handles two shapes:
+        1. Full Task object: result.root.result = Task (non-streaming / coroutine)
+        2. Streaming events: result.root.result = TaskArtifactUpdateEvent
+           or TaskStatusUpdateEvent (streaming path)
+        """
         resp = cls(raw=result)
 
-        # Navigate: result.root → SendMessageSuccessResponse
+        # Navigate: result.root → SendStreamingMessageSuccessResponse
         root = getattr(result, "root", result)
-        task = _safe_get(root, "result")  # Task object
-        if task is None:
+        inner = _safe_get(root, "result")  # Task or event object
+        if inner is None:
             return resp
+
+        # ── Detect streaming events vs full Task ───────────────
+        inner_type = type(inner).__name__
+
+        if inner_type == "TaskArtifactUpdateEvent":
+            # Streaming artifact: inner.artifact.parts[]
+            artifact = getattr(inner, "artifact", None)
+            if artifact:
+                resp.artifacts_raw = [artifact]
+                for part in getattr(artifact, "parts", []):
+                    cls._extract_part(part, resp)
+            # TaskArtifactUpdateEvent carries no state — leave as None
+            return resp
+
+        if inner_type == "TaskStatusUpdateEvent":
+            # Streaming status: inner.status.state + inner.status.message
+            status = getattr(inner, "status", None)
+            if status:
+                state_obj = getattr(status, "state", None)
+                if state_obj is not None:
+                    resp.state = (
+                        state_obj.value
+                        if hasattr(state_obj, "value")
+                        else str(state_obj)
+                    )
+                resp.status_message = cls._extract_message_from_status(status)
+            return resp
+
+        # ── Full Task object (non-streaming path) ──────────────
+        task = inner
 
         # State
         state_obj = _safe_get(task, "status", "state")
@@ -115,7 +151,11 @@ class A2AResponse:
 
     @classmethod
     def find_plan(cls, results: list) -> Optional[Dict[str, Any]]:
-        """Extract the first plan (dict with ``tasks`` key) from results."""
+        """Extract the first plan (dict with ``tasks`` key) from results.
+
+        Handles both full Task objects and streaming events where data
+        arrives in separate artifact chunks.
+        """
         for resp in cls.from_results(results):
             if resp.data and "tasks" in resp.data:
                 return resp.data
@@ -127,6 +167,11 @@ class A2AResponse:
                         return parsed
                 except (json.JSONDecodeError, TypeError):
                     pass
+            # Fallback: data might be a nested plan (e.g. {"plan": {"tasks": [...]}})
+            if resp.data and "plan" in resp.data:
+                plan = resp.data["plan"]
+                if isinstance(plan, dict) and "tasks" in plan:
+                    return resp.data
         return None
 
     @classmethod
@@ -157,6 +202,21 @@ class A2AResponse:
             return None
         for part in getattr(message, "parts", []):
             # part.root.text (wrapped) or part.text (direct)
+            text = _safe_get(part, "root", "text")
+            if text:
+                return text
+            text = getattr(part, "text", None)
+            if text:
+                return text
+        return None
+
+    @staticmethod
+    def _extract_message_from_status(status) -> Optional[str]:
+        """Extract text from a status.message object (streaming events)."""
+        message = getattr(status, "message", None)
+        if message is None:
+            return None
+        for part in getattr(message, "parts", []):
             text = _safe_get(part, "root", "text")
             if text:
                 return text

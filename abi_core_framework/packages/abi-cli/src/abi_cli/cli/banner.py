@@ -29,27 +29,14 @@ def _pkg_version():
 ABI_CORE_VERSION = _pkg_version()
 
 ABI_BANNER = r"""
-                                                                            
-                         █████╗   ██████╗   ██╗
-                        ██╔══██╗  ██╔══██╗  ██║
+[bold bright_cyan]
+                         █████═╗  ██████╗   ██╗
+                        ██╔══██║  ██╔══██╗  ██║
                         ███████║  ██████╔╝  ██║
                         ██╔══██║  ██╔══██╗  ██║
                         ██║  ██║  ██████╔╝  ██║
-                        ╚═╝  ╚═╝   ╚════╝   ╚═╝
-         ___                    __     ____
-        /   | ____ ____  ____  / /_   / __ )____ _________
-       / /| |/ __ `/ _ \/ __ \/ __/  / __  / __ `/ ___/ _ \
-      / ___ / /_/ /  __/ / / / /_   / /_/ / /_/ (__  )  __/
-     /_/  |_\__, /\___/_/ /_/\__/  /_____/\__,_/____/\___/
-    ____   /____/_                __                  __
-   /  _/___  / __/________ ______/ /________  _______/ /___  __________
-   / // __ \/ /_/ ___/ __ `/ ___/ __/ ___/ / / / ___/ __/ / / / ___/ _ \
- _/ // / / / __/ /  / /_/ (__  ) /_/ /  / /_/ / /__/ /_/ /_/ / /  /  __/
-/___/_/ /_/_/ /_/   \__,_/____/\__/_/   \__,_/\___/\__/\__,_/_/   \___/
+                        ╚═╝  ╚═╝   ╚════╝   ╚═╝[/bold bright_cyan]
 """
-ABI_BANNER += f""" 
-ABI Framework - Agent-Based Infrastructure
-OSS CLI v{ABI_CORE_VERSION}
-
-Create, orchestrate and secure autonomous AI systems.
-Powered by ABI Core v{ABI_CORE_VERSION}"""
+ABI_BANNER += f"""[bold white]ABI Swarm[/bold white] [dim]— Self-Building Multi-Agent System[/dim]
+[dim]OSS CLI v{ABI_CORE_VERSION} | Core v{ABI_CORE_VERSION}[/dim]
+"""

@@ -32,6 +32,11 @@ services:
       - LOG_LEVEL={{ log_level | default('INFO') }}
       {% if with_semantic_layer %}
       - SEMANTIC_LAYER_HOST=http://{{ project_dir }}-semantic-layer:10100
+      - SERVICE_CARD=/app/service_cards/webapp.json
+      - ARTIFACT_ENDPOINT=http://{{ project_dir }}-minio:9000
+      - ARTIFACT_ACCESS_KEY={{ minio_user | default('minioadmin') }}
+      - ARTIFACT_SECRET_KEY={{ minio_password | default('minioadmin') }}
+      - ARTIFACT_BUCKET=abi-artifacts
       {% endif %}
       {% if with_guardian %}
       - GUARDIAN_URL=http://{{ project_dir }}-guardian:11438
@@ -81,7 +86,7 @@ services:
     ports:
       - "10100:10100"
     environment:
-      - AGENT_CARDS_BASE=/app/layer/mcp_server/agent_cards
+      - AGENT_CARDS_BASE=/app/agent_cards
       - ABI_LLM_BASE=http://{{ project_dir }}-ollama:11434
       - EMBEDDING_MODEL=nomic-embed-text:v1.5
       - GUARDIAN_URL=http://{{ project_dir }}-guardian:11438
@@ -90,7 +95,9 @@ services:
       - SEMANTIC_LAYER_PORT=10100
       - WEAVIATE_URL=http://{{ project_dir }}-weaviate:8080
     volumes:
-      - ./services/semantic_layer/layer/mcp_server/agent_cards:/app/layer/mcp_server/agent_cards:ro
+      - ./services/semantic_layer/agent_cards:/app/agent_cards:ro
+      - ./services/semantic_layer/service_cards:/app/service_cards:ro
+      - ./services/semantic_layer/tool_cards:/app/tool_cards:ro
       - ./logs:/app/logs
     networks:
       - {{ project_dir }}-network
@@ -98,6 +105,28 @@ services:
       {{ project_dir }}-weaviate:
         condition: service_healthy
     restart: unless-stopped
+
+  # MinIO Object Storage (artifact store for builder/zombie)
+  {{ project_dir }}-minio:
+    image: minio/minio:latest
+    container_name: {{ project_dir }}-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "{{ minio_api_port | default('9000') }}:9000"
+      - "{{ minio_console_port | default('9001') }}:9001"
+    environment:
+      - MINIO_ROOT_USER={{ minio_user | default('minioadmin') }}
+      - MINIO_ROOT_PASSWORD={{ minio_password | default('minioadmin') }}
+    volumes:
+      - minio_data:/data
+    networks:
+      - {{ project_dir }}-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   {% endif %}
 
   {% if with_guardian %}
@@ -121,6 +150,8 @@ services:
       - EMERGENCY_LOG_DIR=/app/emergency_logs
       - GUARDIAL_DASHBOARD_PORT={{ dashboard_port | default('8080') }}
       - GUARDIAL_DASHBOARD_HOST=0.0.0.0
+      - OLLAMA_HOST=http://{{ project_dir }}-ollama:11434
+      - MODEL_NAME={{ model_name | default('qwen2.5:3b') }}
       {% if domain == 'finance' %}
       - COMPLIANCE_REQUIRED=true
       - AUDIT_ALL_TRANSACTIONS=true
@@ -133,6 +164,7 @@ services:
       - ./logs:/app/logs
       - ./services/guardian/emergency_logs:/app/emergency_logs
     depends_on:
+      - {{ project_dir }}-ollama
       - {{ project_dir }}-opa
       {% if with_semantic_layer %}
       - {{ project_dir }}-semantic-layer
@@ -173,6 +205,8 @@ volumes:
     driver: local
 {% if with_semantic_layer %}
   weaviate_data:
+    driver: local
+  minio_data:
     driver: local
 {% endif %}
 

@@ -41,7 +41,7 @@ def add_agent(name, description, model, with_web_interface):
         except Exception:
             pass  # Use default if can't read
     
-    project_dir = project_name.lower().replace(' ', '_').replace('-', '_')
+    project_dir = project_name.lower().replace(' ', '-').replace('_', '-')
     
     if not description:
         description = Prompt.ask("Agent description", default=f"Specialized agent for {name}")
@@ -199,14 +199,14 @@ def add_agent(name, description, model, with_web_interface):
         if services_dir.exists():
             for service_path in services_dir.iterdir():
                 if service_path.is_dir():
-                    mcp_server_dir = service_path / 'layer' / 'mcp_server'
-                    if mcp_server_dir.exists():
+                    semantic_dir = service_path / 'embedding_mesh'
+                    if semantic_dir.exists():
                         semantic_service_dir = service_path
                         break
         
         if semantic_service_dir:
             progress.update(task, description="Copying agent card to semantic layer...")
-            semantic_agent_cards_dir = semantic_service_dir / 'layer' / 'mcp_server' / 'agent_cards'
+            semantic_agent_cards_dir = semantic_service_dir / 'agent_cards'
             semantic_agent_cards_dir.mkdir(parents=True, exist_ok=True)
             semantic_card_path = semantic_agent_cards_dir / agent_card_filename
             with open(semantic_card_path, 'w') as f:
@@ -290,8 +290,8 @@ def add_service(service_type, name, domain):
         if services_dir.exists():
             for service_path in services_dir.iterdir():
                 if service_path.is_dir() and service_path != service_dir:
-                    # Check if it has semantic layer structure (layer/mcp_server directory)
-                    if (service_path / 'layer' / 'mcp_server').exists():
+                    # Check if it has semantic layer structure (embedding_mesh directory)
+                    if (service_path / 'embedding_mesh').exists():
                         console.print(f"❌ Semantic layer service already exists with name '{service_path.name}'!", style="red")
                         console.print(f"📁 Location: {service_path}", style="blue")
                         return
@@ -407,8 +407,8 @@ def add_semantic_layer(domain):
     if services_dir.exists():
         for service_path in services_dir.iterdir():
             if service_path.is_dir():
-                # Check if it has semantic layer structure (layer/mcp_server directory)
-                if (service_path / 'layer' / 'mcp_server').exists():
+                # Check if it has semantic layer structure (embedding_mesh directory)
+                if (service_path / 'embedding_mesh').exists():
                     console.print(f"❌ Semantic layer service already exists with name '{service_path.name}'!", style="red")
                     console.print(f"📁 Location: {service_path}", style="blue")
                     return
@@ -496,9 +496,9 @@ def add_agent_card(name, description, model, url, tasks):
     if services_dir.exists():
         for service_path in services_dir.iterdir():
             if service_path.is_dir():
-                # Check for semantic layer structure (layer/mcp_server directory)
-                mcp_server_dir = service_path / 'layer' / 'mcp_server'
-                if mcp_server_dir.exists():
+                # Check for semantic layer structure (embedding_mesh directory)
+                semantic_dir = service_path / 'embedding_mesh'
+                if semantic_dir.exists():
                     semantic_service_dir = service_path
                     break
     
@@ -518,7 +518,7 @@ def add_agent_card(name, description, model, url, tasks):
         except Exception:
             pass
     
-    project_dir = project_name.lower().replace(' ', '_').replace('-', '_')
+    project_dir = project_name.lower().replace(' ', '-').replace('_', '-')
     agent_name_normalized = name.lower().replace(' ', '_').replace('-', '_')
     
     # Interactive prompts if not provided
@@ -540,7 +540,7 @@ def add_agent_card(name, description, model, url, tasks):
     agent_card_filename = f"{name.lower().replace(' ', '_').replace('-', '_')}_agent.json"
     
     # Define target directories for agent cards
-    semantic_agent_cards_dir = semantic_service_dir / 'layer' / 'mcp_server' / 'agent_cards'
+    semantic_agent_cards_dir = semantic_service_dir / 'agent_cards'
     semantic_agent_cards_dir.mkdir(parents=True, exist_ok=True)
     
     # Check if agent card already exists in semantic layer
@@ -989,7 +989,7 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
                 'environment': [
                     'ABI_ROLE=Semantic Layer',
                     'ABI_NODE=ABI Node',
-                    'AGENT_CARDS_BASE=/app/layer/mcp_server/agent_cards',
+                    'AGENT_CARDS_BASE=/app/agent_cards',
                     f'ABI_LLM_BASE=http://{project_name}-guardian:11438',
                     'EMBEDDING_MODEL=nomic-embed-text:v1.5',
                     f'GUARDIAN_URL=http://{project_name}-guardian:11438',
@@ -997,7 +997,7 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
                     'SEMANTIC_LAYER_HOST=0.0.0.0',
                     f'SEMANTIC_LAYER_PORT={available_port}'
                 ],
-                'volumes': [f'./services/{service_name}/layer/mcp_server/agent_cards:/app/layer/mcp_server/agent_cards:ro', './logs:/app/logs'],
+                'volumes': [f'./services/{service_name}/agent_cards:/app/agent_cards:ro', f'./services/{service_name}/tool_cards:/app/tool_cards:ro', './logs:/app/logs'],
                 'networks': [f'{project_name}-network'],
                 'depends_on': []
             }
@@ -1419,8 +1419,8 @@ def _create_mcp_api_service(service_dir, name, domain):
     
     console.print("✅ MCP API service created successfully", style="green")
 
-@add.command("agentic-orchestration-layer")
-def add_agentic_orchestration_layer():
+@add.command("abi-swarm")
+def add_abi_swarm():
     """Add Planner and Orchestrator agents for multi-agent workflow coordination
     
     This command sets up the complete agentic orchestration system by adding:
@@ -1434,7 +1434,7 @@ def add_agentic_orchestration_layer():
     
     \b
     Example:
-      abi-core add agentic-orchestration-layer
+      abi-core add abi-swarm
     """
     import shutil
     import yaml
@@ -1450,7 +1450,7 @@ def add_agentic_orchestration_layer():
         console.print("❌ runtime.yaml not found", style="red")
         return
     
-    console.print("\n🚀 Setting up Agentic Orchestration Layer", style="cyan bold")
+    console.print("\n🚀 Setting up ABI Swarm", style="cyan bold")
     console.print("=" * 60, style="cyan")
     
     # Read runtime.yaml
@@ -1459,43 +1459,53 @@ def add_agentic_orchestration_layer():
     
     # Get project name and directory from runtime.yaml
     project_name = runtime_config.get('project', {}).get('name', Path.cwd().name)
-    project_dir = project_name.lower().replace(' ', '_').replace('-', '_')
+    project_dir = project_name.lower().replace(' ', '-').replace('_', '-')
     
-    # Verify prerequisites
-    console.print("\n📋 Verifying prerequisites...", style="cyan")
-    
+    # Auto-add prerequisites if missing
+    console.print("\n📋 Checking prerequisites...", style="cyan")
+
     services = runtime_config.get('services', {})
-    
-    # Check Guardian
+
     has_guardian = any(
-        service.get('type') in ['guardian', 'guardian-native'] 
+        service.get('type') in ['guardian', 'guardian-native']
         for service in services.values()
     )
-    
-    if not has_guardian:
-        console.print("❌ Guardian service not found", style="red")
-        console.print("💡 Run: abi-core add service guardian-native", style="yellow")
-        return
-    else:
-        console.print("✅ Guardian service found", style="green")
-    
-    # Check Semantic Layer
+
     has_semantic_layer = any(
-        service.get('type') == 'semantic-layer' 
+        service.get('type') == 'semantic-layer'
         for service in services.values()
     )
-    
+
     if not has_semantic_layer:
-        console.print("❌ Semantic layer service not found", style="red")
-        console.print("💡 Run: abi-core add semantic-layer", style="yellow")
-        return
+        console.print("[🔧] Semantic layer not found — adding automatically...", style="cyan")
+        from click import Context
+        ctx = Context(add_semantic_layer)
+        ctx.invoke(add_semantic_layer, domain='general')
+        # Reload runtime after adding
+        with open(runtime_file, 'r') as f:
+            runtime_config = yaml.safe_load(f) or {}
+        console.print("✅ Semantic layer added", style="green")
     else:
-        console.print("✅ Semantic layer service found", style="green")
+        console.print("✅ Semantic layer found", style="green")
+
+    if not has_guardian:
+        console.print("[🔧] Guardian not found — adding automatically...", style="cyan")
+        # Find the guardian-native command
+        from abi_cli.cli.commands.add import add_service
+        from click import Context
+        ctx = Context(add_service)
+        ctx.invoke(add_service, service_type='guardian-native', name=None, domain='general')
+        # Reload runtime after adding
+        with open(runtime_file, 'r') as f:
+            runtime_config = yaml.safe_load(f) or {}
+        console.print("✅ Guardian added", style="green")
+    else:
+        console.print("✅ Guardian found", style="green")
     
     # Check if already exists
     agents = runtime_config.get('agents', {})
-    if 'planner' in agents or 'orchestrator' in agents:
-        console.print("\n⚠️  Planner or Orchestrator already exists", style="yellow")
+    if 'planner' in agents or 'orchestrator' in agents or 'builder' in agents:
+        console.print("\n⚠️  Planner, Orchestrator, or Builder already exists", style="yellow")
         from rich.prompt import Confirm
         if not Confirm.ask("Do you want to recreate them?"):
             return
@@ -1627,6 +1637,53 @@ def add_agentic_orchestration_layer():
         
         progress.update(task, description="✅ Orchestrator Agent created")
         
+        # Create Builder
+        task = progress.add_task("Creating Builder Agent...", total=None)
+        
+        source_builder = package_root / 'builder'
+        
+        if not source_builder.exists():
+            console.print(f"❌ Builder source not found at {source_builder}", style="red")
+            return
+        
+        builder_port = find_available_port(11439, used_ports)
+        used_ports.add(builder_port)
+        
+        dest_builder = Path('agents/builder')
+        
+        if dest_builder.exists():
+            shutil.rmtree(dest_builder)
+        
+        dest_builder.mkdir(parents=True)
+        
+        for item in (source_builder / 'agent').iterdir():
+            if item.is_file():
+                shutil.copy(item, dest_builder / item.name)
+            elif item.is_dir():
+                shutil.copytree(item, dest_builder / item.name)
+        
+        shutil.copy(source_builder / 'Dockerfile', dest_builder / 'Dockerfile')
+        shutil.copy(source_builder / 'requirements.txt', dest_builder / 'requirements.txt')
+        if (source_builder / 'README.md').exists():
+            shutil.copy(source_builder / 'README.md', dest_builder / 'README.md')
+        
+        progress.update(task, description="Generating Builder agent card...")
+        builder_agent_card = _generate_agent_card(
+            name="Builder Agent",
+            description="Builds and deploys ephemeral AI agents on demand",
+            model="qwen2.5:3b",
+            url=f"http://{project_dir}-builder:{builder_port}",
+            tasks=["build ephemeral agents", "create MCP tools", "deploy containers", "manage agent lifecycle"]
+        )
+        builder_agent_card["permissions"] = ["register_agents", "unregister_agents"]
+        
+        builder_agent_cards_dir = dest_builder / 'agent_cards'
+        builder_agent_cards_dir.mkdir(exist_ok=True)
+        with open(builder_agent_cards_dir / 'builder_agent.json', 'w') as f:
+            json.dump(builder_agent_card, f, indent=2)
+        
+        progress.update(task, description="✅ Builder Agent created")
+        
         # Copy agent cards to semantic layer
         task = progress.add_task("Copying agent cards to semantic layer...", total=None)
         
@@ -1636,13 +1693,13 @@ def add_agentic_orchestration_layer():
         if services_dir.exists():
             for service_path in services_dir.iterdir():
                 if service_path.is_dir():
-                    mcp_server_dir = service_path / 'layer' / 'mcp_server'
-                    if mcp_server_dir.exists():
+                    semantic_dir = service_path / 'embedding_mesh'
+                    if semantic_dir.exists():
                         semantic_service_dir = service_path
                         break
         
         if semantic_service_dir:
-            semantic_agent_cards_dir = semantic_service_dir / 'layer' / 'mcp_server' / 'agent_cards'
+            semantic_agent_cards_dir = semantic_service_dir / 'agent_cards'
             semantic_agent_cards_dir.mkdir(parents=True, exist_ok=True)
             
             # Copy Planner agent card
@@ -1657,7 +1714,36 @@ def add_agentic_orchestration_layer():
                 semantic_agent_cards_dir / 'orchestrator_agent.json'
             )
             
-            progress.update(task, description="✅ Agent cards copied to semantic layer")
+            # Copy Builder agent card
+            shutil.copy(
+                dest_builder / 'agent_cards' / 'builder_agent.json',
+                semantic_agent_cards_dir / 'builder_agent.json'
+            )
+            
+            # Copy example tool cards from abi-image
+            semantic_tool_cards_dir = semantic_service_dir / 'tool_cards'
+            semantic_tool_cards_dir.mkdir(parents=True, exist_ok=True)
+            
+            try:
+                import abi_core
+                abi_core_root = Path(abi_core.__file__).parent.parent.parent.parent.parent
+                # tool_cards live in abi-image/tool_cards/ relative to the repo
+                # But in installed package, they're bundled — try multiple paths
+                tool_cards_sources = [
+                    abi_core_root / 'abi-image' / 'tool_cards',
+                    Path(__file__).parent.parent.parent / 'tool_cards',
+                ]
+                
+                for source_dir in tool_cards_sources:
+                    if source_dir.exists():
+                        for tc_file in source_dir.glob('*.json'):
+                            shutil.copy(tc_file, semantic_tool_cards_dir / tc_file.name)
+                            abi_logging(f"  Copied tool card: {tc_file.name}")
+                        break
+            except Exception as e:
+                abi_logging(f"[⚠️] Could not copy example tool cards: {e}")
+            
+            progress.update(task, description="✅ Agent & tool cards copied to semantic layer")
         else:
             progress.update(task, description="⚠️  Semantic layer not found, skipping card copy")
         
@@ -1678,6 +1764,13 @@ def add_agentic_orchestration_layer():
                 'port': orchestrator_port,
                 'type': 'orchestrator',
                 'path': 'agents/orchestrator'
+            },
+            'builder': {
+                'name': 'Builder Agent',
+                'description': 'Builds and deploys ephemeral AI agents on demand',
+                'port': builder_port,
+                'type': 'builder',
+                'path': 'agents/builder'
             }
         })
         
@@ -1695,7 +1788,7 @@ def add_agentic_orchestration_layer():
                     'manage task dependencies'
                 ],
                 'locations': [
-                    'services/semantic_layer/layer/mcp_server/agent_cards/planner_agent.json',
+                    'services/semantic_layer/agent_cards/planner_agent.json',
                     'agents/planner/agent_cards/planner_agent.json'
                 ]
             },
@@ -1711,8 +1804,24 @@ def add_agentic_orchestration_layer():
                     'synthesize results'
                 ],
                 'locations': [
-                    'services/semantic_layer/layer/mcp_server/agent_cards/orchestrator_agent.json',
+                    'services/semantic_layer/agent_cards/orchestrator_agent.json',
                     'agents/orchestrator/agent_cards/orchestrator_agent.json'
+                ]
+            },
+            'builder': {
+                'name': 'Builder Agent',
+                'description': 'Builds and deploys ephemeral AI agents on demand',
+                'model': 'qwen2.5:3b',
+                'url': f'http://{project_dir}-builder:{builder_port}',
+                'tasks': [
+                    'build ephemeral agents',
+                    'create MCP tools',
+                    'deploy containers',
+                    'manage agent lifecycle'
+                ],
+                'locations': [
+                    'services/semantic_layer/agent_cards/builder_agent.json',
+                    'agents/builder/agent_cards/builder_agent.json'
                 ]
             }
         })
@@ -1732,12 +1841,13 @@ def add_agentic_orchestration_layer():
     
     # Success message
     console.print("\n" + "=" * 60, style="green")
-    console.print("✅ Agentic Orchestration Layer added successfully!", style="green bold")
+    console.print("✅ ABI Swarm added successfully!", style="green bold")
     console.print("=" * 60, style="green")
     
     console.print("\n📊 Created Components:", style="cyan")
     console.print(f"  • Planner Agent (A2A port {planner_port})", style="green")
     console.print(f"  • Orchestrator Agent (A2A port {orchestrator_port}, Web port {web_interface_port})", style="green")
+    console.print(f"  • Builder Agent (A2A port {builder_port})", style="green")
     
     console.print("\n🚀 Next Steps:", style="cyan")
     console.print("  1. Start the system:", style="white")
@@ -1774,7 +1884,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
         
         # Get project name
         project_name = runtime_config.get('project', {}).get('name', Path.cwd().name)
-        project_dir = project_name.lower().replace(' ', '_').replace('-', '_')
+        project_dir = project_name.lower().replace(' ', '-').replace('_', '-')
         
         # Get model serving mode from runtime.yaml
         provision_mode = runtime_config.get('project', {}).get('model_serving', 'distributed')
@@ -1839,7 +1949,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
             f'SERVICE_PORT={planner_port}',
             f'MCP_HOST={project_dir}-semantic-layer',
             'MCP_PORT=10100',
-            'MCP_TRANSPORT=sse',
+            'MCP_TRANSPORT=streamable-http',
             f'SEMANTIC_LAYER_HOST=http://{project_dir}-semantic-layer:10100',
             f'GUARDIAN_URL=http://{project_dir}-guardian:11438',
             f'OPA_URL=http://{project_dir}-opa:8181'
@@ -1883,15 +1993,24 @@ def _update_compose_with_orchestration(runtime_config: dict):
             f'WEB_INTERFACE_PORT=8083',
             f'MCP_HOST={project_dir}-semantic-layer',
             'MCP_PORT=10100',
-            'MCP_TRANSPORT=sse',
+            'MCP_TRANSPORT=streamable-http',
             f'SEMANTIC_LAYER_HOST=http://{project_dir}-semantic-layer:10100',
             f'GUARDIAN_URL=http://{project_dir}-guardian:11438',
-            f'OPA_URL=http://{project_dir}-opa:8181'
+            f'OPA_URL=http://{project_dir}-opa:8181',
+            f'ARTIFACT_ENDPOINT=http://{project_dir}-minio:9000',
+            f'ARTIFACT_ACCESS_KEY=minioadmin',
+            f'ARTIFACT_SECRET_KEY=minioadmin',
+            'LOG_TO_ARTIFACT_STORE=true',
+            'LOG_AGENT_NAME=orchestrator',
+            'LOG_BUCKET=abi-logs',
+            'EPHEMERAL_AUTO_DESTROY=true',
+            f'DOCKER_NETWORK={project_dir}-network',
         ]
         
         orchestrator_volumes = [
             './logs:/app/logs',
-            './agents/orchestrator/agent_cards:/app/agent_cards:ro'
+            './agents/orchestrator/agent_cards:/app/agent_cards:ro',
+            '/var/run/docker.sock:/var/run/docker.sock',
         ]
         orchestrator_ports = [
             f'{orchestrator_port}:{orchestrator_port}',
@@ -1920,12 +2039,70 @@ def _update_compose_with_orchestration(runtime_config: dict):
             'depends_on': [f'{project_dir}-semantic-layer', f'{project_dir}-planner']
         }
         
+        # Configure Builder
+        builder_port = agents.get('builder', {}).get('port', 11439)
+        builder_model = agents.get('builder', {}).get('model', default_model)
+        
+        builder_env = [
+            f'MODEL_NAME={builder_model}',
+            f'AGENT_PORT={builder_port}',
+            f'SERVICE_PORT={builder_port}',
+            f'MCP_HOST={project_dir}-semantic-layer',
+            'MCP_PORT=10100',
+            'MCP_TRANSPORT=streamable-http',
+            f'SEMANTIC_LAYER_HOST=http://{project_dir}-semantic-layer:10100',
+            f'GUARDIAN_URL=http://{project_dir}-guardian:11438',
+            f'OPA_URL=http://{project_dir}-opa:8181',
+            f'DOCKER_NETWORK={project_dir}_{project_dir}-network',
+            f'ARTIFACT_ENDPOINT=http://{project_dir}-minio:9000',
+            'ARTIFACT_ACCESS_KEY=minioadmin',
+            'ARTIFACT_SECRET_KEY=minioadmin',
+            'ARTIFACT_BUCKET=abi-artifacts',
+            'LOG_TO_ARTIFACT_STORE=true',
+            'LOG_AGENT_NAME=builder',
+            'LOG_BUCKET=abi-logs',
+        ]
+        
+        builder_volumes = [
+            './logs:/app/logs',
+            './agents/builder/agent_cards:/app/agent_cards:ro',
+            '/var/run/docker.sock:/var/run/docker.sock',
+        ]
+        builder_ports = [f'{builder_port}:{builder_port}']
+        
+        if provision_mode == 'distributed':
+            builder_env.extend(['START_OLLAMA=true', 'LOAD_MODELS=true'])
+            builder_ollama_port = orchestrator_ollama_port + 1
+            while builder_ollama_port in used_ports:
+                builder_ollama_port += 1
+            used_ports.add(builder_ollama_port)
+            builder_ports.append(f'{builder_ollama_port}:11434')
+            builder_volumes.append('ollama-builder:/root/.ollama')
+        else:
+            builder_env.extend([
+                'START_OLLAMA=false',
+                'LOAD_MODELS=false',
+                f'OLLAMA_HOST=http://{project_dir}-ollama:11434'
+            ])
+        
+        # Add Builder service
+        compose_data['services'][f'{project_dir}-builder'] = {
+            'build': './agents/builder',
+            'container_name': f'{project_dir}-builder',
+            'ports': builder_ports,
+            'environment': builder_env,
+            'volumes': builder_volumes,
+            'networks': [network_name],
+            'depends_on': [f'{project_dir}-semantic-layer']
+        }
+        
         # Add volumes only in distributed mode
         if provision_mode == 'distributed':
             if 'volumes' not in compose_data:
                 compose_data['volumes'] = {}
             compose_data['volumes']['ollama-planner'] = None
             compose_data['volumes']['ollama-orchestrator'] = None
+            compose_data['volumes']['ollama-builder'] = None
         
         # Write updated compose file
         with open(compose_file, 'w') as f:
@@ -1997,14 +2174,14 @@ def _update_compose_with_agent(context: dict):
             agent_env.append(f'WEB_INTERFACE_PORT={web_port}')
         
         # Get project name for consistent naming
-        project_name = Path.cwd().name.lower().replace(' ', '_').replace('-', '_')
+        project_name = Path.cwd().name.lower().replace(' ', '-').replace('_', '-')
         
         # Add MCP connection if semantic layer exists
         if any('semantic' in svc for svc in compose_data['services'].keys()):
             agent_env.extend([
                 f'MCP_HOST={project_name}-semantic-layer',
                 'MCP_PORT=10100',
-                'MCP_TRANSPORT=sse',
+                'MCP_TRANSPORT=streamable-http',
                 f'SEMANTIC_LAYER_HOST=http://{project_name}-semantic-layer:10100'
             ])
         
@@ -2102,7 +2279,7 @@ def _update_compose_with_agent_card(agent_name: str, agent_card_filename: str):
             return
         
         # Find the agent service (try different naming patterns)
-        project_name = Path.cwd().name.lower().replace(' ', '_').replace('-', '_')
+        project_name = Path.cwd().name.lower().replace(' ', '-').replace('_', '-')
         possible_service_names = [
             f'{project_name}-{agent_name}',
             f'{agent_name}-agent',
