@@ -1,13 +1,15 @@
 # ABI: Agent-Based Infrastructure
 
 **The Agent-Based Infrastructure to Democratize Superintelligence**
-By [José Luis Martínez](https://github.com/tu-usuario)
+By [José Luis Martínez](https://github.com/Joselo-zn)
 
 ---
 
 ## Introduction
 
 In times when superintelligence is only available to major tech companies, Agent-Based Infrastructure (ABI) emerges to democratize and make this powerful resource accessible to a wider audience.
+
+ABI is no longer just a proposal. It is an open-source framework ([abi-core-ai](https://pypi.org/project/abi-core-ai/)) with a functional end-to-end pipeline: natural language query → task decomposition → ephemeral agent creation → execution → artifact delivery → cleanup. All local-first, all governed by policy, all auditable. The principles below are not aspirational — they are enforced in code.
 
 ---
 
@@ -125,6 +127,25 @@ In this paradigm, the value lies not just in speed or scale — but in the capac
 
 ---
 
+## From Manifesto to Implementation
+
+Every principle in this manifesto is enforced in the ABI-Core framework:
+
+| Manifesto Principle | How It's Implemented |
+|---|---|
+| Humans retain veto power | Guardian agent validates every query via OPA before execution. Plan Confirmation (next milestone) lets users approve/reject plans. Emergency shutdown always available. |
+| Unsupervised self-replication prohibited | Immutable OPA core policy `deny_self_replication` auto-generated at startup. Agents cannot modify it. |
+| Immutable log of all communications | Audit logs record every A2A interaction, every OPA decision, every MCP tool call. |
+| No direct access to firewall/ingress/egress | Agents run in isolated Docker containers. Network access controlled by Docker Compose network policies. |
+| Defined limits on disk write capacity | Ephemeral agents (Zombies) write to `/app/workspace` only. Artifacts go to MinIO. Container dies after task. |
+| No agent may request internet access | All LLM inference is local (Ollama). No external API calls. Semantic layer is internal. |
+| Rules cannot be altered by agents | OPA core policies are immutable. Guardian enforces them. Agents have no write access to policy files. |
+| Distributed reasoning with consensus | Orchestrator runs parallel triage + Guardian gate. Planner decomposes. Builder creates. Zombie executes. No single agent decides everything. |
+| Specialized roles + interdependence | Orchestrator coordinates, Planner plans, Builder builds, Guardian guards, Zombie executes. Each has a defined scope. |
+| Semantic weighting and trust metrics | Semantic Router in Weaviate scores agents by embedding similarity. Agent cards carry capabilities and skills metadata. |
+
+---
+
 ### License
 
 Distributed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
@@ -133,5 +154,5 @@ Distributed under the [Apache License 2.0](https://www.apache.org/licenses/LICEN
 
 ### Credit
 
-This manifesto was authored by José Luis Martínez in 2024 as part of the foundational definition of *Agent-Based Infrastructure (ABI)*. You may cite it by linking to this repository.
+This manifesto was authored by José Luis Martínez in 2024 as part of the foundational definition of *Agent-Based Infrastructure (ABI)*. The framework is implemented as [abi-core-ai](https://pypi.org/project/abi-core-ai/) on PyPI. You may cite it by linking to this repository.
 

@@ -58,7 +58,7 @@ def provision_models(force):
         # Prepare context for script
         context = {
             'project_name': project_name,
-            'project_dir': project_name.lower().replace(' ', '_').replace('-', '_'),
+            'project_dir': project_name.lower().replace(' ', '-').replace('_', '-'),
             'model_name': runtime_config.get('project', {}).get('default_model', 'qwen2.5:3b'),
             'embedding_model': 'nomic-embed-text:v1.5',
             'model_serving': model_serving,

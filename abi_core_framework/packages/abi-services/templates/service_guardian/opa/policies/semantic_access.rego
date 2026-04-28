@@ -25,6 +25,41 @@ allow if {
     user_validation_passed
 }
 
+# Allow ephemeral agents with restricted permissions
+allow if {
+    is_ephemeral_agent
+    not agent_blacklisted
+    not ephemeral_blocked_tool
+}
+
+# =============================================================================
+# EPHEMERAL AGENT RULES
+# =============================================================================
+
+# Detect ephemeral agents by their card metadata
+is_ephemeral_agent if {
+    input.agent_card.ephemeral == true
+}
+
+# Ephemeral agents cannot use admin/infrastructure tools
+ephemeral_blocked_tool if {
+    is_ephemeral_agent
+    input.request_metadata.mcp_tool in ephemeral_denied_tools
+}
+
+# Tools that ephemeral agents are NOT allowed to use
+ephemeral_denied_tools := {
+    "register_agent",
+    "unregister_agent",
+    "register_tool",
+    "update_tool",
+    "delete_tool",
+}
+
+deny contains "Ephemeral agent cannot use admin tools" if {
+    ephemeral_blocked_tool
+}
+
 # =============================================================================
 # AGENT VERIFICATIONS
 # =============================================================================
@@ -55,6 +90,40 @@ agent_id_matches if {
     # Extract agent name from source_agent (remove agent:// prefix if present)
     agent_name := trim_prefix(input.source_agent, "agent://")
     lower(input.agent_card.name) == lower(agent_name)
+}
+
+# Service card ID match (service:// prefix)
+agent_id_matches if {
+    startswith(input.source_agent, "service://")
+    input.agent_card.id == input.source_agent
+}
+
+agent_id_matches if {
+    input.agent_card.id == sprintf("service://%s", [input.source_agent])
+}
+
+agent_id_matches if {
+    startswith(input.source_agent, "service://")
+    input.agent_card.name
+    service_name := trim_prefix(input.source_agent, "service://")
+    lower(input.agent_card.name) == lower(service_name)
+}
+
+# Tool card ID match (tool:// prefix)
+agent_id_matches if {
+    startswith(input.source_agent, "tool://")
+    input.agent_card.id == input.source_agent
+}
+
+agent_id_matches if {
+    input.agent_card.id == sprintf("tool://%s", [input.source_agent])
+}
+
+agent_id_matches if {
+    startswith(input.source_agent, "tool://")
+    input.agent_card.name
+    tool_name := trim_prefix(input.source_agent, "tool://")
+    lower(input.agent_card.name) == lower(tool_name)
 }
 
 # =============================================================================
@@ -282,6 +351,12 @@ tool_risk_modifier := score if {
         "list_agents": 0.05,
         "register_agent": 0.3,
         "unregister_agent": 0.4,
+        "search_tool_registry": 0.05,
+        "register_tool": 0.3,
+        "get_tool": 0.0,
+        "update_tool": 0.3,
+        "delete_tool": 0.4,
+        "echo_tool": 0.0,
         "unknown": 0.2
     }
     tool := input.request_metadata.mcp_tool
@@ -295,13 +370,19 @@ agent_risk_modifier := 0.0 if {
     input.source_agent in trusted_agents
 }
 
+agent_risk_modifier := 0.15 if {
+    is_ephemeral_agent
+}
+
 agent_risk_modifier := 0.1 if {
     not input.source_agent in trusted_agents
+    not is_ephemeral_agent
     input.agent_card.metadata.trust_level == "medium"
 }
 
 agent_risk_modifier := 0.2 if {
     not input.source_agent in trusted_agents
+    not is_ephemeral_agent
     input.agent_card.metadata.trust_level == "low"
 }
 
@@ -341,7 +422,8 @@ is_internal_ip(ip) if {
 # Trusted agents list
 trusted_agents := {
     "orchestrator",
-    "planner", 
+    "planner",
+    "builder",
     "observer"
 }
 

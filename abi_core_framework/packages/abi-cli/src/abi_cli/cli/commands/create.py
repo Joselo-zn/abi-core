@@ -14,23 +14,15 @@ def _create_semantic_layer_structure(semantic_dir, context):
     """Create complete semantic layer structure with all templates"""
     
     # Create directory structure
-    layer_dir = semantic_dir / 'layer'
-    layer_dir.mkdir(exist_ok=True)
-    
-    mcp_server_dir = layer_dir / 'mcp_server'
-    mcp_server_dir.mkdir(exist_ok=True)
-    
-    # Create agent_cards directory
-    agent_cards_dir = mcp_server_dir / 'agent_cards'
-    agent_cards_dir.mkdir(exist_ok=True)
-    
-    embedding_mesh_dir = layer_dir / 'embedding_mesh'
+    embedding_mesh_dir = semantic_dir / 'embedding_mesh'
     embedding_mesh_dir.mkdir(exist_ok=True)
-    
+
     models_dir = embedding_mesh_dir / 'models'
     models_dir.mkdir(exist_ok=True)
-    
-    # Create config directory
+
+    agent_cards_dir = semantic_dir / 'agent_cards'
+    agent_cards_dir.mkdir(exist_ok=True)
+
     config_dir = semantic_dir / 'config'
     config_dir.mkdir(exist_ok=True)
     
@@ -48,30 +40,19 @@ def _create_semantic_layer_structure(semantic_dir, context):
         ('config/config.py', 'service_semantic_layer/config/config.py'),
     ]
     
-    # Layer package files
-    layer_files = [
-        ('layer/__init__.py', 'service_semantic_layer/layer/__init__.py'),
-    ]
-    
-    # MCP Server files
-    mcp_server_files = [
-        ('layer/mcp_server/__init__.py', 'service_semantic_layer/layer/mcp_server/__init__.py'),
-        ('layer/mcp_server/server.py', 'service_semantic_layer/layer/mcp_server/server.py'),
-    ]
-    
-    # Embedding Mesh files
+    # Embedding Mesh files (flat — no layer/ wrapper)
     embedding_mesh_files = [
-        ('layer/embedding_mesh/__init__.py', 'service_semantic_layer/layer/embedding_mesh/__init__.py'),
-        ('layer/embedding_mesh/api.py', 'service_semantic_layer/layer/embedding_mesh/api.py'),
-        ('layer/embedding_mesh/embeddings_abi.py', 'service_semantic_layer/layer/embedding_mesh/embeddings_abi.py'),
-        ('layer/embedding_mesh/weaviate_store.py', 'service_semantic_layer/layer/embedding_mesh/weaviate_store.py'),
-        ('layer/embedding_mesh/helpers.py', 'service_semantic_layer/layer/embedding_mesh/helpers.py'),
-        ('layer/embedding_mesh/models/__init__.py', 'service_semantic_layer/layer/embedding_mesh/models/__init__.py'),
-        ('layer/embedding_mesh/models/models.py', 'service_semantic_layer/layer/embedding_mesh/models/models.py'),
+        ('embedding_mesh/__init__.py', 'service_semantic_layer/embedding_mesh/__init__.py'),
+        ('embedding_mesh/api.py', 'service_semantic_layer/embedding_mesh/api.py'),
+        ('embedding_mesh/embeddings_abi.py', 'service_semantic_layer/embedding_mesh/embeddings_abi.py'),
+        ('embedding_mesh/weaviate_store.py', 'service_semantic_layer/embedding_mesh/weaviate_store.py'),
+        ('embedding_mesh/helpers.py', 'service_semantic_layer/embedding_mesh/helpers.py'),
+        ('embedding_mesh/models/__init__.py', 'service_semantic_layer/embedding_mesh/models/__init__.py'),
+        ('embedding_mesh/models/models.py', 'service_semantic_layer/embedding_mesh/models/models.py'),
     ]
-    
+
     # Create all files
-    all_files = files_to_create + config_files + layer_files + mcp_server_files + embedding_mesh_files
+    all_files = files_to_create + config_files + embedding_mesh_files
     
     for file_path, template_path in all_files:
         full_path = semantic_dir / file_path
@@ -87,15 +68,67 @@ def create():
     
     \b
     project    Create a new ABI project with agents, services, and configuration
+    swarm      Create a complete ABI Swarm (project + all agents + services)
     
     \b
     Examples:
       abi-core create project my-app --with-semantic-layer
-      abi-core create project fintech --domain finance --with-guardian
+      abi-core create swarm --name abi_swarm
     
     Use 'abi-core create COMMAND --help' for more information on a command.
     """
     pass
+
+
+@create.command("swarm")
+@click.option('--name', '-n', required=True, help='Swarm project name')
+@click.option('--description', '-d', default='ABI Swarm - Self-Building Multi-Agent System', help='Project description')
+@click.option('--domain', default='general', help='Domain/industry')
+@click.option('--model-serving', type=click.Choice(['centralized', 'distributed']), default='centralized', help='Model serving strategy')
+def create_swarm(name, description, domain, model_serving):
+    """Create a complete ABI Swarm with all agents and services.
+
+    Creates everything in one command:
+    - Project structure with webapp
+    - Semantic layer + Weaviate
+    - Guardian + OPA
+    - MinIO artifact store
+    - Planner, Orchestrator, and Builder agents
+    - Docker Compose ready to run
+
+    \b
+    Example:
+      abi-core create swarm --name abi_swarm
+      cd abi_swarm
+      docker compose up --build
+    """
+    import os
+
+    # Step 1: Create project with all services
+    console.print("\n🚀 Creating ABI Swarm", style="cyan bold")
+    console.print("=" * 60, style="cyan")
+
+    ctx = click.get_current_context()
+    ctx.invoke(
+        create_project,
+        name=name,
+        description=description,
+        domain=domain,
+        with_semantic_layer=True,
+        with_guardian=True,
+        model_serving=model_serving,
+    )
+
+    # Step 2: cd into project and add abi-swarm agents
+    project_dir = name.lower().replace(' ', '-').replace('_', '-')
+    os.chdir(project_dir)
+
+    from abi_cli.cli.commands.add import add_abi_swarm
+    ctx.invoke(add_abi_swarm)
+
+    console.print(f"\n🎉 ABI Swarm '{name}' ready!", style="green bold")
+    console.print(f"📁 Location: {Path(project_dir).absolute()}", style="blue")
+    console.print(f"\n▶️  To start: cd {project_dir} && docker compose up --build", style="cyan")
 
 
 @create.command("project")
@@ -147,7 +180,7 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
             default="distributed"
         )
     
-    project_dir = Path(name.lower().replace(' ', '_').replace('-', '_'))
+    project_dir = Path(name.lower().replace(' ', '-').replace('_', '-'))
     
     if project_dir.exists():
         console.print(f"❌ Directory '{project_dir}' already exists", style="red")
@@ -261,6 +294,7 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
                 ('agent/mcp_interface.py', 'service_guardian/agent/mcp_interface.py'),
                 ('agent/main.py', 'service_guardian/agent/main.py'),
                 ('agent/models/agent_models.py', 'service_guardian/agent/models/agent_models.py'),
+                ('agent/agent_cards/guardian_agent.json', 'service_guardian/agent/agent_cards/guardian_agent.json'),
             ]
             
             # Root level files
@@ -288,8 +322,8 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
                 full_path = guardian_dir / file_path
                 full_path.parent.mkdir(parents=True, exist_ok=True)
                 
-                # For .rego files, copy directly without template rendering
-                if file_path.endswith('.rego'):
+                # For .rego files and agent card JSONs, copy directly without template rendering
+                if file_path.endswith('.rego') or 'agent_cards/' in file_path:
                     source_file = template_dir / template_path
                     if source_file.exists():
                         with open(source_file, 'r') as src:
@@ -301,6 +335,37 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
                     with open(full_path, 'w') as f:
                         f.write(render_template_content(template_path, context))
         
+            # Copy guardian agent card to semantic layer
+            if with_semantic_layer:
+                import shutil
+                # Generate guardian agent card with correct project URL
+                guardian_card_data = {
+                    "name": "Guardian Agent",
+                    "description": "Guards execution by validating intents, actions, and artifacts against organizational and regulatory policies.",
+                    "url": f"http://{project_dir}-guardian:{context.get('guardian_port', 11438)}",
+                    "version": "1.0.0",
+                    "capabilities": {"streaming": "False", "pushNotifications": "True", "stateTransitionHistory": "True"},
+                    "defaultInputModes": ["application/json", "text/plain"],
+                    "defaultOutputModes": ["application/json", "text/plain"],
+                    "skills": [
+                        {"id": "policy_validate", "name": "Policy Validation", "description": "Validate actions against OPA policies", "tags": ["compliance", "policy", "validation", "guardian", "security"]},
+                        {"id": "semantic_compliance", "name": "Semantic Compliance", "description": "Detect policy violations via semantic analysis", "tags": ["semantic", "compliance", "safety"]},
+                        {"id": "action_gatekeeping", "name": "Action Gatekeeping", "description": "Approve, modify, or reject proposed actions", "tags": ["authorization", "gatekeeping"]},
+                        {"id": "risk_scoring", "name": "Risk Scoring", "description": "Assign deviation and risk scores", "tags": ["risk", "scoring"]},
+                    ],
+                }
+                import json as _json
+                # Write to guardian directory
+                guardian_cards_dir = guardian_dir / 'agent' / 'agent_cards'
+                guardian_cards_dir.mkdir(parents=True, exist_ok=True)
+                with open(guardian_cards_dir / 'guardian_agent.json', 'w') as f:
+                    _json.dump(guardian_card_data, f, indent=2)
+                # Copy to semantic layer
+                semantic_cards_dir = project_dir / 'services' / 'semantic_layer' / 'agent_cards'
+                if semantic_cards_dir.exists():
+                    with open(semantic_cards_dir / 'guardian_agent.json', 'w') as f:
+                        _json.dump(guardian_card_data, f, indent=2)
+
         # ABI directory
         (project_dir / '.abi').mkdir()
         with open(project_dir / '.abi' / 'runtime.yaml', 'w') as f:
@@ -316,12 +381,29 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
         with open(web_api_dir / 'main.py', 'w') as f:
             f.write(render_template_content('project/main.py', context))
         
+        # Service cards for webapp MCP authentication
+        if with_semantic_layer:
+            service_cards_dir = web_api_dir / 'service_cards'
+            service_cards_dir.mkdir()
+            webapp_card_content = render_template_content('project/service_cards/webapp.json', context)
+            with open(service_cards_dir / 'webapp.json', 'w') as f:
+                f.write(webapp_card_content)
+            # Copy to semantic layer so it can validate the webapp identity at startup
+            semantic_service_cards = semantic_dir / 'service_cards'
+            semantic_service_cards.mkdir(exist_ok=True)
+            with open(semantic_service_cards / 'webapp.json', 'w') as f:
+                f.write(webapp_card_content)
+        
         # Root files (only compose and README stay in root)
         with open(project_dir / 'compose.yaml', 'w') as f:
             f.write(render_template_content('project/compose.yaml', context))
         
         with open(project_dir / 'README.md', 'w') as f:
             f.write(render_template_content('project/README.md', context))
+        
+        # Interactive console (TUI)
+        with open(project_dir / 'console.py', 'w') as f:
+            f.write(render_template_content('project/console.py', context))
         
         progress.update(task, description="Project created successfully!", completed=True)
     
@@ -357,7 +439,7 @@ from fastmcp import FastMCP
 logger = logging.getLogger(__name__)
 
 # Configuration
-AGENT_CARDS_DIR = os.getenv("AGENT_CARDS_BASE", "./mcp_server/agent_cards")
+AGENT_CARDS_DIR = os.getenv("AGENT_CARDS_BASE", "./agent_cards")
 MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text:v1.5")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
@@ -628,17 +710,17 @@ if __name__ == "__main__":
 def _get_semantic_requirements_template():
     """Get semantic layer requirements template"""
     return '''# Semantic Layer Service Requirements
-fastapi>=0.100.0
-uvicorn>=0.20.0
-pydantic>=2.0.0
-requests>=2.31.0
-httpx>=0.25.0
-fastmcp>=0.1.0
-weaviate-client>=4.0.0
-numpy>=1.24.0
-pandas>=2.0.0
-ollama>=0.1.0
-starlette>=0.27.0
+fastapi>=0.135.0
+uvicorn[standard]>=0.42.0
+pydantic>=2.12.0
+requests>=2.32.0
+httpx>=0.28.0
+fastmcp>=3.2.0
+weaviate-client>=4.12.0
+numpy>=2.4.0
+pandas>=3.0.0
+ollama>=0.4.0
+starlette>=1.0.0
 '''
 
 
@@ -662,7 +744,7 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # Create agent_cards directory if it doesn't exist
-RUN mkdir -p /app/mcp_server/agent_cards
+RUN mkdir -p /app/agent_cards
 
 # Expose port
 EXPOSE 10100
@@ -671,7 +753,7 @@ EXPOSE 10100
 ENV ABI_ROLE="Semantic Layer"
 ENV ABI_NODE="ABI Node"
 ENV PYTHONPATH=/app
-ENV AGENT_CARDS_BASE="/app/mcp_server/agent_cards"
+ENV AGENT_CARDS_BASE="/app/agent_cards"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\

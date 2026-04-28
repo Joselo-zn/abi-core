@@ -1,88 +1,88 @@
-# ✅ `stack.md` (ENGLISH VERSION)
+# 🧱 ABI Technology Stack
+
+What ABI-Core actually uses today.
 
 ---
 
-## 🧱 Physical Infrastructure & Orchestration
+## Runtime & Framework
 
-- **Kubernetes (K3s / GKE / EKS)** – container orchestration and logical separation of agents, using `StatefulSet` for agents requiring persistence.
-- **Helm** – deployment packaging for reproducible rollouts of agents and services.
-- **Terraform** – infrastructure as code provisioning.
-- **Ansible** – automated setup of dependencies, environments, and clusters.
-- **Prometheus + Grafana** – monitoring and real-time metrics visualization.
-- **Vault / Sealed Secrets** – encrypted and secure secrets management.
+| Technology | Role |
+|-----------|------|
+| Python 3.11+ | Core language for all agents and services |
+| FastAPI + uvicorn | HTTP/REST endpoints for each agent, SSE streaming |
+| Pydantic | Data validation and configuration models |
+| Click | CLI command framework (`abi-core` commands) |
+| Rich | Terminal formatting for CLI output |
+| Textual | Interactive TUI dashboard (`abi_core.tui`) |
+| Jinja2 | Template engine for project scaffolding |
 
----
+## AI & LLM
 
-## 🧠 Cognitive Layer (Intelligent Agents)
+| Technology | Role |
+|-----------|------|
+| Ollama | Local LLM inference — no API keys, no data leaves your network |
+| LangChain + LangChain-Ollama | LLM integration, tool binding, structured output |
+| LangGraph | Agent workflow state machines |
+| nomic-embed-text | Embedding model for semantic search |
 
-- **Python (FastAPI + LangChain)** – modular agent development framework.
-- **BaseAgent** – shared base class defining structure and behaviors of all ABI agents.
-- **Ollama** – local LLM runtime with shared download volume across pods.
-- **LLMs** – LLaMA 3.1, Claude, GPT-4o, Mistral – connectable via Ollama or remote adapters.
-- **MCP Client** – interface for agents to interact with the MCP ecosystem.
-- **MCP Toolbox** – tools for validation, shared context, and A2A-based reasoning.
-- **Redis** – agent state/event synchronization layer.
-- **Weaviate / ChromaDB** – distributed semantic vector memory store.
-- **TinyDB / SQLite** – lightweight local state persistence per agent.
+## Protocols & Communication
 
----
+| Technology | Role |
+|-----------|------|
+| MCP (Model Context Protocol) | Semantic tool/agent discovery, HMAC-authenticated tool calls |
+| A2A SDK | Agent-to-Agent communication with streaming |
+| FastMCP | MCP server implementation for the semantic layer |
+| httpx | Async HTTP client for SSE streaming and inter-service calls |
 
-## 🧬 Semantic & Context Layer
+## Semantic Layer
 
-- **Model Context Protocol (MCP)** – shared context, memory, and distributed reasoning coordination.
-- **A2A (Agent-to-Agent Protocol)** – semantic interaction protocol using RDF/OWL and JSON-LD.
-- **YAML / JSON Schemas** – declarative configuration of rules, policies, and agent capabilities.
-- **Neo4j (optional)** – in-memory semantic graph database for distributed inference and shared context.
+| Technology | Role |
+|-----------|------|
+| Weaviate | Vector database for agent cards, tool cards, embedding search |
+| Embedding Mesh | Distributed embedding computation and caching |
+| Agent Cards (JSON) | Structured agent identity, capabilities, and skills |
 
-### 🔹 As a Semantic Repository
+## Security & Governance
 
-- Tracks who said what, when, in what context, and with what outcome.
-- Models concepts (tasks, agents, decisions) as nodes and relations as edges.
+| Technology | Role |
+|-----------|------|
+| OPA (Open Policy Agent) | Policy engine — immutable core policies, risk scoring, access control |
+| Guardian Agent | Security gate — prompt injection detection, policy compliance |
+| HMAC signing | Authentication for MCP tool calls between agents |
+| Audit logs | Immutable decision traceability |
 
-### 🔹 As a Reasoning Engine
+## Containers & Infrastructure
 
-- Agents can query past relations and events.
-- Supports inference patterns like propagation, relevance scoring, belief tracking.
-- RDF/OWL-compatible via translation layer.
+| Technology | Role |
+|-----------|------|
+| Docker | Container runtime for all agents and services |
+| Docker Compose | Orchestration — one command to start everything |
+| Docker SDK (Python) | Programmatic container lifecycle for ephemeral agents |
+| MinIO (boto3) | S3-compatible artifact storage for ephemeral outputs |
 
----
+## Graphs & Orchestration
 
-## 🛡️ Security & Governance
+| Technology | Role |
+|-----------|------|
+| NetworkX | Workflow graph construction (AgentInteractionFlow) |
+| ToolExecutionGraph | DAG execution engine for `@agent.task()` pipelines |
 
-- **Keycloak** – identity and access management (SSO, LDAP, OAuth2).
-- **OPA (Open Policy Agent)** – policy enforcement and access validation for agents.
-- **Immutable Logs (Loki / Wazuh / Sigstore)** – full traceability and action audit logs.
-- **Airgap Agents / Firecracker** *(optional)* – hardened isolation for critical agents.
+## Project Structure
 
----
-
-## 🧰 Development & Supervision Tools
-
-- **VS Code + DevContainers** – reproducible portable development environments.
-- **Jupyter Notebooks + LangChain** – interactive agent experimentation and testing.
-- **N8N / Temporal.io** – asynchronous workflows and task orchestration across agents.
-- **Webhook Relay / ngrok** – controlled remote testing from outside the cluster.
-
----
-
-## 🌍 Human Interface & Collaboration
-
-- **Vue.js / Next.js** – dashboards for human interaction and system supervision.
-- **Socket.IO / WebRTC** – real-time interaction channels with agents.
-- **Markdown + Mermaid.js** – living documentation, architecture diagrams, and traceable state.
-
----
-
-## 📦 Distribution & Installation
-
-- **Helm** – primary packaging tool per agent or module.
-- **GitHub Actions / Woodpecker CI** – local or cloud-based CI/CD pipelines.
-- **Inno Setup / NSIS / Snapcraft / Homebrew** *(optional)* – native installable package creation.
+| Technology | Role |
+|-----------|------|
+| setuptools + pyproject.toml | Monorepo packaging — single `pip install abi-core-ai` |
+| YAML (runtime.yaml) | Project configuration — agents, services, interface |
 
 ---
 
-## 🧭 Optional / Advanced
+## Not Used (mentioned in older docs)
 
-- **NeMo / HuggingFace Transformers** – fine-tuning and custom model training.
-- **AgentVerse / Autogen / CrewAI** – multi-agent architecture experimentation.
-- **DeltaLake / DuckDB / Apache Arrow** – analytical query and structured data processing.
+These were in the original vision but are not part of the current implementation:
+
+- Kubernetes / Helm / Terraform — Docker Compose handles orchestration
+- Redis / RabbitMQ — not needed for current pipeline
+- Keycloak — OPA + Guardian handle security
+- Neo4j — Weaviate handles semantic storage
+- Vue.js / Next.js — TUI is the primary interface, webapp is FastAPI-based
+- OpenTelemetry / Grafana — not yet implemented (potential future addition)

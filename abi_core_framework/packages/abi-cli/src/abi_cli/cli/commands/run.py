@@ -1,5 +1,8 @@
 """
 Run command for ABI Core CLI
+
+Detects if the project has a TUI interface configured and launches it,
+or falls back to the classic docker compose + banner flow.
 """
 
 import click
@@ -7,6 +10,8 @@ import yaml
 import platform
 import socket
 import multiprocessing
+import os
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from rich.table import Table
@@ -15,106 +20,223 @@ from .utils import console
 from ..banner import ABI_BANNER
 
 
+def _load_runtime() -> dict:
+    """Load .abi/runtime.yaml or return empty dict."""
+    path = Path(".abi/runtime.yaml")
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
+def _detect_orchestrator_port(runtime: dict) -> int:
+    """Find orchestrator port from runtime agents config."""
+    for key, cfg in runtime.get("agents", {}).items():
+        if "orchestrator" in key.lower() or "orchestrator" in cfg.get("name", "").lower():
+            return int(cfg.get("port", 8000))
+    return 8000
+
+
+def _detect_ollama_host(runtime: dict) -> str:
+    """Detect Ollama host from project config."""
+    project_dir = runtime.get("project", {}).get("name", "").lower().replace(" ", "-").replace("_", "-")
+    if project_dir:
+        return f"http://{project_dir}-ollama:11434"
+    return "http://localhost:11434"
+
+
+def _has_tui_interface(runtime: dict) -> tuple[bool, str]:
+    """Check if project has a TUI interface configured.
+
+    Returns (enabled, entry_file_path).
+    """
+    iface = runtime.get("interface", {})
+    if not iface.get("enabled", False):
+        return False, ""
+    entry = iface.get("entry", "console.py")
+    if Path(entry).exists():
+        return True, entry
+    return False, ""
+
+
+def _start_compose(build: bool, detach: bool, logs: bool) -> subprocess.Popen | None:
+    """Start docker compose and return the process (detached) or None."""
+    cmd_parts = ["docker", "compose"]
+    if build:
+        cmd_parts.extend(["up", "--build"])
+    else:
+        cmd_parts.append("up")
+
+    # Always detach when TUI is active — TUI handles log display
+    # For classic mode: detach unless --logs is passed
+    if not logs:
+        cmd_parts.append("-d")
+
+    console.print(f"📋 Command: {' '.join(cmd_parts)}")
+    console.print("🐳 Starting Docker Compose...")
+
+    try:
+        if "-d" in cmd_parts:
+            result = subprocess.run(cmd_parts, check=True)
+            return None
+        else:
+            # Attached mode — blocking
+            result = subprocess.run(cmd_parts, check=True)
+            return None
+    except subprocess.CalledProcessError as e:
+        console.print(f"❌ Error starting project: {e}", style="red")
+        return None
+    except KeyboardInterrupt:
+        console.print("\n🛑 Stopping project...", style="yellow")
+        subprocess.run(["docker", "compose", "down"], check=False)
+        return None
+
+
+def _launch_tui(runtime: dict, entry: str):
+    """Launch the TUI interface from the project's console.py."""
+    project = runtime.get("project", {})
+    project_name = project.get("name", "ABI Project")
+    version = project.get("version", "")
+    orch_port = _detect_orchestrator_port(runtime)
+    ollama_host = _detect_ollama_host(runtime)
+
+    try:
+        from abi_core.tui import AbiConsoleApp
+    except ImportError:
+        console.print(
+            "❌ textual not installed. Run: pip install textual",
+            style="red",
+        )
+        return
+
+    # Try to import the project's custom console
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("project_console", entry)
+    if spec and spec.loader:
+        mod = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(mod)
+            # Look for a main() function first
+            if hasattr(mod, "main") and callable(mod.main):
+                mod.main()
+                return
+        except Exception as e:
+            console.print(f"⚠️ Could not load {entry}: {e}", style="yellow")
+            console.print("Falling back to default console...", style="dim")
+
+    # Fallback: use the base AbiConsoleApp directly
+    app = AbiConsoleApp(
+        project_name=project_name,
+        project_version=version,
+        orchestrator_url=f"http://localhost:{orch_port}",
+        ollama_host=ollama_host,
+    )
+    app.run()
+
+
 @click.command()
 @click.option('--mode', type=click.Choice(['dev', 'prod', 'test']), default='dev', help='Run mode')
-@click.option('--detach', '-d', is_flag=True, help='Run in background')
+@click.option('--detach', '-d', is_flag=True, help='Run in background (no logs)')
 @click.option('--build', is_flag=True, help='Build images before running')
-def run(mode, detach, build):
-    """Run the ABI project"""
-    
-    # Check if we're in an ABI project
+@click.option('--logs', is_flag=True, help='Show container logs in terminal')
+@click.option('--no-tui', is_flag=True, help='Skip TUI, use classic docker compose output')
+def run(mode, detach, build, logs, no_tui):
+    """Run the ABI project.
+
+    If the project has a TUI interface configured (interface.enabled in
+    runtime.yaml), launches the interactive dashboard. Otherwise falls
+    back to the classic docker compose + banner flow.
+
+    Use --no-tui to force classic mode even if a TUI is configured.
+    """
+
     if not Path('.abi').exists():
         console.print("❌ Not in an ABI project directory. Run 'abi-core create project' first.", style="red")
         return
-    
-    runtime_file = Path('.abi/runtime.yaml')
-    compose_file = Path('compose.yaml')
-    
-    if not runtime_file.exists():
+
+    if not Path('.abi/runtime.yaml').exists():
         console.print("❌ Runtime configuration not found", style="red")
         return
-    
-    # Load runtime configuration
-    with open(runtime_file, 'r') as f:
-        runtime_config = yaml.safe_load(f)
-    
-    # Show ABI Banner and system info
-    console.print(ABI_BANNER, style="cyan")
-    
-    # Get system information
-    project_name = runtime_config.get('project', {}).get('name', 'ABI Project')
+
+    if not Path('compose.yaml').exists():
+        console.print("❌ Docker Compose file not found", style="red")
+        console.print("💡 Try running: abi-core create project", style="blue")
+        return
+
+    runtime = _load_runtime()
+    project_name = runtime.get('project', {}).get('name', 'ABI Project')
+
+    os.environ['ABI_MODE'] = mode
+    os.environ['ABI_PROJECT'] = project_name
+
+    has_tui, entry = _has_tui_interface(runtime)
+
+    if has_tui and not no_tui and not logs:
+        # TUI mode: start compose detached, then launch TUI
+        console.print(f"🚀 Starting {project_name} in {mode} mode...")
+        _start_compose(build=build, detach=True, logs=False)
+        _launch_tui(runtime, entry)
+    else:
+        # Classic mode: banner + docker compose
+        _run_classic(runtime, mode, detach, build, logs)
+
+
+def _run_classic(runtime: dict, mode: str, detach: bool, build: bool, logs: bool):
+    """Original run behavior — banner + docker compose."""
+    project_name = runtime.get('project', {}).get('name', 'ABI Project')
+
+    console.print(ABI_BANNER)
+
     hostname = socket.gethostname()
     cpu_count = multiprocessing.cpu_count()
     kernel = platform.release()
     current_time = datetime.utcnow().strftime('%a %d %b %Y %H:%M:%S UTC')
-    
-    # System info in ABI format
+
     console.print(f"🌐 [bold]ABI Node[/bold] - Connected on [bold]{project_name}[/bold]")
     console.print(f"🖥 [dim]Host:[/dim] {hostname}")
     console.print(f"🧠 [dim]CPU :[/dim] {cpu_count} cores")
     console.print(f"📦 [dim]Kernel:[/dim] {kernel}")
     console.print(f"🕒 [dim]Time:[/dim] {current_time}")
     console.print("------------------------------------------")
-    
-    # Show services that will be started
+
     table = Table(title=f"{project_name} - {mode.upper()} Mode")
     table.add_column("Service", style="cyan")
     table.add_column("Type", style="magenta")
     table.add_column("Port", style="green")
     table.add_column("Status", style="yellow")
-    
-    # Add main service
+
     table.add_row("Main App", "FastAPI", "8000", "Starting...")
-    
-    # Add configured services
-    services = runtime_config.get('services', {})
-    for service_name, service_config in services.items():
-        if service_config.get('enabled', True):
+
+    services = runtime.get('services', {})
+    for svc_name, svc_cfg in services.items():
+        if svc_cfg.get('enabled', True):
             table.add_row(
-                service_config.get('name', service_name),
-                service_config.get('type', 'unknown'),
-                str(service_config.get('port', 'N/A')),
-                "Starting..."
+                svc_cfg.get('name', svc_name),
+                svc_cfg.get('type', 'unknown'),
+                str(svc_cfg.get('port', 'N/A')),
+                "Starting...",
             )
-    
+
+    agents = runtime.get('agents', {})
+    for agent_name, agent_cfg in agents.items():
+        table.add_row(
+            agent_cfg.get('name', agent_name),
+            "agent",
+            str(agent_cfg.get('port', 'N/A')),
+            "Starting...",
+        )
+
+    if services.get('semantic_layer') or services.get('semantic-layer'):
+        table.add_row("MinIO Artifact Store", "storage", "9000", "Starting...")
+
     console.print(table)
     console.print()
-    
-    # Build Docker Compose command
-    cmd_parts = ["docker", "compose"]
-    
-    if build:
-        cmd_parts.extend(["up", "--build"])
-    else:
-        cmd_parts.append("up")
-    
-    if detach:
-        cmd_parts.append("-d")
-    
-    # Set environment variables for the mode
-    import os
-    os.environ['ABI_MODE'] = mode
-    os.environ['ABI_PROJECT'] = project_name
-    
+
     console.print(f"🚀 Starting {project_name} in {mode} mode...")
-    console.print(f"📋 Command: {' '.join(cmd_parts)}")
-    
-    if compose_file.exists():
-        console.print("🐳 Using Docker Compose...")
-        
-        # Execute docker compose
-        import subprocess
-        try:
-            result = subprocess.run(cmd_parts, check=True)
-            if result.returncode == 0:
-                console.print("✅ Project started successfully!", style="green")
-                if not detach:
-                    console.print("Press Ctrl+C to stop", style="dim")
-        except subprocess.CalledProcessError as e:
-            console.print(f"❌ Error starting project: {e}", style="red")
-        except KeyboardInterrupt:
-            console.print("\n🛑 Stopping project...", style="yellow")
-            subprocess.run(["docker", "compose", "down"], check=False)
-    else:
-        console.print("❌ Docker Compose file not found", style="red")
-        console.print("💡 Try running: abi-core create project", style="blue")
+    _start_compose(build=build, detach=detach, logs=logs)
+
+    if not logs and not detach:
+        console.print("✅ Project started successfully!", style="green")

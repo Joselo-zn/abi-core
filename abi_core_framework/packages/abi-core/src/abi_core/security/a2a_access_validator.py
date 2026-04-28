@@ -4,7 +4,6 @@ Validates agent-to-agent communication using OPA policies via Guardian
 """
 
 import os
-import logging
 import httpx
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
@@ -12,7 +11,6 @@ from functools import wraps
 
 from abi_core.common.utils import abi_logging
 
-logger = logging.getLogger(__name__)
 
 
 class A2AAccessValidator:

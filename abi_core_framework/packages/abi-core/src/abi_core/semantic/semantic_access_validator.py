@@ -297,47 +297,80 @@ class SemanticAccessValidator:
         }
     
     async def _load_agent_card(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Cargar agent card desde filesystem"""
+        """Load card from filesystem — supports agent://, service://, and tool:// prefixes."""
         
         try:
-            # Buscar en cache primero
-            cache_key = f"agent_card_{agent_id}"
+            cache_key = f"card_{agent_id}"
             if cache_key in self.validation_cache:
                 cached_entry = self.validation_cache[cache_key]
                 if (datetime.utcnow().timestamp() - cached_entry["timestamp"]) < self.cache_ttl:
                     return cached_entry["data"]
             
-            # Buscar archivo de agent card
-            for card_file in self.agent_cards_dir.glob("*.json"):
-                try:
-                    with card_file.open() as f:
-                        card_data = json.load(f)
-                    
-                    # Verificar coincidencia por ID o nombre
-                    if (card_data.get("id") == agent_id or
-                        "agent://"+card_data.get("name", "").lower().replace(" ", "_").strip() == agent_id):
-                        
-                        # Guardar en cache
-                        self.validation_cache[cache_key] = {
-                            "data": card_data,
-                            "timestamp": datetime.utcnow().timestamp()
-                        }
-                        
-                        abi_logging(f"📋 Loaded agent card for {agent_id}: {card_data.get('name')}")
-                        return card_data
-                        
-                except json.JSONDecodeError as e:
-                    abi_logging(f"⚠️ Invalid JSON in agent card file {card_file}: {e}")
-                    continue
-                except Exception as e:
-                    abi_logging(f"⚠️ Error reading agent card file {card_file}: {e}")
-                    continue
+            # Determine search directories based on ID prefix
+            search_dirs = []
+            if agent_id.startswith("service://"):
+                service_dir = self.agent_cards_dir.parent / "service_cards"
+                if service_dir.exists():
+                    search_dirs.append(("service://", service_dir))
+            elif agent_id.startswith("tool://"):
+                tool_dir = self.agent_cards_dir.parent / "tool_cards"
+                if tool_dir.exists():
+                    search_dirs.append(("tool://", tool_dir))
+            # Always include agent_cards as fallback
+            search_dirs.append(("agent://", self.agent_cards_dir))
             
-            abi_logging(f"🔍 No agent card found for: {agent_id}")
+            for id_prefix, search_dir in search_dirs:
+                for card_file in search_dir.glob("*.json"):
+                    try:
+                        with card_file.open() as f:
+                            card_data = json.load(f)
+                        
+                        # Match by id, service_id, or constructed prefix+name
+                        card_id = card_data.get("id") or card_data.get("service_id", "")
+                        card_name = card_data.get("name", "").lower().replace(" ", "_").strip()
+                        
+                        if (card_id == agent_id or
+                                id_prefix + card_name == agent_id):
+                            self.validation_cache[cache_key] = {
+                                "data": card_data,
+                                "timestamp": datetime.utcnow().timestamp()
+                            }
+                            abi_logging(f"📋 Loaded card for {agent_id}: {card_data.get('name')}")
+                            return card_data
+                            
+                    except json.JSONDecodeError as e:
+                        abi_logging(f"⚠️ Invalid JSON in {card_file}: {e}")
+                        continue
+                    except Exception as e:
+                        abi_logging(f"⚠️ Error reading {card_file}: {e}")
+                        continue
+            
+            abi_logging(f"🔍 No card found for: {agent_id}")
+            
+            # Fallback: search Weaviate for dynamically registered cards (ephemeral agents)
+            try:
+                import json as _json
+                import uuid as _uuid
+                card_uuid = str(_uuid.uuid5(_uuid.NAMESPACE_DNS, agent_id))
+                
+                from embedding_mesh.weaviate_store import get_agent_card_by_uuid
+                weaviate_card = get_agent_card_by_uuid(card_uuid)
+                if weaviate_card:
+                    self.validation_cache[cache_key] = {
+                        "data": weaviate_card,
+                        "timestamp": datetime.utcnow().timestamp()
+                    }
+                    abi_logging(f"📋 Loaded dynamic card for {agent_id}: {weaviate_card.get('name')}")
+                    return weaviate_card
+            except ImportError:
+                pass  # weaviate_store not available in this context
+            except Exception as e:
+                abi_logging(f"⚠️ Weaviate card lookup failed for {agent_id}: {e}")
+            
             return None
             
         except Exception as e:
-            abi_logging(f"❌ Error loading agent card for {agent_id}: {e}")
+            abi_logging(f"❌ Error loading card for {agent_id}: {e}")
             return None
     
     def _prepare_opa_input(self, agent_info: Dict[str, Any], agent_card: Dict[str, Any], request_context: Dict[str, Any], user_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -524,9 +557,9 @@ def validate_semantic_access(func: Callable) -> Callable:
             if return_type and "Optional" in str(return_type):
                 return None
             
-            # For dict types, return None (let caller handle)
+            # For dict types, return denial info (not None — callers expect parseable JSON)
             if return_type in [dict, Dict[str, Any], Optional[dict]]:
-                return None
+                return {"success": False, "error": "Access denied", "reason": validation_result["reason"]}
             
             # For list types, return empty list
             if return_type and ("list" in str(return_type) or "List" in str(return_type)):

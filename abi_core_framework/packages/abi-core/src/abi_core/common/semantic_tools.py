@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, Any, Callable
 from abi_core.common.utils import get_mcp_server_config, abi_logging
 from abi_core.abi_mcp import client
 from abi_core.security.agent_auth import build_semantic_context_from_card
+from abi_core.common.service_card import ServiceCard
 
 from langchain.tools import tool
 from a2a.types import AgentCard
@@ -29,8 +30,13 @@ class MCPToolkit:
     using attribute access or direct calls.
     
     Usage:
-        # Initialize toolkit
+        # Initialize toolkit with agent card (agents)
         toolkit = MCPToolkit()
+        
+        # Initialize toolkit with service card (services like webapp)
+        from abi_core.common.service_card import ServiceCard
+        card = ServiceCard.from_file("service_cards/webapp.json")
+        toolkit = MCPToolkit(service_card=card)
         
         # Call tools dynamically
         result = await toolkit.my_custom_tool(param1="value", param2=123)
@@ -43,16 +49,18 @@ class MCPToolkit:
             result = await toolkit.my_custom_tool()
     """
     
-    def __init__(self, agent_card_path: str = None, mcp_config = None):
+    def __init__(self, agent_card_path: str = None, mcp_config = None, service_card: ServiceCard = None):
         """
         Initialize the MCP toolkit.
         
         Args:
             agent_card_path: Path to agent card (defaults to AGENT_CARD env var)
             mcp_config: MCP server configuration (defaults to global config)
+            service_card: ServiceCard instance for non-agent services (takes priority over agent_card_path)
         """
         self.agent_card_path = agent_card_path or AGENT_CARD_PATH
         self.mcp_config = mcp_config or _mcp_config
+        self.service_card = service_card
         self._available_tools = None
     
     async def call_with_retry(
@@ -180,12 +188,18 @@ class MCPToolkit:
             ) as mcp_session:
                 abi_logging(f"[🔧] Calling MCP tool '{tool_name}' with args: {kwargs}")
                 
-                # Build context for authentication
-                context = build_semantic_context_from_card(
-                    self.agent_card_path,
-                    tool_name=tool_name,
-                    query=json.dumps(kwargs)
-                )
+                # Build context: ServiceCard takes priority over agent card path
+                if self.service_card is not None:
+                    context = self.service_card.build_context(
+                        tool_name=tool_name,
+                        query=json.dumps(kwargs),
+                    )
+                else:
+                    context = build_semantic_context_from_card(
+                        self.agent_card_path,
+                        tool_name=tool_name,
+                        query=json.dumps(kwargs)
+                    )
 
                 try:
                     mcp_response = await client.custom_tool(
@@ -195,6 +209,14 @@ class MCPToolkit:
                         kwargs
                     )
                     
+                    # Debug: log raw response structure
+                    _has = hasattr(mcp_response, 'content')
+                    _ctype = type(mcp_response.content).__name__ if _has else 'N/A'
+                    _clen = len(mcp_response.content) if _has and mcp_response.content else 0
+                    abi_logging(f"[📡] MCP response for '{tool_name}': has_content={_has}, type={_ctype}, len={_clen}")
+                    if _has and mcp_response.content and isinstance(mcp_response.content, list) and hasattr(mcp_response.content[0], 'text'):
+                        abi_logging(f"[📡] Response text: {mcp_response.content[0].text[:300]}")
+
                     if hasattr(mcp_response, 'content') and mcp_response.content:
                         try:
                             # Parse response content
@@ -204,7 +226,7 @@ class MCPToolkit:
                                 result = mcp_response.content
                             
                             abi_logging(f"[✅] Tool '{tool_name}' executed successfully")
-                            return result if result else {}
+                            return result if result is not None else {}
                             
                         except json.JSONDecodeError as e:
                             abi_logging(f'[❌] Error parsing response from {tool_name}: {e}')
@@ -213,8 +235,8 @@ class MCPToolkit:
                             abi_logging(f'[❌] Error processing response from {tool_name}: {e}')
                             return {"error": str(e)}
                     else:
-                        abi_logging(f'[⚠️] No response from tool {tool_name}')
-                        return {"error": "No response from tool"}
+                        abi_logging(f'[📡] Tool {tool_name}: empty content (no results)')
+                        return {}
                         
                 except Exception as e:
                     abi_logging(f'[❌] Error calling tool {tool_name}: {e}')
@@ -247,6 +269,61 @@ class MCPToolkit:
         except Exception as e:
             abi_logging(f'[❌] Error listing tools: {e}')
             return []
+
+    async def list_tools_detailed(self) -> List[Dict[str, Any]]:
+        """List all MCP tools with name, description, and input schema.
+
+        Returns:
+            List of dicts with ``name``, ``description``, ``inputSchema``.
+        """
+        try:
+            async with client.init_session(
+                self.mcp_config.host,
+                self.mcp_config.port,
+                self.mcp_config.transport,
+            ) as mcp_session:
+                resp = await mcp_session.list_tools()
+                tools = []
+                for t in resp.tools:
+                    tools.append({
+                        "name": t.name,
+                        "description": getattr(t, "description", "") or "",
+                        "inputSchema": getattr(t, "inputSchema", {}) or {},
+                    })
+                abi_logging(f"[📋] Listed {len(tools)} MCP tools (detailed)")
+                return tools
+        except Exception as e:
+            abi_logging(f"[❌] Error listing tools (detailed): {e}")
+            return []
+
+    async def search_tools(self, query: str) -> List[Dict[str, Any]]:
+        """Search MCP tools whose name or description matches *query*.
+
+        Simple keyword match — returns tools where any word in *query*
+        appears in the tool name or description (case-insensitive).
+
+        Args:
+            query: Free-text description of the capability needed.
+
+        Returns:
+            List of matching tool dicts (name, description, inputSchema).
+        """
+        all_tools = await self.list_tools_detailed()
+        if not all_tools:
+            return []
+
+        keywords = [w.lower() for w in query.split() if len(w) > 2]
+        if not keywords:
+            return all_tools
+
+        matches = []
+        for t in all_tools:
+            haystack = f"{t['name']} {t['description']}".lower()
+            if any(kw in haystack for kw in keywords):
+                matches.append(t)
+
+        abi_logging(f"[🔍] search_tools('{query}'): {len(matches)}/{len(all_tools)} matches")
+        return matches
     
     async def has_tool(self, tool_name: str) -> bool:
         """
@@ -355,6 +432,13 @@ async def tool_find_agent(query: str) -> Optional[AgentCard]:
                     agent_card_json = mcp_response.content
                 
                 if agent_card_json:
+                    # Skip service cards and tool cards — they are not agents
+                    if agent_card_json.get("service_id") or agent_card_json.get("service_type"):
+                        abi_logging(f"[⏭️] Skipping service card: {agent_card_json.get('name', 'unknown')}")
+                        return None
+                    if not agent_card_json.get("capabilities"):
+                        abi_logging(f"[⏭️] Skipping non-agent card (no capabilities): {agent_card_json.get('name', 'unknown')}")
+                        return None
                     return AgentCard(**agent_card_json)
                 else:
                     return None
@@ -387,6 +471,11 @@ async def tool_list_agents(query: str) -> List[AgentCard]:
             try:
                 for content in mcp_response.content:
                     agent_card_json = json.loads(content.text)
+                    # Skip service/tool cards
+                    if agent_card_json.get("service_id") or agent_card_json.get("service_type"):
+                        continue
+                    if not agent_card_json.get("capabilities"):
+                        continue
                     agents.append(AgentCard(**agent_card_json))
                 return agents
             except Exception as e:
@@ -501,47 +590,32 @@ async def tool_check_agent_capability(
 @tool
 async def tool_check_agent_health(agent_name: str) -> Dict[str, Any]:
     """Check if an agent is online and responding.
-    
+
+    Uses AbiAgent.check_health() — no MCP call needed.
+    Requires the agent's URL, which is looked up from the semantic layer.
+
     Args:
         agent_name: Name of the agent to check
-    
+
     Returns:
-        Health status with response time and status code
+        Health status with response_time_ms and status_code
     """
-    async with client.init_session(
-        _mcp_config.host,
-        _mcp_config.port,
-        _mcp_config.transport
-    ) as mcp_session:
-        abi_logging(f"[🏥] Checking health for: {agent_name}")
-        
-        context = build_semantic_context_from_card(
-            AGENT_CARD_PATH,
-            tool_name="check_agent_health",
-            query=agent_name
-        )
-        
-        mcp_response = await client.check_agent_health(
-            mcp_session,
-            agent_name,
-            context
-        )
-        
-        if hasattr(mcp_response, 'content') and mcp_response.content:
-            try:
-                if isinstance(mcp_response.content, list) and mcp_response.content:
-                    result = json.loads(mcp_response.content[0].text)
-                else:
-                    result = mcp_response.content
-                
-                abi_logging(f"[✅] Health check complete: {result.get('status', 'unknown')}")
-                return result if result else {}
-            except Exception as e:
-                abi_logging(f'[X] Error parsing health check: {e}')
-                return {"error": str(e)}
-        else:
-            abi_logging(f'No health data found')
-            return {}
+    # Find agent card to get URL
+    agent_card = await tool_find_agent.ainvoke(agent_name)
+    if not agent_card:
+        return {"agent": agent_name, "status": "not_found", "error": "Agent not found"}
+
+    agent_url = (
+        agent_card.get("url", "")
+        if isinstance(agent_card, dict)
+        else getattr(agent_card, "url", "")
+    )
+    if not agent_url:
+        return {"agent": agent_name, "status": "error", "error": "No URL in agent card"}
+
+    from abi_core.agent.agent import AbiAgent
+
+    return await AbiAgent.check_health(agent_url, agent_name)
 
 
 @tool
@@ -600,7 +674,11 @@ async def tool_register_agent(agent_card_dict: Dict[str, Any]) -> Dict[str, Any]
         if hasattr(mcp_response, 'content') and mcp_response.content:
             try:
                 if isinstance(mcp_response.content, list) and mcp_response.content:
-                    result = json.loads(mcp_response.content[0].text)
+                    raw_text = mcp_response.content[0].text
+                    if not raw_text or raw_text.strip() in ("", "None", "null"):
+                        abi_logging(f'[⚠️] Empty text in MCP response for register_agent')
+                        return {"success": False, "error": "Empty response from semantic layer (access may have been denied)"}
+                    result = json.loads(raw_text)
                 else:
                     result = mcp_response.content
                 
@@ -616,3 +694,19 @@ async def tool_register_agent(agent_card_dict: Dict[str, Any]) -> Dict[str, Any]
         else:
             abi_logging(f'No registration response')
             return {"success": False, "error": "No response from semantic layer"}
+
+
+@tool
+async def tool_search_tools(query: str) -> List[Dict[str, Any]]:
+    """Search the ToolRegistry for tools matching a task description.
+
+    Uses semantic similarity via the semantic layer's search_tool_registry
+    MCP tool.  Returns full ToolCard specs including access_scope.
+
+    Args:
+        query: Description of the capability or task needed.
+
+    Returns:
+        List of matching tools with name, description, score, and full spec.
+    """
+    return await mcp_toolkit.call("search_tool_registry", query=query, max_results=5)

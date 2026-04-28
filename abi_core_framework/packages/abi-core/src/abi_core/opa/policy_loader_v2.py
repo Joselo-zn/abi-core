@@ -1,13 +1,12 @@
 import os
-import logging
 from pathlib import Path
 from typing import List, Dict, Any
 import importlib.util
+from abi_core.common.utils import abi_logging
 
 from .core_policies import get_core_policy_generator
 from abi_core.common.utils import abi_logging
 
-logger = logging.getLogger(__name__)
 
 class PolicyLoaderV2:
     """
@@ -301,7 +300,9 @@ class PolicyLoaderV2:
         # Log critical issues
         critical_issues = [i for i in issues if i.get('severity') == 'CRITICAL']
         if critical_issues:
+
             abi_logging(f"[!] CRITICAL POLICY ISSUES FOUND: {len(critical_issues)}", level="error")
+
             for issue in critical_issues:
                 abi_logging(f"[!] {issue['message']}", level="error")
                 

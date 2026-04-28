@@ -2,11 +2,10 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-import logging
+from abi_core.common.utils import abi_logging
 
 from abi_core.common.utils import abi_logging
 
-logger = logging.getLogger(__name__)
 
 class OPAConfig:
     """

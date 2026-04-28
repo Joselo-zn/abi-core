@@ -1,0 +1,52 @@
+{
+  "id": "agent://builder",
+  "name": "Builder Agent",
+  "description": "Builds and deploys ephemeral AI agents on demand. Creates agents with specific tools and system prompts, deploys them as Docker containers, and manages their lifecycle. Can also create new MCP tools when they don't exist in the semantic layer.",
+  "url": "http://abi-builder:11439",
+  "version": "1.0.0",
+  "auth": {
+    "method": "hmac_sha256",
+    "key_id": "agent://builder-default",
+    "shared_secret": "change-me-in-production"
+  },
+  "permissions": ["register_agents", "unregister_agents"],
+
+  "capabilities": {
+    "streaming": "True",
+    "pushNotifications": "True",
+    "stateTransitionHistory": "False"
+  },
+
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+
+  "skills": [
+    {
+      "id": "build_agent",
+      "name": "Build Ephemeral Agent",
+      "description": "Create and deploy an ephemeral AI agent with specific tools and system prompt. The agent runs in a Docker container and is destroyed after task completion.",
+      "tags": ["build", "agent", "ephemeral", "deploy", "create", "scaffold"],
+      "examples": ["Build an agent with query_sales_db tool to analyze Q4 sales"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "create_tools",
+      "name": "Create MCP Tools",
+      "description": "Generate new MCP tools from specifications when they don't exist in the semantic layer. Implements the tool, validates it, and registers it.",
+      "tags": ["tools", "create", "mcp", "implement", "generate"],
+      "examples": ["Create a query_sales_db tool that connects to PostgreSQL"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    },
+    {
+      "id": "destroy_agent",
+      "name": "Destroy Ephemeral Agent",
+      "description": "Stop and remove an ephemeral agent container and clean up its resources.",
+      "tags": ["destroy", "cleanup", "remove", "stop"],
+      "examples": ["Destroy ephemeral agent after task completion"],
+      "inputModes": ["text/plain"],
+      "outputModes": ["text/plain"]
+    }
+  ]
+}

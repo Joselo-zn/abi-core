@@ -58,7 +58,7 @@ def remove_agent(agent_name, force, dry_run, keep_compose, keep_runtime):
     
     # Get project name
     project_name = runtime_config.get('project', {}).get('name', Path.cwd().name)
-    project_dir = project_name.lower().replace(' ', '_').replace('-', '_')
+    project_dir = project_name.lower().replace(' ', '-').replace('_', '-')
     
     # Collect what will be removed
     items_to_remove = []
@@ -245,7 +245,7 @@ def remove_service(service_name, force, dry_run):
     
     # Get project name
     project_name = runtime_config.get('project', {}).get('name', Path.cwd().name)
-    project_dir = project_name.lower().replace(' ', '_').replace('-', '_')
+    project_dir = project_name.lower().replace(' ', '-').replace('_', '-')
     
     # Collect what will be removed
     items_to_remove = []
@@ -358,19 +358,19 @@ def remove_service(service_name, force, dry_run):
         console.print(f"  • Restart other services: docker-compose up -d", style="dim")
 
 
-@remove.command("agentic-orchestration-layer")
+@remove.command("abi-swarm")
 @click.option('--force', '-f', is_flag=True, help='Skip confirmation prompt')
 @click.option('--dry-run', is_flag=True, help='Show what would be removed without doing it')
 def remove_orchestration(force, dry_run):
     """Remove planner and orchestrator agents
     
     This removes both the Planner and Orchestrator agents that make up
-    the agentic orchestration layer.
+    the ABI Swarm.
     
     \b
     Examples:
-      abi-core remove agentic-orchestration-layer
-      abi-core remove agentic-orchestration-layer --force
+      abi-core remove abi-swarm
+      abi-core remove abi-swarm --force
     """
     
     # Check if we're in an ABI project
@@ -378,7 +378,7 @@ def remove_orchestration(force, dry_run):
         console.print("❌ Not in an ABI project directory.", style="red")
         return
     
-    console.print("\n🗑️  Removing Agentic Orchestration Layer...", style="cyan bold")
+    console.print("\n🗑️  Removing ABI Swarm...", style="cyan bold")
     console.print("=" * 60, style="cyan")
     
     # Check if agents exist
@@ -386,7 +386,7 @@ def remove_orchestration(force, dry_run):
     orchestrator_dir = Path('agents/orchestrator')
     
     if not planner_dir.exists() and not orchestrator_dir.exists():
-        console.print("❌ Agentic orchestration layer not found.", style="red")
+        console.print("❌ ABI Swarm not found.", style="red")
         console.print("   Neither planner nor orchestrator agents exist.", style="yellow")
         return
     
@@ -407,7 +407,7 @@ def remove_orchestration(force, dry_run):
     
     # Get project name
     project_name = runtime_config.get('project', {}).get('name', Path.cwd().name)
-    project_dir = project_name.lower().replace(' ', '_').replace('-', '_')
+    project_dir = project_name.lower().replace(' ', '-').replace('_', '-')
     
     # Check for agent cards
     for agent_name in ['planner', 'orchestrator']:
@@ -527,7 +527,7 @@ def remove_orchestration(force, dry_run):
     
     # Success message
     console.print("\n" + "=" * 60, style="green")
-    console.print("✅ Agentic Orchestration Layer removed successfully!", style="green bold")
+    console.print("✅ ABI Swarm removed successfully!", style="green bold")
     console.print("=" * 60, style="green")
     
     if compose_services:

@@ -1,56 +1,75 @@
-🗺️ ABI Roadmap – 2025
+# 🗺️ ABI Roadmap — 2026
 
-> **🎉 HITO ALCANZADO:** Sistema **ABI-Core completamente operativo (Octubre 2025)**  
-> Todos los servicios funcionando, errores críticos resueltos, arquitectura estable y modular.
+> **Current state:** E2E pipeline functional and verified (v1.9.40+).
+> User query → Orchestrator → Planner → Builder → Ephemeral → Artifacts → Cleanup. All automatic.
 
-* * *
+---
 
+## ✅ Completed
 
-## ✅ Completado (Julio - Octubre 2025)
+| Area | What was built |
+|------|---------------|
+| Pipeline E2E | Full flow: orchestrator → planner → builder → zombie → artifacts → self-deregister |
+| Orchestrator | Parallel triage + Guardian gate, semantic agent discovery, workflow construction |
+| Planner | LLM-based task decomposition with steps, deps, model recommendation, agent assignment |
+| Builder | Parses spec, resolves tools, generates config, spawns Docker containers, registers agent cards |
+| Zombie (ephemeral) | Gather context → execute with tools → upload artifacts → self-deregister → container exit |
+| Guardian | OPA policy validation, prompt injection detection, risk scoring, emergency shutdown |
+| Semantic Layer | Weaviate + MCP server, agent/tool discovery via embedding similarity, HMAC auth |
+| Security | OPA immutable core policies, A2A validation, semantic access validation with Weaviate fallback |
+| CLI | `abi-core create swarm`, `create project`, `add agent`, `add service`, `run`, `status` |
+| Monorepo | abi-core, abi-agents, abi-services, abi-cli packages with shared pyproject.toml |
+| AbiCore App | `@agent.task()`, `@agent.tool()`, `@agent.mcp_tool()` decorator-based DAG registration |
+| Docker Image | Base image with Ollama, agent cards, entrypoint scripts |
+| TUI Console | Textual-based interactive dashboard (widgets in abi-core, scaffolded per project) |
 
-| Componente | Tarea | Estado |
-|------------|-------|--------|
-| **Fundación** | 🔹 Publicación del Manifiesto y Whitepaper en GitHub | ✅ Liberado |
-| | 🔹 Setup inicial del repositorio y licencia | ✅ Liberado |
-| | 🔹 Diseño del MVP (diagrama de agentes, A2A, supervisión) | ✅ Liberado |
-| **Arquitectura** | 🔹 Stack tecnológico definido (FastAPI, Weaviate, Ollama, MCP) | ✅ Liberado |
-| | 🔹 Arquitectura multi-agente implementada | ✅ Liberado |
-| | 🔹 Docker Compose para orquestación completa | ✅ Liberado |
-| **Agentes Core** | 🔹 BaseAgent y AbiAgent con políticas integradas | ✅ Liberado |
-| | 🔹 Orchestrator Agent con workflow management | ✅ Liberado |
-| | 🔹 Planner Agent con descomposición de tareas | ✅ Liberado |
-| | 🔹 Actor Agent con ejecución de herramientas | ✅ Liberado |
-| | 🔹 Guardian Agent con OPA avanzado | ✅ Liberado |
-| **Comunicación** | 🔹 Protocolo A2A completamente implementado | ✅ Liberado |
-| | 🔹 MCP Server con semantic agent discovery | ✅ Liberado |
-| | 🔹 Streaming real-time entre agentes | ✅ Liberado |
-| **Semántica** | 🔹 Weaviate integration para embeddings | ✅ Liberado |
-| | 🔹 Agent Cards con capacidades semánticas | ✅ Liberado |
-| | 🔹 Búsqueda semántica de agentes por tarea | ✅ Liberado |
-| **Workflows** | 🔹 NetworkX para grafos de workflow | ✅ Liberado |
-| | 🔹 Context preservation cross-agent | ✅ Liberado |
-| | 🔹 Pauses/Resume mechanisms | ✅ Liberado |
-| **Seguridad** | 🔹 OPA Policy Engine con políticas inmutables | ✅ Liberado |
-| | 🔹 Sistema de puntuación de riesgo | ✅ Liberado |
-| | 🔹 Fail-safe mechanisms y emergency shutdown | ✅ Liberado |
+---
 
+## � Phase 1: Foundations (In Progress)
 
-* * *
+| Spec | Description | Depends on |
+|------|-------------|------------|
+| Interactive CLI / TUI | `abi-core run` launches Textual dashboard with services, logs, chat | — |
+| Plan Confirmation | User approves/rejects/modifies plan before execution | CLI/TUI |
+| Docker Cleanup | Auto-remove ephemeral containers (`--rm` or post-exit cleanup) | — |
 
-## 🟡 **En Progreso / Próximos Hitos (Octubre – Noviembre 2025)**
+---
 
-> **Objetivo general del ciclo:**  
-> Refactorizar el *Orchestrator Core* con **LangGraph**, implementar colas distribuidas (**Redis/Rabbit**), añadir **seguridad con OpenBao**, y preparar el lanzamiento de **ABI-Core como paquete PyPI** con CLI oficial.
+## � Phase 2: Intelligence
 
-| Prioridad | Tarea | Timeline | Responsable | Objetivo |
-| --- | --- | --- | --- | --- |
-| **P0** | **Refactor Orchestrator con LangGraph (Core Flux)** | 2 semanas | José Luis | Migrar el flujo actual a LangGraph para habilitar nodos pausable/resumibles (`input-required`) y control de estado en tiempo real. |
-| **P0** | **Integración Redis/Rabbit como columna vertebral** | 1 semana | José Luis | Establecer colas para requests, deduplicación (`idemp_key`) y manejo concurrente de tareas entre agentes. |
-| **P0** | **Implementar modelo TurnState + Resume System** | 4 días | José Luis | Habilitar persistencia de turnos y reanudación de flujos (pausable graph execution). |
-| **P1** | **Ruteo automático `input-required`** | 3 días | José Luis | Crear heurística para decidir si responde el Orchestrator, espera al usuario o reenvía al Planner/Worker. |
-| **P1** | **Vault seguro con OpenBao (AgentCards)** | 1 semana | José Luis | Centralizar secretos y credenciales de agentes con versionamiento seguro. |
-| **P1** | **CLI de pruebas (`abi run`, `resume`, `logs`)** | 1 semana | José Luis | Ejecutar flujos, reanudar tareas y ver logs locales fácilmente. |
-| **P2** | **Integrar OpenTelemetry (MVP)** | 1 semana | José Luis | Exportar métricas de latencia, duplicación y estados de flujo a Grafana/Tempo. |
-| **P2** | **Mejora de prompts QA/Planner** | 3 días | José Luis | Asegurar determinismo, limpieza de contexto y salida estructurada. |
-| **P2** | **Documentación técnica completa (`docs/`)** | 2 semanas | José Luis | Incluir arquitectura LangGraph, colas, ruteo y CLI en el sitio técnico. |
-| **P3** | **Video demo y contenido de lanzamiento** | 3 semanas | José Luis | Mostrar orquestación LangGraph + Redis + Observer Agent en acción. |
+| Spec | Description | Depends on |
+|------|-------------|------------|
+| Result Validation | Orchestrator validates task results before responding to user | — |
+| Plan Learning | System learns from executions — PlanHistory in Weaviate, `search_similar_plans` | Result Validation |
+| Orchestrator Synthesis Refactor | Clean up result synthesis logic | — |
+
+---
+
+## 📋 Phase 3: Capabilities
+
+| Spec | Description | Depends on |
+|------|-------------|------------|
+| Model Management | MCP tools for Ollama: `list_installed_models`, `pull_model`, `recommend_model` | Plan Confirmation |
+| Artifact Transport | Real transport of artifacts between ephemeral agents (target/tag already in plan) | — |
+| Hybrid Tool Discovery | `discover_tools` + `call_tool` via semantic layer, replaces hardcoded MCP tool injection | Tools in semantic layer |
+
+---
+
+## 📋 Phase 4: Knowledge
+
+| Spec | Description | Depends on |
+|------|-------------|------------|
+| Swarm Knowledge Base | `.abi/` directory exposed as MCP tools for agent self-knowledge | — |
+| Dynamic Context Loader | Enhanced context loading with observability (partially implemented) | — |
+
+---
+
+## Known Issues
+
+- Ephemeral containers remain as `Exited (0)` — `docker rm` not automatic yet
+- Webapp polling fix only in template — existing projects need to regenerate
+- LLM (qwen2.5:3b) occasionally misinterprets zombie prompts — may need prompt tuning or larger model
+
+---
+
+All specs are documented in `abi_core_framework/.abi/specs/`.
