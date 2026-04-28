@@ -26,9 +26,10 @@ Usage:
 
 import asyncio
 import inspect
+import operator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, TypedDict
+from typing import Annotated, Any, Callable, Dict, List, Optional, TypedDict
 
 from langgraph.graph import StateGraph, END
 
@@ -54,15 +55,28 @@ class GraphStatus(str, Enum):
 
 # ── State (LangGraph TypedDict) ────────────────────────────────
 
+def _merge_dicts(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
+    """Reducer that merges two dicts. Used for concurrent node_outputs updates."""
+    return {**a, **b}
+
+
+def _last_value(a, b):
+    """Reducer that keeps the last non-None value. For scalar fields updated concurrently."""
+    return b if b is not None else a
+
+
 class ToolGraphState(TypedDict):
-    """LangGraph state shared across all nodes."""
+    """LangGraph state shared across all nodes.
+
+    All fields use reducers to support concurrent updates from parallel nodes.
+    """
     input_data: Dict[str, Any]
-    node_outputs: Dict[str, Any]
-    current_node: str
-    completed_nodes: List[str]
-    failed_node: Optional[str]
-    error: Optional[str]
-    status: str
+    node_outputs: Annotated[Dict[str, Any], _merge_dicts]
+    current_node: Annotated[str, _last_value]
+    completed_nodes: Annotated[List[str], operator.add]
+    failed_node: Annotated[Optional[str], _last_value]
+    error: Annotated[Optional[str], _last_value]
+    status: Annotated[str, _last_value]
 
 
 # ── Node definition ─────────────────────────────────────────────
@@ -375,8 +389,8 @@ class ToolExecutionGraph:
                     node.error = None
 
                     key = node.output_key or node.id
-                    new_outputs = {**state.get("node_outputs", {}), key: result}
-                    new_completed = state.get("completed_nodes", []) + [node.id]
+                    new_outputs = {key: result}
+                    new_completed = [node.id]
 
                     abi_logging(f"[✅] Node '{node.id}' completed")
 
@@ -422,7 +436,15 @@ class ToolExecutionGraph:
         return "__continue__"
 
     def compile(self):
-        """Build and compile the LangGraph StateGraph."""
+        """Build and compile the LangGraph StateGraph.
+
+        Groups nodes by dependency level and wires them so that nodes
+        within the same level execute in parallel (LangGraph runs
+        nodes that share the same incoming edge concurrently).
+
+        Level 0: nodes with no dependencies (connected from START)
+        Level N: nodes whose dependencies are all in levels < N
+        """
         if self._compiled_graph is not None:
             return self._compiled_graph
 
@@ -437,21 +459,55 @@ class ToolExecutionGraph:
             node = self.nodes[node_id]
             builder.add_node(node_id, self._make_node_fn(node))
 
-        # Set entry point
-        builder.set_entry_point(order[0])
-
-        # Wire edges: each node → conditional → next or END
-        for i, node_id in enumerate(order):
-            if i < len(order) - 1:
-                next_node = order[i + 1]
-                builder.add_conditional_edges(
-                    node_id,
-                    self._should_continue,
-                    {"__continue__": next_node, "__end__": END},
-                )
+        # Group nodes by dependency level (BFS)
+        node_level: Dict[str, int] = {}
+        for node_id in order:
+            deps = self.nodes[node_id].depends_on
+            if not deps:
+                node_level[node_id] = 0
             else:
-                # Last node always goes to END
-                builder.add_edge(node_id, END)
+                node_level[node_id] = max(node_level[dep] for dep in deps) + 1
+
+        max_level = max(node_level.values()) if node_level else 0
+        levels: List[List[str]] = [[] for _ in range(max_level + 1)]
+        for node_id, level in node_level.items():
+            levels[level].append(node_id)
+
+        # Wire edges level by level
+        for level_idx, level_nodes in enumerate(levels):
+            if level_idx == 0:
+                # Level 0: connect from START (entry points)
+                for node_id in level_nodes:
+                    builder.add_edge("__start__", node_id)
+            else:
+                # Connect from each node in the previous level
+                prev_nodes = levels[level_idx - 1]
+                for prev_id in prev_nodes:
+                    if len(level_nodes) == 1:
+                        # Single next node: conditional edge (fail → END)
+                        builder.add_conditional_edges(
+                            prev_id,
+                            self._should_continue,
+                            {"__continue__": level_nodes[0], "__end__": END},
+                        )
+                    else:
+                        # Multiple next nodes (parallel): conditional fan-out
+                        # Map __continue__ to all next nodes, __end__ to END
+                        mapping = {"__end__": END}
+                        for next_id in level_nodes:
+                            mapping[next_id] = next_id
+
+                        def _fan_out(state, targets=list(level_nodes)):
+                            if state.get("failed_node"):
+                                return "__end__"
+                            return targets
+
+                        builder.add_conditional_edges(prev_id, _fan_out, mapping)
+
+        # Last level nodes → END
+        last_level_nodes = levels[-1]
+        for node_id in last_level_nodes:
+            builder.add_edge(node_id, END)
 
         self._compiled_graph = builder.compile()
         return self._compiled_graph
@@ -488,21 +544,7 @@ class ToolExecutionGraph:
 
         abi_logging(f"[🚀] Executing graph '{self.graph_id}' ({len(self.nodes)} nodes)")
 
-        final_state = initial_state
-        async for event in graph.astream(initial_state):
-            for node_id, node_state in event.items():
-                if isinstance(node_state, dict):
-                    final_state = {**final_state, **node_state}
-
-                    # Callback on completion
-                    if (
-                        on_node_complete
-                        and node_id in self.nodes
-                        and not node_state.get("failed_node")
-                    ):
-                        output_key = self.nodes[node_id].output_key or node_id
-                        result = node_state.get("node_outputs", {}).get(output_key)
-                        await on_node_complete(node_id, result)
+        final_state = await graph.ainvoke(initial_state)
 
         self._last_state = final_state
 
@@ -554,20 +596,7 @@ class ToolExecutionGraph:
 
         abi_logging(f"[🔄] Resuming graph '{self.graph_id}'")
 
-        final_state = resume_state
-        async for event in graph.astream(resume_state):
-            for node_id, node_state in event.items():
-                if isinstance(node_state, dict):
-                    final_state = {**final_state, **node_state}
-
-                    if (
-                        on_node_complete
-                        and node_id in self.nodes
-                        and not node_state.get("failed_node")
-                    ):
-                        output_key = self.nodes[node_id].output_key or node_id
-                        result = node_state.get("node_outputs", {}).get(output_key)
-                        await on_node_complete(node_id, result)
+        final_state = await graph.ainvoke(resume_state)
 
         self._last_state = final_state
 

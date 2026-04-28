@@ -28,6 +28,20 @@ class AgentConfig:
     MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen2.5:3b')
     OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
     
+    # LLM Configuration (unified dict for create_llm)
+    LLM_CONFIG: dict = {
+        "provider": os.getenv("LLM_PROVIDER", "ollama"),
+        "model": os.getenv("MODEL_NAME", "qwen2.5:3b"),
+        "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
+        "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
+        "api_key": os.getenv("LLM_API_KEY", ""),
+        "aws_region": os.getenv("AWS_REGION", "us-east-1"),
+        "azure_deployment": os.getenv("AZURE_DEPLOYMENT", ""),
+        "azure_endpoint": os.getenv("AZURE_ENDPOINT", ""),
+        "vertex_project": os.getenv("VERTEX_PROJECT", ""),
+        "vertex_location": os.getenv("VERTEX_LOCATION", "us-central1"),
+    }
+    
     # Logging
     LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
     
@@ -49,6 +63,20 @@ class AgentConfig:
     A2A_ENABLE_AUDIT_LOG: bool = os.getenv('A2A_ENABLE_AUDIT_LOG', 'true').lower() == 'true'
     GUARDIAN_URL: str = os.getenv('GUARDIAN_URL', 'http://localhost:11438')
     OPA_URL: str = os.getenv('OPA_URL', 'http://localhost:8181')
+    
+    # Logging & Observability
+    LOG_TO_ARTIFACT_STORE: bool = os.getenv('LOG_TO_ARTIFACT_STORE', 'true').lower() == 'true'
+    LOG_AGENT_NAME: str = os.getenv('LOG_AGENT_NAME', 'orchestrator')
+    LOG_BUCKET: str = os.getenv('LOG_BUCKET', 'abi-logs')
+    
+    # Artifact Store (MinIO/S3)
+    ARTIFACT_ENDPOINT: str = os.getenv('ARTIFACT_ENDPOINT', 'http://localhost:9000')
+    ARTIFACT_ACCESS_KEY: str = os.getenv('ARTIFACT_ACCESS_KEY', 'minioadmin')
+    ARTIFACT_SECRET_KEY: str = os.getenv('ARTIFACT_SECRET_KEY', 'minioadmin')
+    ARTIFACT_BUCKET: str = os.getenv('ARTIFACT_BUCKET', 'abi-artifacts')
+    
+    # Ephemeral Agent Control
+    EPHEMERAL_AUTO_DESTROY: bool = os.getenv('EPHEMERAL_AUTO_DESTROY', 'true').lower() == 'true'
     
     # Ollama Configuration (for distributed mode)
     START_OLLAMA: bool = os.getenv('START_OLLAMA', 'false').lower() == 'true'

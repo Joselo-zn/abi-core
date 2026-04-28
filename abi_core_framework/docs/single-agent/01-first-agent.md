@@ -33,59 +33,40 @@ agents/my-agent/
 Open `agents/my-agent/agent_my_agent.py`:
 
 ```python
-from abi_core.agent.agent import AbiAgent
-from abi_core.common.utils import abi_logging
+from abi_core.agent import AbiAgent
+from abi_core.common import prompts
+from config import config
+
 
 class MyAgentAgent(AbiAgent):
     """My custom agent"""
-    
+
     def __init__(self):
         super().__init__(
-            agent_name='my-agent',
-            description='My custom agent',
-            content_types=['text/plain']
+            agent_name=config.AGENT_NAME,
+            description=config.AGENT_DESCRIPTION,
+            llm_config=config.LLM_CONFIG,
+            tools=[],  # Add your tools here
+            system_prompt=prompts.WORKER_PROMPT,
         )
-        self.setup_llm()
-    
-    def setup_llm(self):
-        """Configure the language model"""
-        from langchain_ollama import ChatOllama
-        import os
-        
-        model = os.getenv('MODEL_NAME', 'qwen2.5:3b')
-        ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
-        
-        self.llm = ChatOllama(
-            model=model,
-            base_url=ollama_host,
-            temperature=0.7
-        )
-    
-    def process(self, enriched_input):
-        """Process user input"""
-        query = enriched_input['query']
-        
-        abi_logging(f"Processing: {query}")
-        
-        # Use LLM to generate response
-        response = self.llm.invoke(query)
-        
-        return {
-            'result': response.content,
-            'query': query
-        }
-    
-    async def stream(self, query: str, context_id: str, task_id: str):
-        """Respond in streaming mode"""
-        result = self.handle_input(query)
-        
-        yield {
-            'content': result['result'],
-            'response_type': 'text',
-            'is_task_completed': True,
-            'require_user_input': False
-        }
+
+    # stream() is inherited from AbiAgent — override only if needed:
+    #
+    # async def stream(self, query, context_id, task_id):
+    #     yield AgentResponse.success("custom response")
 ```
+
+And `agents/my-agent/main.py`:
+
+```python
+from agent_my_agent import MyAgentAgent
+from abi_core.agent import AbiCore
+
+agent = AbiCore()
+agent.run(MyAgentAgent())
+```
+
+`AbiCore()` auto-imports `config` and `AGENT_CARD` from the local `config/` package. The `agent.run()` call starts the A2A server.
 
 ## Customize Your Agent
 

@@ -166,7 +166,7 @@ synthesis = await synthesize_results(results, plan)
 Orchestrator uses LLM to synthesize results:
 
 ```python
-prompt = ORCHESTRATOR_COT_INSTRUCTIONS.format(
+prompt = ORCHESTRATOR_TOT_INSTRUCTIONS.format(
     task_data=json.dumps({
         "plan": plan,
         "results": results

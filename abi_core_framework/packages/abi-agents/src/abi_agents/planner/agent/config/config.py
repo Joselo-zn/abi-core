@@ -27,6 +27,20 @@ class AgentConfig:
     MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen2.5:3b')
     OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
     
+    # LLM Configuration (unified dict for create_llm)
+    LLM_CONFIG: dict = {
+        "provider": os.getenv("LLM_PROVIDER", "ollama"),
+        "model": os.getenv("MODEL_NAME", "qwen2.5:3b"),
+        "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
+        "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
+        "api_key": os.getenv("LLM_API_KEY", ""),
+        "aws_region": os.getenv("AWS_REGION", "us-east-1"),
+        "azure_deployment": os.getenv("AZURE_DEPLOYMENT", ""),
+        "azure_endpoint": os.getenv("AZURE_ENDPOINT", ""),
+        "vertex_project": os.getenv("VERTEX_PROJECT", ""),
+        "vertex_location": os.getenv("VERTEX_LOCATION", "us-central1"),
+    }
+    
     # Logging
     LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
     

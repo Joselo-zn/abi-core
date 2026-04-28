@@ -16,13 +16,16 @@ class SemanticLayerConfig:
     # Server Configuration
     HOST: str = os.getenv('SEMANTIC_LAYER_HOST', '0.0.0.0')
     PORT: int = int(os.getenv('SEMANTIC_LAYER_PORT', '10100'))
-    TRANSPORT: str = os.getenv('SEMANTIC_LAYER_TRANSPORT', 'sse')
+    TRANSPORT: str = os.getenv('SEMANTIC_LAYER_TRANSPORT', 'streamable-http')
     
     # Logging
     LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
     
     # Agent Cards
-    AGENT_CARDS_BASE: str = os.getenv('AGENT_CARDS_BASE', '/app/layer/mcp_server/agent_cards')
+    AGENT_CARDS_BASE: str = os.getenv('AGENT_CARDS_BASE', '/app/agent_cards')
+
+    # Tool Cards
+    TOOL_CARDS_BASE: str = os.getenv('TOOL_CARDS_BASE', '/app/tool_cards')
     
     # Validation Configuration
     REQUIRE_USER_VALIDATION: bool = os.getenv('REQUIRE_USER_VALIDATION', 'false').lower() == 'true'

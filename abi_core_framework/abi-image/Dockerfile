@@ -1,17 +1,16 @@
 # ABI Base Image - Single Stage
 # Common dependencies for all ABI services
+# Updated: 2026-03-24
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# Install system dependencies
+# Install system dependencies (single layer)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    tar \
     build-essential \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Ollama
-#RUN curl -fsSL https://ollama.ai/install.sh | sh
 
 # Set working directory
 WORKDIR /app
@@ -26,19 +25,14 @@ COPY shared/abi-motd /etc/abi-motd
 COPY shared/abi-motd.sh /etc/profile.d/abi-motd.sh
 COPY agent_cards /app/agent_cards
 
+# Zombie agent is now part of abi-core-ai package (installed at runtime via pip)
+
 # Make scripts executable
 RUN chmod +x /opt/abi/agents.d/*.sh
 RUN chmod +x /etc/profile.d/abi-motd.sh
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    tar \
-    build-essential \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# copy pre-downloaded ollama tarball (build context must contain ollama-linux-amd64.tgz)
-COPY /abi-ollama/ollama-linux-amd64.tgz /tmp/ollama.tgz
+# Install Ollama from pre-downloaded tarball
+COPY abi-ollama/ollama-linux-amd64.tgz /tmp/ollama.tgz
 COPY abi-ollama/install-ollama.sh /usr/local/bin/install-ollama.sh
 RUN chmod +x /usr/local/bin/install-ollama.sh && \
     OLLAMA_TARBALL=/tmp/ollama.tgz /usr/local/bin/install-ollama.sh

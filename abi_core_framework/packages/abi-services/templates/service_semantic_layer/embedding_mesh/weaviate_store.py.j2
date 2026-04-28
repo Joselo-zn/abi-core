@@ -1,0 +1,398 @@
+# -*- coding: utf-8 -*-
+import json
+import time
+
+from typing import Any, Dict, Iterable, List
+from weaviate.exceptions import WeaviateConnectionError
+from weaviate.classes.config import Property, DataType
+from . import weaviate_client
+
+
+def get_client_with_retry(retries: int = 10, delay: float = 1.0):
+    """Get a NEW Weaviate client connection with retry logic.
+    
+    Creates a fresh connection on each call. Caller is responsible for closing.
+    """
+    from . import weaviate_connection
+    
+    last: Exception | None = None
+    for _ in range(retries):
+        try:
+            return weaviate_connection()
+        except WeaviateConnectionError as e:
+            last = e
+            time.sleep(delay)
+    raise last or RuntimeError(f'[!] Failed to connect to Weaviate!')
+
+def ensure_collections()-> None:
+    try:
+        client = get_client_with_retry()
+        existing_collections = list(client.collections.list_all().keys())
+        
+        if "AgentCard" not in existing_collections:
+            client.collections.create(
+                name="AgentCard",
+                description="Agent card vectors",
+                properties=[
+                    Property(name="text", data_type=DataType.TEXT),
+                    Property(name="uri", data_type=DataType.TEXT),
+                    Property(name="origin", data_type=DataType.TEXT),
+                    Property(name="metadata_json", data_type=DataType.TEXT)
+                ]
+            )
+        
+        if "MeshItem" not in existing_collections:
+            client.collections.create(
+                name="MeshItem",
+                description="Ad-hoc upserted texts",
+                properties=[
+                    Property(name="text", data_type=DataType.TEXT),
+                    Property(name="origin", data_type=DataType.TEXT),
+                    Property(name="metadata_json", data_type=DataType.TEXT)
+                ]
+            )
+
+        if "ToolRegistry" not in existing_collections:
+            client.collections.create(
+                name="ToolRegistry",
+                description="Registered MCP tools for agent discovery",
+                properties=[
+                    Property(name="tool_name", data_type=DataType.TEXT),
+                    Property(name="description", data_type=DataType.TEXT),
+                    Property(name="spec_json", data_type=DataType.TEXT),
+                    Property(name="origin", data_type=DataType.TEXT),
+                ]
+            )
+    finally:
+        client.close()
+
+def upsert_agent_cards(
+        items: Iterable[Dict[str, Any]]
+) -> int:
+    """
+    items: Iterable dicts:
+        - id (str) opcional can be use like a UUID
+        - text (str)
+        - uri (str)
+        - metadata (str) optional
+        - vector (List[float]) needed
+    """
+
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("AgentCard")
+        count = 0
+        with col.batch.dynamic() as batch:
+            for it in items:
+                batch.add_object(
+                    properties={
+                        "text": it["text"],
+                        "uri": it.get("uri", ""),
+                        "origin": it["origin"],
+                        "metadata_json": json.dumps(it.get("metadata", {})),
+                    },
+                    vector=it["vector"],
+                    uuid=it.get("id")
+                )
+                count += 1
+        return count
+    finally:
+        client.close()
+
+def delete_agent_card(card_uuid: str) -> bool:
+    """Delete an agent card from Weaviate by UUID.
+
+    Returns:
+        True if deleted, False if not found.
+    """
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("AgentCard")
+        col.data.delete_by_id(card_uuid)
+        return True
+    except Exception:
+        return False
+    finally:
+        client.close()
+
+
+def get_agent_card_by_uuid(card_uuid: str) -> Dict[str, Any] | None:
+    """Fetch an agent card from Weaviate by UUID.
+
+    Used by the semantic access validator to look up dynamically
+    registered cards (ephemeral agents) that don't exist on disk.
+
+    Returns:
+        Parsed agent card dict, or None if not found.
+    """
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("AgentCard")
+        obj = col.query.fetch_object_by_id(card_uuid)
+        if obj and obj.properties:
+            text = obj.properties.get("text", "{}")
+            return json.loads(text) if isinstance(text, str) else text
+        return None
+    except Exception:
+        return None
+    finally:
+        client.close()
+
+def upsert_mesh_items(
+        items: Iterable[Dict[str, Any]]
+) -> int:
+    """
+    Items: Iterable dicts:
+    - id (str) optional
+    - text (str) 
+    - metadata (str) optinal
+    - vector (List[float])
+    """
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("MeshItem")
+        count = 0
+        with col.batch.dynamic() as batch:
+            for it in items:
+                batch.add_object(
+                    properties={
+                        "text": it["text"],
+                        "origin": "upsert",
+                        "metadata_json": json.dumps(it.get("metadata", {})),
+                    },
+                    vector=it["vector"],
+                    uuid=it.get("id"),
+                )
+                count += 1
+        return count
+    finally:
+        client.close()
+
+def get_existing_agent_card_uris() -> set:
+    """Get set of URIs for all agent cards currently in Weaviate.
+    
+    Returns:
+        set: Set of card URIs (file paths)
+    """
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("AgentCard")
+        
+        # Fetch all objects (no vector search, just get all)
+        res = col.query.fetch_objects(limit=1000)
+        
+        uris = set()
+        for o in res.objects:
+            props = o.properties or {}
+            uri = props.get("uri")
+            if uri:
+                uris.add(uri)
+        
+        return uris
+    except Exception as e:
+        # If collection doesn't exist or error, return empty set
+        return set()
+    finally:
+        client.close()
+
+def search_agent_cards(
+        query_vector: List[float], top_k: int = 5
+) -> List[Dict[str, Any]]:
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("AgentCard")
+        res = col.query.near_vector(
+            near_vector=query_vector, limit=top_k, return_metadata=["distance"]
+        )
+        hits = []
+        for o in res.objects:
+            props = o.properties or {}
+            metadata_json = props.get("metadata_json", "{}")
+            try:
+                metadata = json.loads(metadata_json)
+            except:
+                metadata = {}
+            hits.append({
+                "id": o.uuid,
+                "score": 1.0 - float(o.metadata.distance or 0.0),  # convert distance→similarity
+                "text": props.get("text", ""),
+                "source": "agent_card",
+                "metadata": metadata,
+                "uri": props.get("uri"),
+            })
+        return hits
+    finally:
+        client.close()
+
+def search_upserts(
+    query_vector: List[float], top_k: int = 5
+) -> List[Dict[str, Any]]:
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("MeshItem")
+        res = col.query.near_vector(
+            near_vector=query_vector, limit=top_k, return_metadata=["distance"]
+        )
+        hits = []
+        for o in res.objects:
+            props = o.properties or {}
+            metadata_json = props.get("metadata_json", "{}")
+            try:
+                metadata = json.loads(metadata_json)
+            except:
+                metadata = {}
+            hits.append({
+                "id": o.uuid,
+                "score": 1.0 - float(o.metadata.distance or 0.0),
+                "text": props.get("text", ""),
+                "source": "upsert",
+                "metadata": metadata,
+            })
+        return hits
+    finally:
+        client.close()
+
+
+# ── Tool Registry CRUD ──────────────────────────────────────────
+
+
+def upsert_tool(tool_spec: Dict[str, Any], vector: List[float]) -> str:
+    """Register or update a tool in the ToolRegistry collection.
+
+    Args:
+        tool_spec: Dict with tool_name, description, parameters, etc.
+        vector: Embedding vector for semantic search.
+
+    Returns:
+        UUID of the upserted tool.
+    """
+    import uuid as _uuid
+
+    tool_name = tool_spec.get("tool_name", "")
+    tool_uuid = str(_uuid.uuid5(_uuid.NAMESPACE_DNS, f"tool://{tool_name}"))
+
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("ToolRegistry")
+        col.data.insert(
+            properties={
+                "tool_name": tool_name,
+                "description": tool_spec.get("description", ""),
+                "spec_json": json.dumps(tool_spec),
+                "origin": tool_spec.get("origin", "builder"),
+            },
+            vector=vector,
+            uuid=tool_uuid,
+        )
+        return tool_uuid
+    except Exception:
+        # If exists, update
+        try:
+            col.data.update(
+                uuid=tool_uuid,
+                properties={
+                    "tool_name": tool_name,
+                    "description": tool_spec.get("description", ""),
+                    "spec_json": json.dumps(tool_spec),
+                    "origin": tool_spec.get("origin", "builder"),
+                },
+                vector=vector,
+            )
+            return tool_uuid
+        except Exception:
+            raise
+    finally:
+        client.close()
+
+
+def get_tool(tool_name: str) -> Dict[str, Any] | None:
+    """Get a tool by exact name.
+
+    Returns:
+        Tool spec dict or None if not found.
+    """
+    import uuid as _uuid
+
+    tool_uuid = str(_uuid.uuid5(_uuid.NAMESPACE_DNS, f"tool://{tool_name}"))
+
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("ToolRegistry")
+        obj = col.query.fetch_object_by_id(tool_uuid)
+        if obj and obj.properties:
+            spec_json = obj.properties.get("spec_json", "{}")
+            return json.loads(spec_json)
+        return None
+    except Exception:
+        return None
+    finally:
+        client.close()
+
+
+def delete_tool(tool_name: str) -> bool:
+    """Delete a tool from the registry.
+
+    Returns:
+        True if deleted, False if not found.
+    """
+    import uuid as _uuid
+
+    tool_uuid = str(_uuid.uuid5(_uuid.NAMESPACE_DNS, f"tool://{tool_name}"))
+
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("ToolRegistry")
+        col.data.delete_by_id(tool_uuid)
+        return True
+    except Exception:
+        return False
+    finally:
+        client.close()
+
+
+def search_tools(query_vector: List[float], top_k: int = 10) -> List[Dict[str, Any]]:
+    """Search tools by semantic similarity.
+
+    Returns:
+        List of tool dicts with name, description, score.
+    """
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("ToolRegistry")
+        res = col.query.near_vector(
+            near_vector=query_vector, limit=top_k, return_metadata=["distance"]
+        )
+        hits = []
+        for o in res.objects:
+            props = o.properties or {}
+            spec = json.loads(props.get("spec_json", "{}"))
+            hits.append({
+                "tool_name": props.get("tool_name", ""),
+                "description": props.get("description", ""),
+                "score": 1.0 - float(o.metadata.distance or 0.0),
+                "spec": spec,
+            })
+        return hits
+    except Exception:
+        return []
+    finally:
+        client.close()
+
+
+def get_existing_tool_names() -> set:
+    """Get set of tool names already in the ToolRegistry collection."""
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("ToolRegistry")
+        res = col.query.fetch_objects(limit=1000)
+
+        names = set()
+        for o in res.objects:
+            name = (o.properties or {}).get("tool_name")
+            if name:
+                names.add(name)
+        return names
+    except Exception:
+        return set()
+    finally:
+        client.close()

@@ -1,5 +1,4 @@
 import json
-import logging
 import sys
 from pathlib import Path
 
@@ -22,7 +21,6 @@ from abi_core.agent.agent import AbiAgent
 from abi_core.common.agent_executor import ABIAgentExecutor
 from abi_core.common.utils import abi_logging
 
-logger = logging.getLogger(__name__)
 
 def _attach_card_route(app: Starlette, card_dict: dict) -> None:
     async def card(_request):
@@ -65,6 +63,28 @@ def _attach_health_route(app: Starlette) -> None:
         app.add_route("/health", health, methods=["GET"])
     except Exception as e:
         abi_logging(f"[!] Could not attach /health route: {e}", level="warning")
+
+def _attach_audit_route(app: Starlette) -> None:
+    """POST /audit/log — receive and persist audit events from A2A validators."""
+    async def audit_log(request):
+        try:
+            data = await request.json()
+            event_type = data.get("event_type", "unknown")
+            source = data.get("source_agent", "unknown")
+            target = data.get("target_agent", "unknown")
+            allowed = data.get("allowed", None)
+            reason = data.get("reason", "")
+            abi_logging(
+                f"[📋 AUDIT] {event_type}: {source} → {target} | allowed={allowed} | {reason}"
+            )
+            return JSONResponse({"status": "logged"}, status_code=200)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    try:
+        app.add_route("/audit/log", audit_log, methods=["POST"])
+    except Exception as e:
+        abi_logging(f"[!] Could not attach /audit/log route: {e}", level="warning")
 
 def start_server(host: str, port: int, agent_card, agent: AbiAgent):
     """
@@ -115,6 +135,7 @@ def start_server(host: str, port: int, agent_card, agent: AbiAgent):
         _attach_health_route(asgi_app)
         _attach_root_head(asgi_app)
         _attach_card_route(asgi_app, card_dict)
+        _attach_audit_route(asgi_app)
         _attach_routes_route(asgi_app) 
 
         abi_logging(f"[🚀] Starting A2A {agent_card_obj.name} Client on {host}:{port}")

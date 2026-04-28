@@ -1,22 +1,448 @@
 #!/usr/bin/env python3
-"""
-Semantic Layer Service - MCP Server
-{{ project_name }} - {{ domain }} Domain
-"""
+"""Semantic Layer Service — {{ project_name }} ({{ domain }})"""
+
+import json
+import uuid
+from typing import Optional
+
+from starlette.responses import JSONResponse
+from starlette.requests import Request
+from fastmcp import FastMCP
 
 from abi_core.common.utils import abi_logging
+from abi_core.semantic.semantic_access_validator import validate_semantic_access
+from abi_core.semantic.agent_card_store import init_agent_card_store
+from abi_core.semantic.tool_card_store import init_tool_card_store
+from embedding_mesh.embeddings_abi import embed_one, build_agent_card_embeddings
+from embedding_mesh.weaviate_store import (
+    search_agent_cards,
+    ensure_collections,
+    upsert_agent_cards,
+    get_existing_agent_card_uris,
+    upsert_tool,
+    get_tool as weaviate_get_tool,
+    delete_tool as weaviate_delete_tool,
+    search_tools as weaviate_search_tools,
+    get_existing_tool_names,
+)
 
-# Import configuration
 from config import config
 
-# Import MCP server directly
-from layer.mcp_server.server import serve
+# ── Startup ─────────────────────────────────────────────────────
 
-if __name__ == "__main__":
-    # Display configuration
-    abi_logging(f"📋 Semantic Layer Configuration:")
-    for key, value in config.display_config().items():
-        abi_logging(f"   {key}: {value}")
-    
-    abi_logging(f"🚀 Starting Semantic Layer MCP Server on {config.HOST}:{config.PORT} with transport {config.TRANSPORT}")
-    serve(config.HOST, config.PORT, config.TRANSPORT)
+abi_logging("📋 Semantic Layer Configuration:")
+for key, value in config.display_config().items():
+    abi_logging(f"   {key}: {value}")
+
+mcp = FastMCP(config.SERVICE_NAME)
+
+df = init_agent_card_store(
+    build_embeddings_fn=build_agent_card_embeddings,
+    ensure_collections_fn=ensure_collections,
+    upsert_fn=upsert_agent_cards,
+    get_existing_uris_fn=get_existing_agent_card_uris,
+)
+
+tool_cards = init_tool_card_store(
+    tool_cards_dir=config.TOOL_CARDS_BASE,
+    embed_fn=embed_one,
+    upsert_fn=upsert_tool,
+    get_existing_fn=get_existing_tool_names,
+)
+
+# ── Tools ───────────────────────────────────────────────────────
+
+
+@mcp.tool(name='find_agent', description='Find the best agent for a task via semantic search')
+@validate_semantic_access
+async def find_agent(query: str, _request_context: dict = None) -> Optional[dict]:
+    """Find the most relevant Agent Card for a natural language query."""
+    if df is None or df.empty:
+        return None
+
+    results = search_agent_cards(query_vector=embed_one(query), top_k=1)
+    if not results:
+        return None
+
+    try:
+        best = json.loads(results[0]["text"])
+        score = results[0].get("score", 0)
+        abi_logging(f"[🎯] find_agent: {best.get('name', '?')} (score: {score:.2f})")
+        return best
+    except (json.JSONDecodeError, KeyError) as e:
+        abi_logging(f"[❌] find_agent parse error: {e}")
+        return None
+
+
+@mcp.tool(name='recommend_agents', description='Recommend agents for a complex task')
+@validate_semantic_access
+async def recommend_agents(
+    task_description: str,
+    max_agents: int = 3,
+    _request_context: dict = None,
+) -> list[dict]:
+    """Recommend multiple agents ranked by semantic relevance."""
+    if df is None or df.empty:
+        return []
+
+    results = search_agent_cards(
+        query_vector=embed_one(task_description), top_k=max_agents
+    )
+
+    recommendations = []
+    for r in results:
+        try:
+            card = json.loads(r["text"]) if isinstance(r["text"], str) else r["text"]
+        except (json.JSONDecodeError, TypeError):
+            card = r["text"]
+
+        score = float(r.get("score", 0.0))
+        recommendations.append({
+            "agent": card,
+            "relevance_score": score,
+            "confidence": "high" if score > 0.8 else "medium" if score > 0.5 else "low",
+        })
+
+    abi_logging(f"[✅] recommend_agents: {len(recommendations)} results")
+    return recommendations
+
+
+@mcp.tool(name='check_agent_capability', description='Check if an agent supports specific tasks')
+@validate_semantic_access
+async def check_agent_capability(
+    agent_name: str,
+    required_tasks: list[str],
+    _request_context: dict = None,
+) -> dict:
+    """Check whether an agent supports the required tasks."""
+    if df is None or df.empty:
+        return {"agent": agent_name, "found": False, "error": "No agents available"}
+
+    match = df[df['agent_card'].apply(
+        lambda x: x.get('name', '').lower() == agent_name.lower()
+    )]
+
+    if match.empty:
+        return {"agent": agent_name, "found": False, "error": "Agent not found"}
+
+    supported_tasks = match.iloc[0]['agent_card'].get('supportedTasks', [])
+    supported = [t for t in required_tasks if t in supported_tasks]
+    missing = [t for t in required_tasks if t not in supported_tasks]
+
+    return {
+        "agent": agent_name,
+        "found": True,
+        "supported_tasks": supported,
+        "missing_tasks": missing,
+        "has_all_capabilities": len(missing) == 0,
+        "capability_coverage": len(supported) / len(required_tasks) if required_tasks else 1.0,
+    }
+
+
+# ── Resources ───────────────────────────────────────────────────
+
+
+@mcp.resource('resource://agent_cards/count', mime_type='application/json')
+async def get_agent_count() -> dict:
+    """Return the number of registered agent cards."""
+    return {"count": len(df) if df is not None and not df.empty else 0}
+
+
+@mcp.resource('resource://agent_cards/{card_name}', mime_type='application/json')
+@validate_semantic_access
+async def get_agent_card(card_name: str, _request_context: dict = None) -> dict:
+    """Retrieve a specific Agent Card by name."""
+    if df is None or df.empty:
+        return {"agent_card": []}
+
+    matches = df.loc[
+        df['card_uri'].str.contains(f'{card_name}.json', na=False), 'agent_card'
+    ].to_list()
+
+    if not matches:
+        matches = df.loc[
+            df['card_uri'].str.endswith(f'{card_name}.json'), 'agent_card'
+        ].to_list()
+
+    return {"agent_card": matches}
+
+
+# ── Registration ────────────────────────────────────────────────
+
+
+@mcp.tool(name='register_agent', description='Register a new agent in the semantic layer')
+@validate_semantic_access
+async def register_agent(agent_card: dict, _request_context: dict = None) -> dict:
+    """Register a new agent card with HMAC auth validation."""
+    try:
+        for field in ('id', 'name', 'auth'):
+            if field not in agent_card:
+                return {"success": False, "error": f"Missing required field: {field}"}
+
+        auth = agent_card.get('auth', {})
+        if auth.get('method') != 'hmac_sha256':
+            return {"success": False, "error": "Only hmac_sha256 auth supported"}
+        if not auth.get('shared_secret'):
+            return {"success": False, "error": "Missing shared_secret"}
+
+        combined = ' '.join([
+            agent_card.get('name', ''),
+            agent_card.get('description', ''),
+            ' '.join(agent_card.get('supportedTasks', [])),
+            ' '.join(s.get('description', '') for s in agent_card.get('skills', [])),
+        ])
+        embedding = embed_one(combined)
+        if not embedding:
+            return {"success": False, "error": "Failed to generate embedding"}
+
+        agent_id = agent_card['id']
+        card_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, agent_id))
+
+        upsert_agent_cards([{
+            "id": card_uuid,
+            "text": json.dumps(agent_card),
+            "uri": f"dynamic://{agent_id}",
+            "metadata": {
+                "name": agent_card.get('name', ''),
+                "description": agent_card.get('description', ''),
+                "supportedTasks": agent_card.get('supportedTasks', []),
+            },
+            "vector": embedding,
+            "origin": "agent_card",
+        }])
+
+        abi_logging(f"[✅] Registered: {agent_card.get('name')} ({agent_id})")
+        return {"success": True, "agent_id": agent_id, "agent_name": agent_card.get('name'), "uuid": card_uuid}
+
+    except Exception as e:
+        abi_logging(f"[❌] register_agent error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool(name='unregister_agent', description='Remove an agent from the semantic layer')
+@validate_semantic_access
+async def unregister_agent(agent_name: str, _request_context: dict = None) -> dict:
+    """Remove an agent card from the semantic layer by name."""
+    try:
+        import uuid as _uuid
+        agent_id = f"agent://{agent_name}"
+        card_uuid = str(_uuid.uuid5(_uuid.NAMESPACE_DNS, agent_id))
+
+        from embedding_mesh.weaviate_store import delete_agent_card
+        deleted = delete_agent_card(card_uuid)
+
+        if deleted:
+            abi_logging(f"[🗑️] Unregistered agent: {agent_name} ({agent_id})")
+            return {"success": True, "agent_name": agent_name, "agent_id": agent_id}
+        else:
+            abi_logging(f"[⚠️] Agent not found for unregister: {agent_name}")
+            return {"success": False, "error": f"Agent '{agent_name}' not found"}
+
+    except Exception as e:
+        abi_logging(f"[❌] unregister_agent error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool(name='self_deregister_ephemeral', description='Allow an ephemeral agent to deregister itself from the semantic layer')
+@validate_semantic_access
+async def self_deregister_ephemeral(agent_name: str, _request_context: dict = None) -> dict:
+    """Self-deregister for ephemeral agents only.
+
+    Validates that the caller is the same agent being deregistered
+    and that the agent is marked as ephemeral.
+    """
+    try:
+        # Verify caller identity matches the agent being deregistered
+        caller_id = ""
+        if _request_context:
+            caller_id = (
+                _request_context.get("agent_id", "")
+                or _request_context.get("headers", {}).get("X-ABI-Agent-ID", "")
+            )
+
+        expected_id = f"agent://{agent_name}"
+        if caller_id and caller_id != expected_id:
+            abi_logging(f"[🚫] Self-deregister denied: caller '{caller_id}' != target '{expected_id}'")
+            return {"success": False, "error": "Cannot deregister a different agent"}
+
+        import uuid as _uuid
+        card_uuid = str(_uuid.uuid5(_uuid.NAMESPACE_DNS, expected_id))
+
+        from embedding_mesh.weaviate_store import delete_agent_card
+        deleted = delete_agent_card(card_uuid)
+
+        if deleted:
+            abi_logging(f"[🗑️] Ephemeral self-deregistered: {agent_name}")
+            return {"success": True, "agent_name": agent_name, "agent_id": expected_id}
+        else:
+            abi_logging(f"[⚠️] Ephemeral agent not found: {agent_name}")
+            return {"success": False, "error": f"Agent '{agent_name}' not found"}
+
+    except Exception as e:
+        abi_logging(f"[❌] self_deregister_ephemeral error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ── Tool Registry CRUD ───────────────────────────────────────────
+
+
+@mcp.tool(name='register_tool', description='Register a new tool in the semantic layer')
+@validate_semantic_access
+async def register_tool(tool_spec: dict, _request_context: dict = None) -> dict:
+    """Register a new MCP tool so agents can discover it.
+
+    Args:
+        tool_spec: Dict with tool_name, description, parameters,
+                   objective, constraints, edge_cases, implementation_hints, metadata.
+
+    Returns:
+        {"success": True, "tool_name": ..., "uuid": ...} or error.
+    """
+    try:
+        tool_name = tool_spec.get("tool_name", "")
+        if not tool_name:
+            return {"success": False, "error": "Missing tool_name"}
+
+        combined = ' '.join([
+            tool_name,
+            tool_spec.get("description", ""),
+            tool_spec.get("objective", ""),
+            ' '.join(tool_spec.get("edge_cases", [])),
+        ])
+        embedding = embed_one(combined)
+        if not embedding:
+            return {"success": False, "error": "Failed to generate embedding"}
+
+        tool_uuid = upsert_tool(tool_spec, embedding)
+        abi_logging(f"[✅] Tool registered: {tool_name}")
+        return {"success": True, "tool_name": tool_name, "uuid": tool_uuid}
+
+    except Exception as e:
+        abi_logging(f"[❌] register_tool error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool(name='get_tool', description='Get a tool spec by exact name')
+@validate_semantic_access
+async def get_tool_by_name(tool_name: str, _request_context: dict = None) -> dict:
+    """Retrieve a tool specification by exact name.
+
+    Returns:
+        Tool spec dict or {"error": "not found"}.
+    """
+    result = weaviate_get_tool(tool_name)
+    if result:
+        return result
+    return {"error": f"Tool '{tool_name}' not found"}
+
+
+@mcp.tool(name='update_tool', description='Update an existing tool in the registry')
+@validate_semantic_access
+async def update_tool(tool_spec: dict, _request_context: dict = None) -> dict:
+    """Update an existing tool spec. Same as register (upsert).
+
+    Args:
+        tool_spec: Updated tool spec dict (must include tool_name).
+
+    Returns:
+        {"success": True, ...} or error.
+    """
+    tool_name = tool_spec.get("tool_name", "")
+    if not tool_name:
+        return {"success": False, "error": "Missing tool_name"}
+
+    existing = weaviate_get_tool(tool_name)
+    if not existing:
+        return {"success": False, "error": f"Tool '{tool_name}' not found — use register_tool"}
+
+    # Re-register (upsert) with new spec
+    return await register_tool(tool_spec, _request_context)
+
+
+@mcp.tool(name='delete_tool', description='Delete a tool from the registry')
+@validate_semantic_access
+async def delete_tool_by_name(tool_name: str, _request_context: dict = None) -> dict:
+    """Remove a tool from the semantic layer.
+
+    Returns:
+        {"success": True} or {"success": False, "error": ...}.
+    """
+    deleted = weaviate_delete_tool(tool_name)
+    if deleted:
+        abi_logging(f"[🗑️] Tool deleted: {tool_name}")
+        return {"success": True, "tool_name": tool_name}
+    return {"success": False, "error": f"Tool '{tool_name}' not found or already deleted"}
+
+
+@mcp.tool(name='search_tool_registry', description='Search tools by task description using semantic similarity')
+@validate_semantic_access
+async def search_tool_registry(
+    query: str,
+    max_results: int = 5,
+    _request_context: dict = None,
+) -> list[dict]:
+    """Search the ToolRegistry for tools matching a task description.
+
+    Uses vector similarity against tool embeddings (name, description,
+    objective, tags).  Returns full ToolCard specs so the planner can
+    inspect access_scope and parameters.
+
+    Args:
+        query: Natural language description of the capability needed.
+        max_results: Max tools to return (default 5).
+
+    Returns:
+        List of dicts with tool_name, description, score, and full spec.
+    """
+    embedding = embed_one(query)
+    if not embedding:
+        return []
+
+    results = weaviate_search_tools(query_vector=embedding, top_k=max_results)
+    abi_logging(f"[🔍] search_tool_registry('{query[:60]}'): {len(results)} hits")
+    return results
+
+
+# ── Mockup Tools (for testing) ──────────────────────────────────
+
+
+@mcp.tool(name='echo_tool', description='Echo tool for testing — returns the input with metadata')
+async def echo_tool(message: str, uppercase: bool = False) -> dict:
+    """Simple echo tool for end-to-end testing.
+
+    Args:
+        message: Text to echo back.
+        uppercase: If True, convert message to uppercase.
+
+    Returns:
+        Dict with echoed message, timestamp, and tool metadata.
+    """
+    import time
+
+    result = message.upper() if uppercase else message
+    abi_logging(f"[🔊] echo_tool: '{message[:60]}'")
+    return {
+        "echo": result,
+        "original": message,
+        "uppercase": uppercase,
+        "timestamp": time.time(),
+        "tool": "echo_tool",
+        "version": "1.0.0",
+    }
+
+
+# ── Health ──────────────────────────────────────────────────────
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request: Request):
+    return JSONResponse({"status": "ok"})
+
+
+# ── Start ───────────────────────────────────────────────────────
+
+abi_logging(
+    f"🚀 Starting Semantic Layer on {config.HOST}:{config.PORT} "
+    f"({config.TRANSPORT})"
+)
+mcp.run(transport=config.TRANSPORT, host=config.HOST, port=config.PORT)
