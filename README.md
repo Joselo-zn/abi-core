@@ -1,89 +1,145 @@
 # ABI – Agent-Based Infrastructure
 Created and maintained by José Luis Martínez
 
-**ABI** is a paradigm shift in how we design, deploy, and interact with intelligent systems.
+**ABI** is an open-source framework for building distributed, self-organizing multi-agent systems that run on your own hardware.
 
-Instead of centralizing superintelligence behind APIs or monolithic LLMs, ABI implements a distributed, agent-based architecture where cognition is shared, decisions are explainable, and humans remain in control.
+Instead of wiring LLMs to tools behind API calls, ABI implements a full infrastructure where agents discover each other semantically, decompose tasks into plans, spawn ephemeral workers in containers, execute with injected tools, upload artifacts, and clean up after themselves. All auditable, all governed by policy, all local-first.
 
-This repository contains a **functional MVP implementation** of ABI: a human-supervised, auditable infrastructure that enables universities, NGOs, independent labs, and open-source communities to access and build on top of intelligent, modular agents.
+This repository contains the **ABI-Core framework** — the runtime, CLI, and building blocks to create, deploy, and operate multi-agent swarms from a single `pip install abi-core-ai`.
 
 ## Why ABI?
 
-AI today is not just about performance — it's about control.  
-ABI is designed to make intelligent infrastructure accessible, safe, and inspectable by default.
+Most agent frameworks solve how to wire an LLM to tools. ABI solves a different problem: how to build a system where multiple agents collaborate, self-organize, and operate under governance — without depending on a single vendor, a single model, or a centralized API.
 
-It's not just "agent-based tech."  
-It's an architecture designed to reason, act, and learn across networks — and to be supervised by people, not just orchestrated by scripts.
+| | ABI-Core | LangGraph / CrewAI / AutoGen |
+|---|---|---|
+| Architecture | Distributed swarm with semantic discovery | Centralized graph or crew definition |
+| Agent lifecycle | Ephemeral containers — spawn, execute, self-destruct | Long-running processes |
+| Tool discovery | Semantic layer (Weaviate) — agents find each other by meaning | Hardcoded tool lists or registries |
+| Security | OPA policies + Guardian agent + HMAC per request | Varies, usually app-level |
+| Model serving | Local-first (Ollama), vendor-agnostic | Typically API-dependent (OpenAI, etc.) |
+| Scaffolding | Full CLI: `abi-core create swarm` generates everything | Manual setup or minimal templates |
+| Governance | Built-in: audit logs, human veto, policy engine | Not included |
+| Deployment | Docker Compose ready, one command | Manual container setup |
+| Target | Universities, NGOs, labs, open-source communities | Developers building single-purpose agents |
 
-## Core principles
+## Core Principles
 
-- **Human-based supervision** over automation
-- **Shared context** and semantic communication between agents
-- **Layered architecture**: physical infra, semantic protocols, agent layer, governance
-- **Explainability and auditability** by design
-- **No black boxes** — cognition is distributed, not hidden
+### 1. Semantic-First
+Agents discover each other by meaning, not configuration. The Semantic Router queries Weaviate for the most relevant agent via embeddings — no hardcoded routes, no manual registries.
 
-## 🚀 What's Implemented
+### 2. Ephemeral by Design
+Execution agents are born, work, and die. The Builder creates Docker containers with injected tools, the Zombie executes, uploads artifacts to MinIO, deregisters from Weaviate, and the container self-destructs. No residual state.
 
-### Multi-Agent System
-- **4 core agents** operational with A2A communication + 1 framework ready:
-  - **Orchestrator**: ✅ Workflow coordination with semantic agent discovery via MCP
-  - **Planner**: ✅ Task decomposition using LangGraph with structured responses
-  - **Actor**: ✅ Task execution with A2A communication and tool integration
-  - **Guardian**: ✅ Advanced OPA policy engine with emergency response capabilities
-  - **Observer**: 🚧 Architecture defined, implementation framework ready
+### 3. Human Veto Always
+No agent acts without oversight. The Guardian validates every request against OPA policies before execution. Plan Confirmation (next milestone) lets users approve or reject plans before they run. Emergency shutdown is always available.
 
-### Core Infrastructure
-- **Docker-based deployment** with full containerization
-- **Weaviate vector database** for semantic search and embeddings
-- **Ollama integration** for local LLM execution with jina embeddings
-- **FastAPI** REST APIs for each agent with A2A protocol
-- **MCP (Model Context Protocol)** server with semantic agent discovery
-- **A2A (Agent-to-Agent)** protocol with streaming communication
+### 4. Local-First, Vendor-Agnostic
+Everything runs on your hardware with Ollama. No API keys, no data leaving your network. The Processor Interface abstracts the model — use qwen, llama, mistral, or any compatible model without changing code.
 
-### Implemented Features
-- **Semantic workflow orchestration** with NetworkX graphs and MCP discovery
-- **Intelligent agent discovery** via embedding similarity search (`find_agent` tool)
-- **Real-time streaming** responses with A2A protocol communication
-- **Context preservation** across multi-step workflows
-- **OPA policy engine** with immutable core policies and emergency controls
-- **Comprehensive audit trails** and security validation
-- **Emergency shutdown mechanisms** and fail-safe defaults
+### 5. Governed Autonomy
+Agents collaborate freely within policy-defined boundaries. Immutable OPA policies control what each agent can do. Immutable audit logs record every decision. Agents cannot modify their own rules.
+
+### 6. Composable Infrastructure
+Everything is modular and extensible. `abi-core create swarm` generates a complete project. `abi-core add agent` adds agents. TUI widgets are reusable. Jinja2 templates are customizable. Each piece works standalone or as part of the swarm.
+
+## 🚀 What's Working
+
+The end-to-end pipeline is functional and verified:
+
+```
+User query
+  → Orchestrator (triage + Guardian security gate)
+    → Planner (decomposes into tasks with steps + model recommendation)
+      → Builder (finds or creates agents, spawns ephemeral Docker containers)
+        → Zombie (executes with injected tools, uploads artifacts to MinIO)
+          → Self-deregisters from Weaviate, container self-destructs
+            → Orchestrator synthesizes result and responds
+```
+
+### Agents
+
+| Agent | Role | Status |
+|-------|------|--------|
+| Orchestrator | Parallel triage + Guardian gate, calls Planner, builds execution workflow | ✅ Operational |
+| Planner | Task decomposition with steps, dependency resolution, model recommendation | ✅ Operational |
+| Builder | Creates ephemeral containers via Docker SDK, injects tools and agent cards | ✅ Operational |
+| Guardian | OPA policy validation, risk scoring, prompt injection detection, emergency shutdown | ✅ Operational |
+| Zombie (ephemeral) | Executes tasks with library tools, uploads artifacts, self-deregisters on completion | ✅ Operational |
+
+### Infrastructure
+
+| Component | What it does |
+|-----------|-------------|
+| Semantic Layer | Weaviate + MCP server — agent and tool discovery via embedding similarity |
+| CLI | `abi-core create swarm`, `add agent`, `run` with auto TUI detection |
+| TUI Console | Interactive Textual dashboard — services, logs, chat with orchestrator |
+| MinIO | Artifact storage for ephemeral agent outputs |
+| OPA | Policy engine with immutable core policies |
+| Ollama | Local LLM serving — no API keys, no data leaves your network |
+| Docker | Container lifecycle for ephemeral agents with auto-cleanup |
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Orchestrator  │◄──►│    Planner      │◄──►│     Actor       │
-│   (Coordinator) │    │  (Task Decomp)  │    │  (Execution)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         ▲                       ▲                       ▲
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│    Guardian     │    │  Semantic Layer │    │    Observer     │
-│   (Policies)    │    │   (MCP Server)  │    │  (Framework)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │    Weaviate     │
-                       │ (Vector Store)  │
-                       └─────────────────┘
+                              ┌─────────────┐
+                              │    User     │
+                              │  CLI / TUI  │
+                              └──────┬──────┘
+                                     │
+                              ┌──────▼──────┐
+                         ┌───►│ Orchestrator │◄───┐
+                         │    │  triage +    │    │
+                         │    │  gate logic  │    │
+                         │    └──┬───────┬───┘    │
+                         │       │       │        │
+                  ┌──────▼──┐ ┌──▼────┐ ┌▼───────────┐
+                  │Guardian │ │Planner│ │   Builder   │
+                  │OPA gate │ │decomp │ │Docker spawn │
+                  └─────────┘ └───────┘ └──────┬──────┘
+                                               │
+                                    ┌──────────▼──────────┐
+                                    │  Zombie (ephemeral) │
+                                    │  execute → artifact │
+                                    │  → self-deregister  │
+                                    └──────────┬──────────┘
+                                               │
+         ┌─────────────────────────────────────┼──────────────────┐
+         │                                     │                  │
+  ┌──────▼──────┐                     ┌────────▼───────┐  ┌──────▼──────┐
+  │   Weaviate  │                     │     MinIO      │  │     OPA     │
+  │  + MCP      │                     │   artifacts    │  │  policies   │
+  │  semantic   │                     └────────────────┘  └─────────────┘
+  │  discovery  │
+  └─────────────┘
+```
+
+### Monorepo Structure
+
+```
+packages/
+  abi-core/       — Runtime library: agent, semantic, security, tui, common
+  abi-agents/     — Agent implementations: orchestrator, planner, builder, zombie
+  abi-services/   — Service templates: semantic layer, guardian (Jinja2)
+  abi-cli/        — CLI commands + project scaffolding
+abi-image/        — Docker base image for agents and ephemeral containers
+.abi/             — Project metadata, specs, session logs
 ```
 
 ## 🛠️ Technology Stack
 
-- **Python 3.11+** - Core agent implementation
-- **FastAPI** - REST API framework for agent endpoints
-- **Docker & Docker Compose** - Containerization and orchestration
-- **Weaviate** - Vector database for semantic search
-- **Ollama** - Local LLM inference engine
-- **LangChain** - LLM integration and workflow management
-- **NetworkX** - Graph-based workflow orchestration
-- **Redis/TinyDB** - State management and caching
-- **MCP Protocol** - Model Context Protocol for standardized communication
-- **A2A SDK** - Agent-to-Agent communication framework
+| Category | Technologies |
+|----------|-------------|
+| Runtime | Python 3.11+, FastAPI, uvicorn |
+| AI / LLM | LangChain, LangGraph, Ollama (local inference) |
+| Protocols | MCP (Model Context Protocol), A2A SDK (Agent-to-Agent), HMAC signing |
+| Semantic | Weaviate (vector DB), embedding similarity search |
+| Security | OPA (Open Policy Agent), Guardian agent, immutable audit logs |
+| Containers | Docker, Docker SDK (ephemeral lifecycle), Docker Compose |
+| Storage | MinIO (artifacts via boto3) |
+| CLI | Click, Rich, Jinja2 (scaffolding templates) |
+| TUI | Textual (interactive dashboard) |
+| Graphs | NetworkX (workflow orchestration) |
 
 ## 🚀 Quick Start
 

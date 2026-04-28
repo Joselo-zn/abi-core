@@ -4,23 +4,39 @@
 [![License](https://img.shields.io/pypi/l/abi-core-ai.svg)](https://github.com/Joselo-zn/abi-core-ai/blob/main/LICENSE)
 [![Documentation](https://readthedocs.org/projects/abi-core/badge/?version=latest)](https://abi-core.readthedocs.io/en/latest/?badge=latest)
 
-**ABI-Core-AI** — The foundation for building **Agent-Based Infrastructure (ABI)** — a new architectural paradigm where intelligent agents collaborate through semantic context, policy-driven governance, and modular orchestration.
+**ABI-Core-AI** — The open-source framework for building **Agent-Based Infrastructure (ABI)** — distributed, self-building multi-agent systems where agents collaborate through semantic context, execute tasks in ephemeral containers, and operate under policy-driven governance.
 
-**Agent-Based Infrastructure Core** — A comprehensive framework for building, deploying, and managing AI agent systems with semantic layers, orchestration, and security policies.
+ABI-Core provides the runtime, CLI, and building blocks to create, deploy, and operate multi-agent swarms from a single `pip install`. It handles orchestration, planning, ephemeral agent lifecycle, semantic discovery, security validation, and artifact management — so you can focus on what your agents do, not how they connect.
 
-> 🎉 **v1.5.8 Released!** — Now with modular architecture, enhanced Open WebUI compatibility, and improved web interfaces.
+> 🎉 **v1.9+ Released!** — Full E2E pipeline: orchestrator → planner → builder → ephemeral agents → artifacts. Interactive TUI console. Self-building swarm with `abi-core create swarm`.
 
 ---
 
-## 🧭 Core Philosophy
+## 🧭 Why ABI?
 
-ABI-Core is built on three fundamental principles:
+Most agent frameworks solve the same problem: how to wire an LLM to tools. ABI solves a different one: how to build a system where multiple agents collaborate, self-organize, and operate under governance — without depending on a single vendor, a single model, or a centralized API.
 
-1. **Semantic Interoperability** — Agents must share meaning, not just data.  
-2. **Distributed Intelligence** — No single model owns the truth; collaboration is the substrate.  
-3. **Governed Autonomy** — Security and compliance must evolve as fast as intelligence itself.
+| | ABI-Core | LangGraph / CrewAI / AutoGen |
+|---|---|---|
+| Architecture | Distributed swarm with semantic discovery | Centralized graph or crew definition |
+| Agent lifecycle | Ephemeral containers — spawn, execute, self-destruct | Long-running processes |
+| Tool discovery | Semantic layer (Weaviate) — agents find each other by meaning | Hardcoded tool lists or registries |
+| Security | OPA policies + Guardian agent + HMAC per request | Varies, usually app-level |
+| Model serving | Local-first (Ollama), vendor-agnostic | Typically API-dependent (OpenAI, etc.) |
+| Scaffolding | Full CLI: `abi-core create swarm` generates everything | Manual setup or minimal templates |
+| Governance | Built-in: audit logs, human veto, policy engine | Not included |
+| Target | Universities, NGOs, labs, open-source communities | Developers building single-purpose agents |
 
-> ⚠️ **Beta Release**: This is a beta version. APIs may change and some features are experimental.
+ABI is not just a framework — it's an infrastructure paradigm. The agents don't just call tools; they discover each other semantically, negotiate execution plans, spawn ephemeral workers in containers, upload artifacts, and clean up after themselves. All auditable, all governed, all local-first.
+
+### Core Principles
+
+1. **Semantic Interoperability** — Agents share meaning through vector embeddings, not hardcoded routes.
+2. **Distributed Intelligence** — No single model owns the truth. Orchestrator plans, planner decomposes, builder spawns, ephemeral executes.
+3. **Governed Autonomy** — Every action passes through OPA policies and Guardian validation. Humans retain veto power at all times.
+4. **Local-First** — Runs on your hardware with Ollama. No API keys required. No data leaves your network.
+
+> ⚠️ **Beta Release**: APIs may change. Some features are experimental. The pipeline is functional end-to-end.
 
 ---
 
