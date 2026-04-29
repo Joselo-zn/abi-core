@@ -2,7 +2,7 @@
 Planner Agent — decomposes queries into executable task plans.
 
 The planning pipeline (analyze_query -> parse_plan -> assign_agents)
-is registered as @agent.task() decorators in main.py and injected
+is registered as @agent.step() decorators in main.py and injected
 as self.tool_graph by AbiCore.
 """
 
@@ -20,7 +20,7 @@ from config import config
 class AbiPlannerAgent(AbiAgent):
     """Planner — divides queries into tasks and assigns agents.
 
-    Pipeline declared in main.py via @agent.task().
+    Pipeline declared in main.py via @agent.step().
     Custom stream() handles LLM call, DAG execution, and branching.
     Heartbeat via inherited _run_with_heartbeat().
     """

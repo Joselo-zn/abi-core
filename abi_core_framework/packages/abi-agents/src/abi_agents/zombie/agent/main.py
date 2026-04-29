@@ -33,7 +33,7 @@ abi_logging(f"[🔌] Port: {config.AGENT_PORT}")
 agent = AbiCore(config=config, agent_card=config.build_agent_card())
 
 
-@agent.task(
+@agent.step(
     name="gather_context",
     input_map={"query": "$input.query"},
 )
@@ -54,7 +54,7 @@ async def gather_context(query):
     }
 
 
-@agent.task(
+@agent.step(
     name="analyze_and_execute",
     input_map={"context": "$gather_context", "query": "$input.query"},
     depends_on=["gather_context"],
@@ -77,7 +77,7 @@ async def analyze_and_execute(context, query):
     return {"result": result, "query": query}
 
 
-@agent.task(
+@agent.step(
     name="synthesize_and_report",
     input_map={"execution_result": "$analyze_and_execute", "context": "$gather_context"},
     depends_on=["analyze_and_execute"],

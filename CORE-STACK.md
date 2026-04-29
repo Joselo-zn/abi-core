@@ -62,7 +62,7 @@ packages/
 
 ### AbiCore App Runner (`abi_core_app.py`)
 
-The entry point for every agent. Collects `@agent.task()`, `@agent.tool()`, and `@agent.mcp_tool()` decorators, builds a `ToolExecutionGraph` DAG, injects it into the agent, and starts the A2A server.
+The entry point for every agent. Collects `@agent.step()`, `@agent.tool()`, and `@agent.mcp_tool()` decorators, builds a `ToolExecutionGraph` DAG, injects it into the agent, and starts the A2A server.
 
 ### ToolExecutionGraph (`tool_graph.py`)
 
@@ -89,7 +89,7 @@ MinIO/S3 client for uploading and downloading artifacts. Ephemeral agents upload
 ## How an Agent Boots
 
 1. `main.py` creates `AbiCore()` instance
-2. `@agent.task()` decorators register DAG nodes
+2. `@agent.step()` decorators register DAG nodes
 3. `agent.run(MyAgent())` is called
 4. AbiCore builds `ToolExecutionGraph` from registered nodes
 5. Injects graph into `MyAgent.tool_graph`

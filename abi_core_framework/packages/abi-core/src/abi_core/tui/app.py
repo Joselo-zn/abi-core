@@ -3,14 +3,13 @@ abi_core.tui.app — Composable Textual dashboard for ABI projects.
 
 Layout (matches spec):
   ┌──────────────────────────────┬──────────────────┐
-  │  Banner + System Info        │  Conversation    │
-  │                              │                  │
+  │  Banner + System Info        │                  │
+  ├──────────────────────────────┤  Services Table  │
+  │  Conversation / Chat         │                  │
   ├──────────────────────────────┴──────────────────┤
-  │  Services Table (full width)                    │
-  ├─────────────────────────────────────────────────┤
   │  > Input                                        │
   ├─────────────────────────────────────────────────┤
-  │  Log Stream (full width)                        │
+  │  Log Stream                                     │
   └─────────────────────────────────────────────────┘
 """
 
@@ -44,17 +43,16 @@ class AbiConsoleApp(App):
         layout: vertical;
     }
 
-    #left-column {
-        width: 2fr;
-    }
-
-    #right-column {
-        width: 1fr;
-    }
-
     #top-section {
-        height: auto;
-        max-height: 24;
+        layout: horizontal;
+        height: 1fr;
+        min-height: 10;
+        max-height: 22;
+    }
+
+    #left-column {
+        layout: vertical;
+        width: 2fr;
     }
 
     #banner {
@@ -64,14 +62,12 @@ class AbiConsoleApp(App):
     }
 
     #services {
-        height: auto;
-        max-height: 16;
+        width: 1fr;
         border: solid $secondary;
     }
 
     #conversation {
         height: 1fr;
-        min-height: 8;
         border: solid $accent;
     }
 
@@ -86,7 +82,6 @@ class AbiConsoleApp(App):
     }
 
     DataTable > .datatable--header {
-        background: $primary-darken-2;
         text-style: bold;
     }
     """
@@ -160,8 +155,8 @@ class AbiConsoleApp(App):
                     subtitle=subtitle,
                     id="banner",
                 )
-                yield ServiceTable(id="services")
-            yield ConversationPanel(id="conversation", markup=True, wrap=True)
+                yield ConversationPanel(id="conversation", markup=True, wrap=True)
+            yield ServiceTable(id="services")
         yield CommandInput(id="cmd-input")
         yield LogStream(id="log-stream", markup=True, wrap=True)
 
@@ -175,7 +170,12 @@ class AbiConsoleApp(App):
 
     def _refresh_all(self) -> None:
         """Refresh banner + service table with real Docker status."""
-        running_containers = self.docker_svc.list_services()
+        # Derive compose project name from project_name
+        project_filter = self.project_name.lower().replace(" ", "").replace("-", "").replace("_", "")
+
+        running_containers = self.docker_svc.list_services(
+            project_filter=project_filter
+        )
         running_count = sum(
             1 for c in running_containers if c.get("status") == "running"
         )
@@ -183,19 +183,31 @@ class AbiConsoleApp(App):
         banner: BannerWidget = self.query_one("#banner", BannerWidget)
         banner.refresh_banner(node_count=running_count)
 
-        # Match expected services with actual Docker container status
-        service_rows = []
-        container_names = {
-            c["name"].lower(): c for c in running_containers
-        }
+        # Build lookup: compose service name -> container data
+        # Docker may prefix service names with project name (e.g. "abejas-orchestrator")
+        container_by_service: dict[str, dict] = {}
+        for c in running_containers:
+            svc = c["name"].lower()
+            container_by_service[svc] = c
+            # Also store without project prefix for matching
+            if svc.startswith(project_filter + "-"):
+                short = svc[len(project_filter) + 1:]
+                container_by_service[short] = c
 
+        service_rows = []
         for svc in self._expected_services:
-            # Try to find matching container
-            svc_key = svc["config_key"].lower().replace("_", "-")
+            config_key = svc["config_key"].lower()
+            variants = {
+                config_key,
+                config_key.replace("_", "-"),
+                config_key.replace("-", "_"),
+                f"{project_filter}-{config_key}",
+                f"{project_filter}-{config_key.replace('_', '-')}",
+            }
             status = "stopped"
-            for cname, cdata in container_names.items():
-                if svc_key in cname or svc["name"].lower().replace(" ", "-") in cname:
-                    status = cdata.get("status", "unknown")
+            for v in variants:
+                if v in container_by_service:
+                    status = container_by_service[v].get("status", "unknown")
                     break
             service_rows.append({
                 "name": svc["name"],
@@ -221,18 +233,19 @@ class AbiConsoleApp(App):
     async def _start_log_streaming(self) -> None:
         """Stream docker compose logs into the log panel."""
         log: LogStream = self.query_one("#log-stream", LogStream)
-        log.append_log("[dim]Connecting to Docker logs...[/]")
 
         if not self.docker_svc.available:
             log.append_log("[yellow]Docker not available — logs disabled[/]")
             return
 
-        # Stream interleaved logs from all compose containers
+        log.append_log("[dim]Streaming Docker Compose logs...[/]")
+
         try:
             async for line in self.docker_svc.stream_compose_logs(tail=50):
                 log.append_log(line)
         except Exception as e:
             log.append_log(f"[red]Log stream error: {e}[/]")
+            log.append_log("[dim]Tip: type 'logs <service-name>' to stream a specific container[/]")
 
     # ── Command handling ─────────────────────────────────────────
 

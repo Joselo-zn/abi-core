@@ -32,7 +32,7 @@ agent = AbiCore(
 
 # ── Level 0: Parallel triage + security ─────────────────────────
 
-@agent.task(
+@agent.step(
     name="classify_query",
     input_map={"query": "$input.query"},
 )
@@ -60,7 +60,7 @@ async def classify_query(query):
         return {"classification": "complex"}
 
 
-@agent.task(
+@agent.step(
     name="guardian_validate",
     input_map={
         "query": "$input.query",
@@ -139,7 +139,7 @@ async def guardian_validate(query, context_id):
 
 # ── Level 1: Gate decision (depends on both level 0 nodes) ──────
 
-@agent.task(
+@agent.step(
     name="gate_decision",
     depends_on=["classify_query", "guardian_validate"],
     input_map={
@@ -183,7 +183,7 @@ def gate_decision(triage, guardian, query):
 
 # ── Level 2+: Planning pipeline (only runs if gate says call_planner) ──
 
-@agent.task(
+@agent.step(
     name="call_planner",
     depends_on=["gate_decision"],
     input_map={
@@ -227,7 +227,7 @@ async def call_planner(gate, query, context_id, task_id):
     return results
 
 
-@agent.task(
+@agent.step(
     name="extract_plan",
     depends_on=["call_planner"],
     input_map={"planner_results": "$call_planner"},
@@ -255,7 +255,7 @@ def extract_plan(planner_results):
     return {"plan": plan}
 
 
-@agent.task(
+@agent.step(
     name="build_workflow",
     depends_on=["extract_plan"],
     input_map={

@@ -60,6 +60,7 @@ _STATUS_ICONS = {
     "exited": "[red]●[/] exited",
     "created": "[yellow]●[/] created",
     "restarting": "[yellow]●[/] restarting",
+    "stopped": "[red]●[/] stopped",
 }
 
 
