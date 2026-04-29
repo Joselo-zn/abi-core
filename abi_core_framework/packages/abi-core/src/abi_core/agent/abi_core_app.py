@@ -2,18 +2,18 @@
 AbiCore — Application runner for ABI agents.
 
 Provides a FastAPI-style interface for starting agents with
-decorator-based task/tool registration:
+decorator-based step/tool registration:
 
     from abi_core.agent import AbiCore
     from my_agent import MyAgent
 
     agent = AbiCore()
 
-    @agent.task(name="clean_data")
+    @agent.step(name="clean_data")
     def clean_data(raw_input):
         return {"cleaned": raw_input.strip()}
 
-    @agent.task(
+    @agent.step(
         name="store_data",
         depends_on=["clean_data"],
         input_map={"data": "$clean_data.result"},
@@ -33,7 +33,7 @@ decorator-based task/tool registration:
 
     agent.run(MyAgent())
 
-Tasks are deterministic DAG steps executed in strict order.
+Steps are deterministic DAG nodes executed in strict order.
 Tools are also DAG nodes but additionally exposed as LangChain
 tools so the LLM can invoke them on demand.
 MCP tools are remote tools called via MCPToolkit with HMAC auth.
@@ -78,7 +78,7 @@ class _RegisteredNode:
 class AbiCore:
     """Application runner that bootstraps and starts an ABI agent.
 
-    Supports decorator-based registration of tasks, tools, and MCP
+    Supports decorator-based registration of steps, tools, and MCP
     remote tools that are wired into a ``ToolExecutionGraph`` DAG
     before the agent starts.
 
@@ -126,7 +126,7 @@ class AbiCore:
 
     # ── Decorators ──────────────────────────────────────────────
 
-    def task(
+    def step(
         self,
         name: str,
         *,
@@ -136,15 +136,15 @@ class AbiCore:
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> Callable:
-        """Register a deterministic task in the execution DAG.
+        """Register a deterministic step in the execution DAG.
 
-        Tasks run in strict topological order — the LLM never decides
+        Steps run in strict topological order — the LLM never decides
         when to call them.  Use ``input_map`` with ``$references`` to
         wire outputs between nodes.
 
         Args:
             name: Unique node id in the DAG.
-            depends_on: List of node names this task depends on.
+            depends_on: List of node names this step depends on.
             input_map: ``{"param": "$other_node.key"}`` references.
             output_key: Key under which the return value is stored
                         (defaults to *name*).
@@ -184,7 +184,7 @@ class AbiCore:
     ) -> Callable:
         """Register a tool in the execution DAG.
 
-        Tools are DAG nodes like tasks, but they are additionally
+        Tools are DAG nodes like steps, but they are additionally
         converted to LangChain tools and injected into the agent so
         the LLM can also invoke them on demand.
 
@@ -299,9 +299,9 @@ class AbiCore:
     # ── DAG construction ────────────────────────────────────────
 
     def _build_tool_graph(self):
-        """Build a ToolExecutionGraph from registered tasks/tools.
+        """Build a ToolExecutionGraph from registered steps/tools.
 
-        Returns None if no tasks/tools were registered.
+        Returns None if no steps/tools were registered.
         """
         if not self._registered_nodes:
             return None
@@ -325,7 +325,7 @@ class AbiCore:
                     )
                 )
             else:
-                # Local function (task, tool, or mcp_tool with wrapper)
+                # Local function (step, tool, or mcp_tool with wrapper)
                 graph.add_node(
                     ToolGraphNode(
                         id=entry.name,
@@ -338,12 +338,12 @@ class AbiCore:
                     )
                 )
 
-        tasks = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.TASK)
+        steps = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.TASK)
         tools = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.TOOL)
         mcp = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.MCP_TOOL)
         abi_logging(
             f"[🔧] ToolExecutionGraph built: {len(self._registered_nodes)} nodes "
-            f"({tasks} tasks, {tools} tools, {mcp} mcp_tools)"
+            f"({steps} steps, {tools} tools, {mcp} mcp_tools)"
         )
         return graph
 
@@ -373,7 +373,7 @@ class AbiCore:
     def run(self, agent_instance) -> int:
         """Start the agent with A2A server and optional web interface.
 
-        If tasks/tools were registered via decorators, a
+        If steps/tools were registered via decorators, a
         ``ToolExecutionGraph`` is built and injected into the agent
         as ``agent_instance.tool_graph``.  Tools decorated with
         ``@agent.tool()`` are also added to the agent's LangChain

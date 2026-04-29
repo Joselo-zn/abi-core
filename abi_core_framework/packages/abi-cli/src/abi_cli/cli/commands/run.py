@@ -33,7 +33,26 @@ def _load_runtime() -> dict:
 
 
 def _detect_orchestrator_port(runtime: dict) -> int:
-    """Find orchestrator port from runtime agents config."""
+    """Find orchestrator web interface port.
+
+    The /stream SSE endpoint lives on the web interface port,
+    not the A2A port. Try compose.yaml first (WEB_INTERFACE_PORT),
+    fall back to runtime.yaml agent port.
+    """
+    # Try compose.yaml for the actual web interface port
+    try:
+        import yaml as _yaml
+        with open("compose.yaml") as f:
+            compose = _yaml.safe_load(f) or {}
+        for svc_name, svc_cfg in compose.get("services", {}).items():
+            if "orchestrator" in svc_name.lower():
+                for env in svc_cfg.get("environment", []):
+                    if isinstance(env, str) and env.startswith("WEB_INTERFACE_PORT="):
+                        return int(env.split("=", 1)[1])
+    except Exception:
+        pass
+
+    # Fallback: runtime.yaml agent port
     for key, cfg in runtime.get("agents", {}).items():
         if "orchestrator" in key.lower() or "orchestrator" in cfg.get("name", "").lower():
             return int(cfg.get("port", 8000))
@@ -112,23 +131,33 @@ def _launch_tui(runtime: dict, entry: str):
         )
         return
 
-    # Try to import the project's custom console
+    # Try to import the project's custom console class
     import importlib.util
+    app_cls = AbiConsoleApp  # default
+
     spec = importlib.util.spec_from_file_location("project_console", entry)
     if spec and spec.loader:
         mod = importlib.util.module_from_spec(spec)
         try:
             spec.loader.exec_module(mod)
-            # Look for a main() function first
-            if hasattr(mod, "main") and callable(mod.main):
-                mod.main()
-                return
+            # Find first AbiConsoleApp subclass
+            for attr_name in dir(mod):
+                attr = getattr(mod, attr_name, None)
+                try:
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, AbiConsoleApp)
+                        and attr is not AbiConsoleApp
+                    ):
+                        app_cls = attr
+                        break
+                except TypeError:
+                    continue
         except Exception as e:
             console.print(f"⚠️ Could not load {entry}: {e}", style="yellow")
-            console.print("Falling back to default console...", style="dim")
 
-    # Fallback: use the base AbiConsoleApp directly
-    app = AbiConsoleApp(
+    # Always use detected ports, not hardcoded ones from console.py
+    app = app_cls(
         project_name=project_name,
         project_version=version,
         orchestrator_url=f"http://localhost:{orch_port}",

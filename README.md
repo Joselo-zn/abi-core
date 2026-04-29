@@ -157,7 +157,7 @@ abi-core run
 
 This generates a complete project with orchestrator, planner, builder, guardian, semantic layer, Weaviate, MinIO, OPA, Ollama — all wired up in Docker Compose. `abi-core run` starts everything and launches the interactive TUI.
 
-### Build an Agent with `@agent.task`
+### Build an Agent with `@agent.step`
 
 Every ABI agent follows the same structure. You can scaffold it with the CLI or create it manually:
 
@@ -167,7 +167,7 @@ my-agent/
     __init__.py
     config.py       # Agent identity, LLM config, agent card
   agent.py          # Agent class extending AbiAgent
-  main.py           # @agent.task() decorators + AbiCore().run()
+  main.py           # @agent.step() decorators + AbiCore().run()
 ```
 
 **config/config.py** — Agent identity and LLM settings:
@@ -217,14 +217,14 @@ class MyAgent(AbiAgent):
         )
 ```
 
-**main.py** — DAG pipeline with `@agent.task()`:
+**main.py** — DAG pipeline with `@agent.step()`:
 ```python
 from abi_core.agent import AbiCore
 from agent import MyAgent
 
 agent = AbiCore()
 
-@agent.task(
+@agent.step(
     name="gather_context",
     input_map={"query": "$input.query"},
 )
@@ -232,7 +232,7 @@ async def gather_context(query):
     """Fetch relevant context for the query."""
     return {"context": f"Context for: {query}"}
 
-@agent.task(
+@agent.step(
     name="execute",
     depends_on=["gather_context"],
     input_map={"context": "$gather_context", "query": "$input.query"},
@@ -241,7 +241,7 @@ async def execute(context, query):
     """Execute the task using gathered context."""
     return {"result": f"Executed: {query}"}
 
-@agent.task(
+@agent.step(
     name="report",
     depends_on=["execute"],
     input_map={"result": "$execute"},
@@ -254,7 +254,7 @@ agent.run(MyAgent())
 ```
 
 Three decorator types:
-- `@agent.task()` — Deterministic DAG step. Runs in strict topological order.
+- `@agent.step()` — Deterministic DAG step. Runs in strict topological order.
 - `@agent.tool()` — DAG step + LangChain tool. The LLM can also invoke it on demand.
 - `@agent.mcp_tool()` — Remote MCP tool called via MCPToolkit with HMAC auth. No local function needed.
 

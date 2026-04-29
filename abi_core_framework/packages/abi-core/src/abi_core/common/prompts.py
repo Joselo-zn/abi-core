@@ -785,7 +785,7 @@ You receive a builder_spec from the Planner (via the Orchestrator) that tells yo
 - Create the agent using AbiCore patterns:
   - config/config.py with agent identity
   - agent class extending AbiAgent
-  - main.py with @agent.task() decorators for the tools
+  - main.py with @agent.step() decorators for the tools
   - agent_card JSON for A2A registration
 - Deploy as Docker container
 - Register agent card in semantic layer (temporary)

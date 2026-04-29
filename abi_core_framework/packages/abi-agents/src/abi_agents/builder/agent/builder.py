@@ -8,7 +8,7 @@ Receives builder_spec from the Planner (via Orchestrator) and:
 4. Returns agent card for the Orchestrator to execute against
 5. Cleans up after task completion
 
-The build pipeline is registered as @agent.task() decorators in main.py
+The build pipeline is registered as @agent.step() decorators in main.py
 and injected as self.tool_graph by AbiCore.
 """
 

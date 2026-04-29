@@ -14,7 +14,7 @@ from abi_core.common.semantic_tools import (
 agent = AbiCore()
 
 
-@agent.task(
+@agent.step(
     name="analyze_query",
     input_map={
         "query": "$input.query",
@@ -27,7 +27,7 @@ async def analyze_query(query, context):
     return {"planning_query": planning_query}
 
 
-@agent.task(
+@agent.step(
     name="parse_plan",
     depends_on=["analyze_query"],
     input_map={"raw_response": "$input.llm_response"},
@@ -66,7 +66,7 @@ def parse_plan(raw_response):
         return parsed
 
 
-@agent.task(
+@agent.step(
     name="assign_agents",
     depends_on=["parse_plan"],
     input_map={"plan_data": "$parse_plan"},

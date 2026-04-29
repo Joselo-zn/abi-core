@@ -64,29 +64,29 @@ The pipeline is composed of five primary agents:
 
 ### Decorator-Based DAG Pipelines
 
-Each agent's pipeline is declared as a series of `@agent.task()` decorators that form a deterministic DAG. Dependencies and data flow are explicit — no LLM decides when to call them:
+Each agent's pipeline is declared as a series of `@agent.step()` decorators that form a deterministic DAG. Dependencies and data flow are explicit — no LLM decides when to call them:
 
 ```python
 agent = AbiCore()
 
-@agent.task(name="classify_query", input_map={"query": "$input.query"})
+@agent.step(name="classify_query", input_map={"query": "$input.query"})
 async def classify_query(query):
     # Triage: simple or complex?
     ...
 
-@agent.task(name="guardian_validate", input_map={"query": "$input.query"})
+@agent.step(name="guardian_validate", input_map={"query": "$input.query"})
 async def guardian_validate(query):
     # Security check via Guardian agent
     ...
 
-@agent.task(name="gate_decision", depends_on=["classify_query", "guardian_validate"])
+@agent.step(name="gate_decision", depends_on=["classify_query", "guardian_validate"])
 def gate_decision(triage, guardian, query):
     # Merge results, decide: respond_direct, call_planner, or blocked
     ...
 ```
 
 Three decorator types enable different execution patterns:
-- `@agent.task()` — Deterministic DAG step, strict topological order
+- `@agent.step()` — Deterministic DAG step, strict topological order
 - `@agent.tool()` — DAG step + LangChain tool (LLM can also invoke on demand)
 - `@agent.mcp_tool()` — Remote MCP tool via MCPToolkit with HMAC auth
 

@@ -29,7 +29,7 @@ agent = AbiCore()
 
 # ── Step 1: Analyze Builder Spec ────────────────────────────────
 
-@agent.task(
+@agent.step(
     name="parse_spec",
     input_map={
         "builder_spec": "$input.builder_spec",
@@ -88,7 +88,7 @@ def parse_spec(builder_spec, task_id, task_type):
 
 # ── Step 2: Resolve Tools ──────────────────────────────────────
 
-@agent.task(
+@agent.step(
     name="verify_tools",
     depends_on=["parse_spec"],
     input_map={"spec": "$parse_spec"},
@@ -145,7 +145,7 @@ async def verify_tools(spec):
 
 # ── Step 3a: Generate Config ───────────────────────────────────
 
-@agent.task(
+@agent.step(
     name="generate_config",
     depends_on=["verify_tools"],
     input_map={"verification": "$verify_tools"},
@@ -207,7 +207,7 @@ def generate_config(verification):
 
 # ── Step 3b: Build Container ───────────────────────────────────
 
-@agent.task(
+@agent.step(
     name="build_container",
     depends_on=["generate_config"],
     input_map={"config": "$generate_config"},
@@ -288,7 +288,7 @@ async def build_container(config):
 
 # ── Step 4: Register Agent Card ────────────────────────────────
 
-@agent.task(
+@agent.step(
     name="register_card",
     depends_on=["build_container"],
     input_map={"build_result": "$build_container"},

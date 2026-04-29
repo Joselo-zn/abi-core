@@ -41,8 +41,13 @@ class DockerService:
 
     # -- containers ------------------------------------------------
 
-    def list_services(self) -> list[dict]:
-        """Return running/stopped containers as service dicts."""
+    def list_services(self, project_filter: str = "") -> list[dict]:
+        """Return running/stopped containers as service dicts.
+
+        Args:
+            project_filter: If set, only return containers from this
+                            Docker Compose project name.
+        """
         if not self._client:
             return []
         try:
@@ -53,6 +58,12 @@ class DockerService:
         result = []
         for c in containers:
             labels = c.labels or {}
+            project = labels.get("com.docker.compose.project", "")
+
+            # Filter by project if specified
+            if project_filter and project != project_filter:
+                continue
+
             service = labels.get("com.docker.compose.service", c.name)
             port = self._first_port(c)
             result.append({
@@ -62,6 +73,7 @@ class DockerService:
                 "status": c.status,
                 "health": self._health(c),
                 "id": c.short_id,
+                "project": project,
             })
         return result
 

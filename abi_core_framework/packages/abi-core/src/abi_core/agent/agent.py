@@ -193,7 +193,7 @@ class AbiAgent:
     ) -> AsyncIterable[Dict[str, Any]]:
         """Process query and stream responses with keepalive heartbeats.
 
-        If ``self.tool_graph`` is set (via @agent.task() decorators),
+        If ``self.tool_graph`` is set (via @agent.step() decorators),
         executes the DAG deterministically. Otherwise falls back to
         the LLM agent.
 
