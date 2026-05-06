@@ -87,7 +87,8 @@ def add_agent(name, description, model, with_web_interface):
             'with_web_interface': with_web_interface,
             'web_interface_port': web_interface_port,
             'project_name': project_name,
-            'project_dir': project_dir
+            'project_dir': project_dir,
+            'tasks': [],  # populated after skills prompt below
         }
         
         # Generate config files
@@ -101,10 +102,9 @@ def add_agent(name, description, model, with_web_interface):
         with open(agent_dir / f'{agent_file_name}.py', 'w') as f:
             f.write(render_template_content('agent/agent.py', context))
         
-        # Generate main.py file
-        with open(agent_dir / 'main.py', 'w') as f:
-            f.write(render_template_content('agent/main.py', context))
-        
+        # NOTE: main.py is generated after the skills prompt below
+        # so it can include the task/step scaffolding
+
         # Generate models.py file
         with open(agent_dir / 'models.py', 'w') as f:
             f.write(render_template_content('agent/models.py', context))
@@ -162,6 +162,11 @@ def add_agent(name, description, model, with_web_interface):
         default="process_request,analyze_data"
     )
     task_list = [t.strip() for t in tasks_input.split(',') if t.strip()]
+    
+    # Now generate main.py with task/step scaffolding
+    context['tasks'] = task_list
+    with open(agent_dir / 'main.py', 'w') as f:
+        f.write(render_template_content('agent/main.py', context))
     
     # Build agent URL for Docker inter-container communication
     agent_name_normalized = name.lower().replace(' ', '_').replace('-', '_')

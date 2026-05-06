@@ -41,16 +41,16 @@ agent.run(MyAgent())
 
 ### Deterministic Task Pipelines
 
-Use `@agent.task()` for strict execution order (the LLM never decides when to run these):
+Use `@agent.step()` for strict execution order (the LLM never decides when to run these):
 
 ```python
 agent = AbiCore()
 
-@agent.task(name="fetch_data")
+@agent.step(name="fetch_data")
 def fetch_data(query):
     return {"rows": db.execute(query)}
 
-@agent.task(
+@agent.step(
     name="clean_data",
     depends_on=["fetch_data"],
     input_map={"raw": "$fetch_data.rows"},
@@ -58,7 +58,7 @@ def fetch_data(query):
 def clean_data(raw):
     return {"cleaned": [r for r in raw if r["valid"]]}
 
-@agent.task(
+@agent.step(
     name="store_results",
     depends_on=["clean_data"],
     input_map={"data": "$clean_data.cleaned"},

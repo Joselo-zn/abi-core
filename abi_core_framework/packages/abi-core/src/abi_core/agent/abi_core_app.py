@@ -52,16 +52,16 @@ from abi_core.common.utils import abi_logging
 # ── Node type enum ──────────────────────────────────────────────
 
 class _NodeType:
-    TASK = "task"
+    STEP = "step"
     TOOL = "tool"
     MCP_TOOL = "mcp_tool"
 
 
-# ── Internal registry entry ─────────────────────────────────────
+# ── Internal registry entries ────────────────────────────────────
 
 @dataclass
 class _RegisteredNode:
-    """Metadata collected by decorators."""
+    """Metadata collected by @agent.step / @agent.tool / @agent.mcp_tool."""
 
     name: str
     fn: Optional[Callable] = None
@@ -70,7 +70,19 @@ class _RegisteredNode:
     output_key: str = ""
     max_retries: int = 3
     retry_delay: float = 1.0
-    node_type: str = _NodeType.TASK
+    node_type: str = _NodeType.STEP
+
+
+@dataclass
+class _RegisteredTask:
+    """Metadata collected by @agent.task."""
+
+    name: str
+    task_id: str
+    fn: Callable
+    tools: List[str] = field(default_factory=list)
+    parallel: List[str] = field(default_factory=list)
+    depends_on: List[str] = field(default_factory=list)
 
 
 # ── AbiCore ─────────────────────────────────────────────────────
@@ -101,6 +113,7 @@ class AbiCore:
         self.web_interface_cls = web_interface_cls
         self.interface_name = interface_name
         self._registered_nodes: List[_RegisteredNode] = []
+        self._registered_tasks: List[_RegisteredTask] = []
 
         # Use provided config/agent_card or auto-import from config package
         if config is not None:
@@ -171,6 +184,102 @@ class AbiCore:
             return fn
 
         return decorator
+
+    def task(
+        self,
+        name: str,
+        *,
+        task_id: str,
+        tools: Optional[List[str]] = None,
+        parallel: Optional[List[str]] = None,
+        depends_on: Optional[List[str]] = None,
+    ) -> Callable:
+        """Register a task — a programmatic orchestrator of steps.
+
+        Unlike ``@agent.step()``, a task is not a DAG node. It is an
+        async generator function that orchestrates steps by calling
+        ``agent.execute_step()``, using ``asyncio.gather()`` for
+        parallelism, and yielding ``AgentResponse`` objects for streaming.
+
+        Steps defined inline inside a task function are automatically
+        added to the agent's DAG.
+
+        Args:
+            name: Unique task name.
+            task_id: Fixed ID for tracking and auditing.
+            tools: Tool names available to steps within this task.
+            parallel: Step names to execute in parallel (declarative mode).
+            depends_on: Other task names that must complete first.
+
+        Returns:
+            The original function (unmodified).
+
+        Example::
+
+            @agent.task(name="process_query", task_id="task-001")
+            async def process_query(query):
+                from abi_core.agent.agent_response import AgentResponse
+                yield AgentResponse.status("Gathering context...")
+                context = await agent.execute_step("gather_context", query=query)
+                yield AgentResponse.result(context)
+        """
+
+        def decorator(fn: Callable) -> Callable:
+            self._registered_tasks.append(
+                _RegisteredTask(
+                    name=name,
+                    task_id=task_id,
+                    fn=fn,
+                    tools=tools or [],
+                    parallel=parallel or [],
+                    depends_on=depends_on or [],
+                )
+            )
+            return fn
+
+        return decorator
+
+    async def execute_step(self, step_name: str, **kwargs) -> dict:
+        """Execute a registered step by name with the given inputs.
+
+        Intended for use inside ``@agent.task`` functions to call
+        individual steps programmatically.
+
+        Args:
+            step_name: Name of the step registered via ``@agent.step``.
+            **kwargs: Input parameters passed directly to the step function.
+
+        Returns:
+            The step function's return value (a dict).
+
+        Raises:
+            KeyError: If ``step_name`` is not registered.
+            TypeError: If the step function is not callable.
+        """
+        node = next(
+            (n for n in self._registered_nodes if n.name == step_name),
+            None,
+        )
+        if node is None:
+            raise KeyError(
+                f"Step '{step_name}' not found. "
+                f"Registered steps: {[n.name for n in self._registered_nodes]}"
+            )
+        if node.fn is None:
+            raise TypeError(f"Step '{step_name}' has no callable function (MCP tool?)")
+
+        import inspect
+        if inspect.isasyncgenfunction(node.fn):
+            # Async generator step — collect all yielded values
+            result = {}
+            async for chunk in node.fn(**kwargs):
+                if isinstance(chunk, dict):
+                    result.update(chunk)
+            return result
+        elif inspect.iscoroutinefunction(node.fn):
+            return await node.fn(**kwargs)
+        else:
+            return node.fn(**kwargs)
 
     def tool(
         self,
@@ -338,7 +447,7 @@ class AbiCore:
                     )
                 )
 
-        steps = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.TASK)
+        steps = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.STEP)
         tools = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.TOOL)
         mcp = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.MCP_TOOL)
         abi_logging(
@@ -399,6 +508,14 @@ class AbiCore:
                 agent_instance.extra_tools.extend(lc_tools)
             else:
                 agent_instance.extra_tools = lc_tools
+
+        # Inject registered tasks and execute_step into agent
+        if self._registered_tasks:
+            agent_instance._registered_tasks = {
+                t.name: t for t in self._registered_tasks
+            }
+            # Bind execute_step so tasks can call agent.execute_step(...)
+            agent_instance._abi_core = self
 
         return agent_factory(
             agent_instance,

@@ -658,7 +658,7 @@ ENV PYTHONPATH=/app
 ENV AGENT_CARDS_BASE="/app/mcp_server/agent_cards"
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \\
     CMD curl -f http://localhost:10100/health || exit 1
 
 # Run

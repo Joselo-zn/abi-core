@@ -214,6 +214,40 @@ class AbiAgent:
             task_id=task_id,
         )
 
+        # ── Path 0: registered tasks → execute task function ────
+        if hasattr(self, '_registered_tasks') and self._registered_tasks:
+            # Use the first registered task as the default entry point
+            # Future: match by task_id from input or route by query
+            task_entry = next(iter(self._registered_tasks.values()))
+            abi_logging(f"[🎯] Executing task '{task_entry.name}' ({task_entry.task_id})")
+            try:
+                import inspect
+                import json as _json
+
+                # Parse query for structured input
+                try:
+                    input_data = _json.loads(query) if isinstance(query, str) else query
+                    if not isinstance(input_data, dict):
+                        input_data = {"query": query}
+                except (_json.JSONDecodeError, TypeError):
+                    input_data = {"query": query}
+
+                task_fn = task_entry.fn
+                if inspect.isasyncgenfunction(task_fn):
+                    async for chunk in task_fn(**input_data):
+                        yield chunk
+                elif inspect.iscoroutinefunction(task_fn):
+                    result = await task_fn(**input_data)
+                    if isinstance(result, dict):
+                        yield AgentResponse.result(result)
+                    else:
+                        yield AgentResponse.text(str(result))
+                return
+            except Exception as e:
+                abi_logging(f"[❌] Task '{task_entry.name}' failed: {e}", level="error")
+                yield AgentResponse.error(str(e))
+                return
+
         # ── Path A: tool_graph exists → execute DAG ─────────────
         if self.tool_graph is not None:
             try:

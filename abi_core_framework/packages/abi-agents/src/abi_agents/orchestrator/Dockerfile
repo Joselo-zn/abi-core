@@ -41,7 +41,7 @@ RUN useradd -m -u 1000 orchestrator && \
     chmod -R 755 /root/.ollama || true
 
 # Health check - verify agent is ready
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8002/health >/dev/null 2>&1 || exit 1
 
 # Expose ports (agent + web interface + Ollama for distributed mode)

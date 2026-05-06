@@ -46,7 +46,7 @@ RUN useradd -m -u 1000 {{ agent_name.replace('-', '_') }} && \
 
 {% if provision_models == 'distributed' %}
 # Health check - verify both Ollama and agent are ready
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:11434/api/tags >/dev/null 2>&1 && \
         curl -f http://localhost:{{ agent_port | default('8000') }}/health >/dev/null 2>&1 || exit 1
 
@@ -58,7 +58,7 @@ EXPOSE 11434
 VOLUME ["/root/.ollama"]
 {% else %}
 # Health check - verify agent is ready (centralized mode)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:{{ agent_port | default('8000') }}/health >/dev/null 2>&1 || exit 1
 
 # Expose agent port only
