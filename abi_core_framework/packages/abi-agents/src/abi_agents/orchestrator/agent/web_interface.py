@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 import asyncio, json, time
 
 from abi_core.common.utils import abi_logging
+from abi_core.common.utils import yield_chunk_data
 
 
 class OrchestratorWebinterface:
@@ -25,26 +26,9 @@ class OrchestratorWebinterface:
                     async for chunk in self.orchestrator_agent.stream(
                         query=query, context_id=context_id, task_id=task_id
                     ):
-                        try:
-                            if hasattr(chunk, 'model_dump'):
-                                chunk_data = chunk.model_dump()
-                            elif hasattr(chunk, 'dict'):
-                                chunk_data = chunk.dict()
-                            elif hasattr(chunk, '__dict__'):
-                                chunk_data = chunk.__dict__
-                            else:
-                                chunk_data = {"message": str(chunk), "type": type(chunk).__name__}
+                    
+                        yield yield_chunk_data(chunk)
 
-                            abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...", level="debug")
-
-                            yield (f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n").encode()
-                        except Exception as serialize_error:
-                            error_data = {
-                                "error": "Serialization failed",
-                                "chunk_type": type(chunk).__name__,
-                                "details": str(serialize_error)
-                            }
-                            yield (f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n").encode()
                     yield b"event: done\ndata: {}\n\n"
                 except asyncio.CancelledError:
                     raise

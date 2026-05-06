@@ -113,11 +113,11 @@ from my_agent import MyAgent
 
 agent = AbiCore()
 
-@agent.task(name="step1")
+@agent.step(name="step1")
 def step1(raw_input):
     return {"cleaned": raw_input.strip()}
 
-@agent.task(name="step2", depends_on=["step1"], input_map={"data": "$step1.result"})
+@agent.step(name="step2", depends_on=["step1"], input_map={"data": "$step1.result"})
 def step2(data):
     return {"stored": True}
 
@@ -151,7 +151,7 @@ result = await invoke(config.LLM_CONFIG, query, tools=[find, search], thread_id=
 
 ### ToolExecutionGraph — Deterministic DAG with Parallelism
 
-Tasks registered with `@agent.task()` are wired into a LangGraph DAG. Nodes at the same dependency level execute in parallel. The LLM never decides execution order — the graph does. Retry, checkpoint/resume, and `$reference` resolution between nodes are built in.
+Tasks registered with `@agent.step()` are wired into a LangGraph DAG. Nodes at the same dependency level execute in parallel. The LLM never decides execution order — the graph does. Retry, checkpoint/resume, and `$reference` resolution between nodes are built in.
 
 ### Three Types of Cards
 
@@ -177,7 +177,7 @@ No `docker build` — just `docker run` with env vars. The zombie self-configure
 ## Features
 
 - **AbiCore Runner** — `agent = AbiCore()` with auto-config import
-- **Decorator API** — `@agent.task()`, `@agent.tool()`, `@agent.mcp_tool()`
+- **Decorator API** — `@agent.step()`, `@agent.tool()`, `@agent.mcp_tool()`
 - **ToolExecutionGraph** — LangGraph DAG with parallel execution and Annotated reducers
 - **invoke()** — Unified LLM calls: LLM-only, agent+tools, with/without context
 - **SSE Heartbeat** — Automatic keepalive for CloudFront/proxy compatibility

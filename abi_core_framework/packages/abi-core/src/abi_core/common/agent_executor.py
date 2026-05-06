@@ -67,8 +67,8 @@ class ABIAgentExecutor(AgentExecutor):
                         continue
 
                 #Getting task status
-                is_task_completed = item['is_task_completed']
-                require_user_input = item['require_user_input']
+                is_task_completed = item.get('is_task_completed', False)
+                require_user_input = item.get('require_user_input', True)
                 if is_task_completed:
                     content = item['content']
                     if isinstance(content, dict):

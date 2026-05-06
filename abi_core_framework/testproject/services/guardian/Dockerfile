@@ -66,7 +66,7 @@ ENV PATH="/usr/local/bin:${PATH}"
 
 
 # Health check - verify Guardian is ready (centralized mode)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD wget -qO- http://localhost:11438/health >/dev/null 2>&1 || exit 1
 
 # Expose Guardian API and Dashboard ports only

@@ -323,3 +323,32 @@ def format_plan_summary(plan: dict) -> str:
 
     lines.append("\n✅ Plan ready for execution by Orchestrator")
     return "\n".join(lines)
+
+
+async def yield_chunk_data(chunk: str) -> str:
+    """Convert chunk to serializable format
+    Args: chunk str.
+
+    yields:
+        Formatted string.
+    """
+    try:
+        if hasattr(chunk, 'model_dump'):
+            chunk_data = chunk.model_dump()
+        elif hasattr(chunk, 'dict'):
+            chunk_data = chunk.dict()
+        elif hasattr(chunk, '__dict__'):
+            chunk_data = chunk.__dict__
+        else:
+            chunk_data = {"message": str(chunk), "type": type(chunk).__name__}
+
+        abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...", level="debug")
+
+        yield (f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n").encode()
+    except Exception as serialize_error:
+        error_data = {
+            "error": "Serialization failed",
+            "chunk_type": type(chunk).__name__,
+            "details": str(serialize_error)
+        }
+        yield (f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n").encode()

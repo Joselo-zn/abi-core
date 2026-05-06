@@ -81,8 +81,28 @@ def _has_tui_interface(runtime: dict) -> tuple[bool, str]:
     return False, ""
 
 
+def _ensure_shared_resources() -> None:
+    """Create shared Docker resources if they don't exist.
+
+    - ollama_data volume: shared across all ABI projects
+    - abi-network: shared Docker network (created by compose, but volume must pre-exist)
+    """
+    # Create ollama_data volume if it doesn't exist
+    result = subprocess.run(
+        ["docker", "volume", "inspect", "ollama_data"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        console.print("📦 Creating shared ollama_data volume...", style="dim")
+        subprocess.run(["docker", "volume", "create", "ollama_data"], check=True)
+        console.print("✅ ollama_data volume created", style="dim")
+
+
 def _start_compose(build: bool, detach: bool, logs: bool) -> subprocess.Popen | None:
     """Start docker compose and return the process (detached) or None."""
+    # Ensure shared resources exist before starting
+    _ensure_shared_resources()
+
     cmd_parts = ["docker", "compose"]
     if build:
         cmd_parts.extend(["up", "--build"])

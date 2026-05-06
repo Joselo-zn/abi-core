@@ -1,8 +1,8 @@
 services:
-  # Ollama Service (always present)
-  {{ project_dir }}-ollama:
+  # Ollama Service (shared across projects — reused if already running)
+  ollama:
     image: ollama/ollama:latest
-    container_name: {{ project_dir }}-ollama
+    container_name: ollama
     ports:
       - "11434:11434"
     volumes:
@@ -10,7 +10,7 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0
     networks:
-      - {{ project_dir }}-network
+      - abi-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
@@ -53,7 +53,7 @@ services:
       - {{ project_dir }}-opa
       {% endif %}
     networks:
-      - {{ project_dir }}-network
+      - abi-network
 
   {% if with_semantic_layer %}
   # Weaviate Vector Database (required by semantic layer)
@@ -76,7 +76,7 @@ services:
       timeout: 3s
       retries: 30
     networks:
-      - {{ project_dir }}-network
+      - abi-network
     restart: unless-stopped
 
   # Semantic Layer Service
@@ -87,7 +87,7 @@ services:
       - "10100:10100"
     environment:
       - AGENT_CARDS_BASE=/app/agent_cards
-      - ABI_LLM_BASE=http://{{ project_dir }}-ollama:11434
+      - ABI_LLM_BASE=http://ollama:11434
       - EMBEDDING_MODEL=nomic-embed-text:v1.5
       - GUARDIAN_URL=http://{{ project_dir }}-guardian:11438
       - OPA_URL=http://{{ project_dir }}-opa:8181
@@ -100,7 +100,7 @@ services:
       - ./services/semantic_layer/tool_cards:/app/tool_cards:ro
       - ./logs:/app/logs
     networks:
-      - {{ project_dir }}-network
+      - abi-network
     depends_on:
       {{ project_dir }}-weaviate:
         condition: service_healthy
@@ -120,7 +120,7 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - {{ project_dir }}-network
+      - abi-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -150,7 +150,7 @@ services:
       - EMERGENCY_LOG_DIR=/app/emergency_logs
       - GUARDIAL_DASHBOARD_PORT={{ dashboard_port | default('8080') }}
       - GUARDIAL_DASHBOARD_HOST=0.0.0.0
-      - OLLAMA_HOST=http://{{ project_dir }}-ollama:11434
+      - OLLAMA_HOST=http://ollama:11434
       - MODEL_NAME={{ model_name | default('qwen2.5:3b') }}
       {% if domain == 'finance' %}
       - COMPLIANCE_REQUIRED=true
@@ -164,13 +164,13 @@ services:
       - ./logs:/app/logs
       - ./services/guardian/emergency_logs:/app/emergency_logs
     depends_on:
-      - {{ project_dir }}-ollama
+      - ollama
       - {{ project_dir }}-opa
       {% if with_semantic_layer %}
       - {{ project_dir }}-semantic-layer
       {% endif %}
     networks:
-      - {{ project_dir }}-network
+      - abi-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:{{ guardian_port | default('11438') }}/health"]
@@ -191,7 +191,7 @@ services:
       - ./services/guardian/opa/policies:/policies
       - ./logs:/app/logs
     networks:
-      - {{ project_dir }}-network
+      - abi-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
@@ -202,7 +202,8 @@ services:
 
 volumes:
   ollama_data:
-    driver: local
+    external: true
+    name: ollama_data
 {% if with_semantic_layer %}
   weaviate_data:
     driver: local
@@ -212,5 +213,5 @@ volumes:
 
 
 networks:
-  {{ project_dir }}-network:
+  abi-network:
     driver: bridge

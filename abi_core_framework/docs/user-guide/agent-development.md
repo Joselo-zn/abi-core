@@ -101,11 +101,11 @@ from abi_core.agent import AbiCore
 
 agent = AbiCore()
 
-@agent.task(name="fetch_data")
+@agent.step(name="fetch_data")
 def fetch_data(query):
     return {"rows": db.execute(query)}
 
-@agent.task(
+@agent.step(
     name="clean_data",
     depends_on=["fetch_data"],
     input_map={"raw": "$fetch_data.rows"},
@@ -525,7 +525,7 @@ print(f"Processing: {query}")
 
 ```python
 # ✅ Good — declarative, wired to DAG
-@agent.task(name="clean", depends_on=["fetch"])
+@agent.step(name="clean", depends_on=["fetch"])
 def clean(data): ...
 
 @agent.mcp_tool(name="bigquery_search")
