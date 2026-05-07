@@ -25,7 +25,7 @@ The original MVP (mid-2025) demonstrated the core concepts of distributed agent-
 | Tool discovery | Hardcoded tool lists | Semantic search in Weaviate + MCP tool registry |
 | CLI | None | `abi-core create swarm`, `add agent`, `run` with TUI |
 | TUI | None | Textual-based interactive dashboard |
-| Agent pattern | Class-based with manual wiring | `@agent.task()` decorator-based DAG pipelines |
+| Agent pattern | Class-based with manual wiring | `@agent.step()` decorator-based DAG pipelines |
 | Artifacts | None | MinIO storage, uploaded by ephemeral agents |
 | Security | Basic OPA | Guardian gate in pipeline, HMAC for MCP, `self_deregister_ephemeral` |
 | Packaging | Manual Docker setup | `pip install abi-core-ai` + monorepo (abi-core, abi-agents, abi-cli, abi-services) |
@@ -33,7 +33,7 @@ The original MVP (mid-2025) demonstrated the core concepts of distributed agent-
 ## Key Milestones After MVP
 
 1. **Monorepo refactor** — Split into packages: abi-core, abi-agents, abi-services, abi-cli
-2. **AbiCore app runner** — `@agent.task()`, `@agent.tool()`, `@agent.mcp_tool()` decorators
+2. **AbiCore app runner** — `@agent.step()`, `@agent.tool()`, `@agent.mcp_tool()` decorators
 3. **Builder agent** — Programmatic Docker container creation for ephemeral agents
 4. **Zombie agent** — Self-configuring ephemeral execution agent with self-deregister
 5. **Full E2E pipeline** — Query → Orchestrator → Planner → Builder → Zombie → Artifacts → Cleanup

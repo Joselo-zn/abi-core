@@ -20,13 +20,14 @@ class AgentResponse:
     """Factory for streaming response dicts from @agent.task functions."""
 
     @staticmethod
-    def status(message: str) -> dict:
+    def status(message: str, *args, **kwargs) -> dict:
         """Emit a status update — visible to the client but not a final result."""
         return {
             "response_type": "status",
             "content": message,
             "is_task_completed": False,
             "require_user_input": False,
+            "meta": kwargs,
         }
 
     @staticmethod

@@ -52,6 +52,7 @@ from abi_core.common.utils import abi_logging
 # ── Node type enum ──────────────────────────────────────────────
 
 class _NodeType:
+    TASK = "task"
     STEP = "step"
     TOOL = "tool"
     MCP_TOOL = "mcp_tool"
@@ -280,6 +281,49 @@ class AbiCore:
             return await node.fn(**kwargs)
         else:
             return node.fn(**kwargs)
+
+    async def execute_task(self, task_name: str, **kwargs):
+        """Execute a registered task by name and yield its responses.
+
+        Intended for use inside ``@agent.task`` functions to invoke
+        other tasks programmatically (task composition).
+
+        Args:
+            task_name: Name of the task registered via ``@agent.task``.
+            **kwargs: Input parameters passed directly to the task function.
+
+        Yields:
+            Responses from the task (typically AgentResponse objects).
+
+        Raises:
+            KeyError: If ``task_name`` is not registered.
+            TypeError: If the task function is not callable.
+        """
+        if not hasattr(self, '_registered_tasks') or not self._registered_tasks:
+            raise KeyError(f"No tasks registered. Cannot execute task '{task_name}'")
+
+        task_entry = self._registered_tasks.get(task_name)
+        if task_entry is None:
+            raise KeyError(
+                f"Task '{task_name}' not found. "
+                f"Registered tasks: {list(self._registered_tasks.keys())}"
+            )
+
+        import inspect
+        task_fn = task_entry.fn
+        if task_fn is None:
+            raise TypeError(f"Task '{task_name}' has no callable function")
+
+        # Tasks are async generators that yield AgentResponse
+        if inspect.isasyncgenfunction(task_fn):
+            async for response in task_fn(**kwargs):
+                yield response
+        elif inspect.iscoroutinefunction(task_fn):
+            # Non-generator async function — wrap result
+            result = await task_fn(**kwargs)
+            yield result
+        else:
+            raise TypeError(f"Task '{task_name}' must be an async function")
 
     def tool(
         self,

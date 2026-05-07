@@ -19,7 +19,7 @@
 | Security | OPA immutable core policies, A2A validation, semantic access validation with Weaviate fallback |
 | CLI | `abi-core create swarm`, `create project`, `add agent`, `add service`, `run`, `status` |
 | Monorepo | abi-core, abi-agents, abi-services, abi-cli packages with shared pyproject.toml |
-| AbiCore App | `@agent.task()`, `@agent.tool()`, `@agent.mcp_tool()` decorator-based DAG registration |
+| AbiCore App | `@agent.step()`, `@agent.tool()`, `@agent.mcp_tool()` decorator-based DAG registration |
 | Docker Image | Base image with Ollama, agent cards, entrypoint scripts |
 | TUI Console | Textual-based interactive dashboard (widgets in abi-core, scaffolded per project) |
 

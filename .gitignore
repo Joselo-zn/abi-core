@@ -379,3 +379,7 @@ credentials/
 local_settings.py
 local.env
 .env.local.*
+
+# Test project
+task/
+tasks/
