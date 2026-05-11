@@ -215,6 +215,14 @@ my-swarm/
 
 ---
 
+## Examples
+
+Progressive examples from a simple chatbot to a full multi-agent swarm:
+
+👉 **[abi-core-examples](https://github.com/Joselo-zn/abi-core-examples)** — Includes a step-by-step tutorial for building a multi-agent discussion system.
+
+---
+
 ## Documentation
 
 Full docs: [https://abi-core.readthedocs.io](https://abi-core.readthedocs.io)

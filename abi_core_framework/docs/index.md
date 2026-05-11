@@ -1,9 +1,12 @@
 # ABI-Core Documentation
 
-Welcome to **ABI-Core** documentation — a comprehensive framework for building AI agent systems with semantic layers, orchestration, and security policies.
+⭐ **Into AI agents?** [Star ABI-Core on GitHub](https://github.com/Joselo-zn/abi-core) — it helps others discover the project.
+
+Welcome to **ABI-Core** documentation — a framework for building AI agent systems with deterministic DAG execution, semantic discovery, and governed autonomy.
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 1. Fundamentals
 
 getting-started/01-installation
@@ -14,6 +17,7 @@ getting-started/04-first-project
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 2. Single Agents
 
 single-agent/01-first-agent
@@ -25,6 +29,7 @@ single-agent/05-testing-agents
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 3. Multi-Agent Basics
 
 multi-agent-basics/01-why-multiple-agents
@@ -35,6 +40,7 @@ multi-agent-basics/04-first-multi-agent-system
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 4. Semantic Layer
 
 semantic-layer/01-what-is-semantic-layer
@@ -46,6 +52,7 @@ semantic-layer/05-mcp-toolkit
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 5. Advanced Orchestration
 
 orchestration/01-planner-orchestrator
@@ -56,6 +63,7 @@ orchestration/04-result-synthesis
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 6. RAG & Knowledge
 
 rag/01-what-is-rag
@@ -66,6 +74,7 @@ rag/04-agents-with-rag
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 7. Security & Policies
 
 security/01-guardian-service
@@ -78,6 +87,7 @@ security/06-a2a-validation
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 8. Production
 
 production/01-model-serving
@@ -88,6 +98,7 @@ production/04-deployment
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 :caption: 9. Reference
 
 reference/cli-reference
@@ -98,6 +109,7 @@ reference/architecture
 
 ```{toctree}
 :maxdepth: 1
+:hidden:
 :caption: Additional Resources
 
 changelog
@@ -105,77 +117,99 @@ faq
 roadmap
 ```
 
-## What is ABI-Core?
+## Hello, I'm ABI
 
-**ABI-Core** (Agent-Based Infrastructure Core) is a production-ready framework that combines:
+I'm a framework that helps you build AI agents that actually work together. You define the logic, I handle the infrastructure — containers, communication, discovery, security. One `pip install`, a few decorators, and your agents are running.
 
-> 🎉 **v1.5.2 Released!** — Now featuring modular architecture, enhanced Open WebUI compatibility, and improved web interfaces for seamless agent development.
+ABI-Core is a Python framework for creating autonomous agent systems where each agent runs as a containerized service with its own execution graph, identity, and communication protocol. Agents discover each other semantically, talk via A2A protocol, and operate under policy-driven governance.
 
-- 🤖 **AI Agents** — LangChain-powered agents with A2A (Agent-to-Agent) communication
-- 🧠 **Semantic Layer** — Vector embeddings and distributed knowledge management
-- 🔒 **Security** — OPA-based policy enforcement and access control
-- 🌐 **Web Interfaces** — FastAPI-based REST APIs and real-time dashboards
-- 📦 **Containerization** — Docker-ready deployments with orchestration
+## What makes ABI different
+
+- **Deterministic execution** — `@agent.step` compiles into a DAG. The LLM reasons, the graph decides execution order. No hallucinated tool calls.
+- **Multi-provider LLM** — Switch between Ollama, OpenAI, Gemini, Grok, Bedrock, or Anthropic by changing one config dict. Same code, any model.
+- **Semantic discovery** — Agents and tools register in a vector store. Need a capability? Search by description, not by hardcoded URL.
+- **A2A protocol** — Agents communicate via a standardized JSON-RPC protocol. Language-agnostic, auditable, secure.
+- **Governed autonomy** — Every request passes through a Guardian gate with OPA policies before execution. Security is not optional.
+- **Ephemeral agents** — The Builder creates specialized agents on-demand as Docker containers. They execute, deliver artifacts, and self-destruct.
+- **One CLI** — `abi-core create swarm` scaffolds a complete multi-agent system with semantic layer, security, and orchestration ready to run.
 
 ## Quick Start
 
 ```bash
-# Install ABI-Core
 pip install abi-core-ai
 
-# Create your first project
-abi-core create project my-ai-system --with-semantic-layer
-
-# Navigate to project
-cd my-ai-system
-
-# Provision models
-abi-core provision-models
-
-# Create an agent
-abi-core add agent my-agent --description "My first AI agent"
-
-# Start the system
+abi-core create project my-system --with-semantic-layer
+cd my-system
+abi-core add agent my-agent --description "My first agent" --with-web-interface
 abi-core run
 ```
 
 ## Learning Paths
 
-### 🎯 For Beginners
+### Build your first agent
+
+Go from zero to a running agent with LLM calls and streaming responses:
+
 1. [Installation](getting-started/01-installation.md)
 2. [What is ABI-Core?](getting-started/02-what-is-abi.md)
-3. [Your First Project](getting-started/04-first-project.md)
-4. [Your First Agent](single-agent/01-first-agent.md)
+3. [Basic Concepts — Steps, Tasks, Tools](getting-started/03-basic-concepts.md)
+4. [Your First Project](getting-started/04-first-project.md)
+5. [Your First Agent](single-agent/01-first-agent.md)
+6. [Adding Tools](single-agent/03-agents-with-tools.md)
 
-### 🚀 For Developers
-1. [Agents with Tools](single-agent/03-agents-with-tools.md)
-2. [Agent Communication](multi-agent-basics/03-agent-communication.md)
-3. [Semantic Layer](semantic-layer/01-what-is-semantic-layer.md)
-4. [Multi-Agent Workflows](orchestration/02-multi-agent-workflows.md)
+### Connect multiple agents
 
-### 🏢 For Production
-1. [Model Serving](production/01-model-serving.md)
-2. [Security with Guardian](security/01-guardian-service.md)
-3. [Monitoring & Logs](production/02-monitoring-logs.md)
-4. [Deployment](production/04-deployment.md)
+Make agents discover each other and collaborate on tasks:
+
+1. [Why Multiple Agents?](multi-agent-basics/01-why-multiple-agents.md)
+2. [Agent Cards — Identity & Discovery](multi-agent-basics/02-agent-cards.md)
+3. [A2A Communication](multi-agent-basics/03-agent-communication.md)
+4. [Semantic Layer — Search by Capability](semantic-layer/01-what-is-semantic-layer.md)
+5. [MCP Toolkit — Remote Tool Calls](semantic-layer/05-mcp-toolkit.md)
+6. [Your First Multi-Agent System](multi-agent-basics/04-first-multi-agent-system.md)
+
+### Orchestrate complex workflows
+
+Decompose tasks, assign agents, and synthesize results:
+
+1. [Planner & Orchestrator](orchestration/01-planner-orchestrator.md)
+2. [Multi-Agent Workflows](orchestration/02-multi-agent-workflows.md)
+3. [Dependency Management](orchestration/03-dependency-management.md)
+4. [Result Synthesis](orchestration/04-result-synthesis.md)
+
+### Secure and deploy
+
+Governance, monitoring, and production deployment:
+
+1. [Guardian Service](security/01-guardian-service.md)
+2. [OPA Policies](security/02-opa-policies.md)
+3. [A2A Validation](security/06-a2a-validation.md)
+4. [Model Serving Strategies](production/01-model-serving.md)
+5. [Monitoring & Logs](production/02-monitoring-logs.md)
+6. [Deployment](production/04-deployment.md)
+
+## Examples
+
+Progressive examples from a simple chatbot to a full multi-agent swarm, including a step-by-step tutorial:
+
+👉 [abi-core-examples](https://github.com/Joselo-zn/abi-core-examples)
 
 ## Community & Support
 
 - **GitHub**: [github.com/Joselo-zn/abi-core](https://github.com/Joselo-zn/abi-core)
+- **PyPI**: [pypi.org/project/abi-core-ai](https://pypi.org/project/abi-core-ai/)
 - **Issues**: [Report bugs or request features](https://github.com/Joselo-zn/abi-core/issues)
-- **Discussions**: [Join the conversation](https://github.com/Joselo-zn/abi-core/discussions)
-- **Email**: jl.mrtz@gmail.com
 
 ## License
 
-ABI-Core is released under the Apache 2.0 License. See [LICENSE](https://github.com/Joselo-zn/abi-core/blob/main/LICENSE) for details.
+ABI-Core is released under the Apache 2.0 License.
 
 ---
 
-**Built with ❤️ by [José Luis Martínez](https://github.com/Joselo-zn)**  
+**Built with ❤️ by [José Luis Martínez](https://github.com/Joselo-zn)**
 Creator of **ABI (Agent-Based Infrastructure)** — redefining how intelligent systems interconnect.
 
-✨ From Curiosity to Creation: A Personal Note
+✨ **From Curiosity to Creation: A Personal Note**
 
 I first saw a computer in 1995. My dad had received a Windows 3.11 machine as payment for a job. I was fascinated.
 At the time, I wanted to study robotics — but when I touched that machine, everything changed.
