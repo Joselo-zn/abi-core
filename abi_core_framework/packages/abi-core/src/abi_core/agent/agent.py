@@ -151,6 +151,27 @@ class AbiAgent:
             text, status='needs_clarification', questions=questions,
         )
 
+    def _resolve_task(self, task_id: str):
+        """Resolve which registered task to execute for this request.
+
+        Priority:
+        1. Match by task_id if it corresponds to a registered task
+        2. Convention: task named "route_to_task" or "main"
+        3. Fallback to first registered task
+        """
+        # 1. Explicit task_id match
+        for t in self._registered_tasks.values():
+            if t.task_id == task_id:
+                return t
+
+        # 2. Convention-based entry points
+        for name in ("route_to_task", "main"):
+            if name in self._registered_tasks:
+                return self._registered_tasks[name]
+
+        # 3. Fallback
+        return next(iter(self._registered_tasks.values()))
+
     async def _run_with_heartbeat(self, coro, context_id, task_id, status_msg="Still working..."):
         """Run a coroutine with periodic heartbeat yields.
 
@@ -216,35 +237,28 @@ class AbiAgent:
 
         # ── Path 0: registered tasks → execute task function ────
         if hasattr(self, '_registered_tasks') and self._registered_tasks:
-            # Use the first registered task as the default entry point
-            # Future: match by task_id from input or route by query
-            task_entry = next(iter(self._registered_tasks.values()))
+            task_entry = self._resolve_task(task_id)
             abi_logging(f"[🎯] Executing task '{task_entry.name}' ({task_entry.task_id})")
+            if task_entry.tools:
+                abi_logging(f"[🔧] Task tool scope: {task_entry.tools}")
             try:
                 import inspect
-                import json as _json
-
-                # Parse query for structured input
-                try:
-                    input_data = _json.loads(query) if isinstance(query, str) else query
-                    if not isinstance(input_data, dict):
-                        input_data = {"query": query}
-                except (_json.JSONDecodeError, TypeError):
-                    input_data = {"query": query}
 
                 task_fn = task_entry.fn
                 if inspect.isasyncgenfunction(task_fn):
-                    async for chunk in task_fn(**input_data):
+                    async for chunk in task_fn(query=query):
                         yield chunk
                 elif inspect.iscoroutinefunction(task_fn):
-                    result = await task_fn(**input_data)
+                    result = await task_fn(query=query)
                     if isinstance(result, dict):
                         yield AgentResponse.result(result)
                     else:
                         yield AgentResponse.text(str(result))
                 return
             except Exception as e:
-                abi_logging(f"[❌] Task '{task_entry.name}' failed: {e}", level="error")
+                import traceback
+                tb = traceback.format_exc()
+                abi_logging(f"[❌] Task '{task_entry.name}' failed: {e}\n{tb}", level="error")
                 yield AgentResponse.error(str(e))
                 return
 

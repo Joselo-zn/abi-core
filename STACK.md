@@ -65,7 +65,7 @@ What ABI-Core actually uses today.
 | Technology | Role |
 |-----------|------|
 | NetworkX | Workflow graph construction (AgentInteractionFlow) |
-| ToolExecutionGraph | DAG execution engine for `@agent.task()` pipelines |
+| ToolExecutionGraph | DAG execution engine for `@agent.step()` pipelines |
 
 ## Project Structure
 

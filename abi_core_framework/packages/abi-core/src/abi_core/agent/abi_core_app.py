@@ -52,6 +52,7 @@ from abi_core.common.utils import abi_logging
 # ── Node type enum ──────────────────────────────────────────────
 
 class _NodeType:
+    TASK = "task"
     STEP = "step"
     TOOL = "tool"
     MCP_TOOL = "mcp_tool"
@@ -178,7 +179,7 @@ class AbiCore:
                     output_key=output_key or name,
                     max_retries=max_retries,
                     retry_delay=retry_delay,
-                    node_type=_NodeType.TASK,
+                    node_type=_NodeType.STEP,
                 )
             )
             return fn
@@ -280,6 +281,72 @@ class AbiCore:
             return await node.fn(**kwargs)
         else:
             return node.fn(**kwargs)
+
+    def get_task_metadata(self) -> list:
+        """Return metadata for all registered tasks.
+
+        Useful for the Builder to know which tools each task needs,
+        and for the Semantic Layer to register tasks as discoverable units.
+
+        Returns:
+            List of dicts with name, task_id, tools, depends_on for each task.
+        """
+        return [
+            {
+                "name": t.name,
+                "task_id": t.task_id,
+                "tools": t.tools,
+                "parallel": t.parallel,
+                "depends_on": t.depends_on,
+            }
+            for t in self._registered_tasks
+        ]
+
+    async def execute_task(self, task_name: str, **kwargs):
+        """Execute a registered task by name and yield its responses.
+
+        Intended for use inside ``@agent.task`` functions to invoke
+        other tasks programmatically (task composition).
+
+        Args:
+            task_name: Name of the task registered via ``@agent.task``.
+            **kwargs: Input parameters passed directly to the task function.
+
+        Yields:
+            Responses from the task (typically AgentResponse objects).
+
+        Raises:
+            KeyError: If ``task_name`` is not registered.
+            TypeError: If the task function is not callable.
+        """
+        if not hasattr(self, '_registered_tasks') or not self._registered_tasks:
+            raise KeyError(f"No tasks registered. Cannot execute task '{task_name}'")
+
+        task_entry = next(
+            (t for t in self._registered_tasks if t.name == task_name),
+            None,
+        )
+        if task_entry is None:
+            raise KeyError(
+                f"Task '{task_name}' not found. "
+                f"Registered tasks: {[t.name for t in self._registered_tasks]}"
+            )
+
+        import inspect
+        task_fn = task_entry.fn
+        if task_fn is None:
+            raise TypeError(f"Task '{task_name}' has no callable function")
+
+        # Tasks are async generators that yield AgentResponse
+        if inspect.isasyncgenfunction(task_fn):
+            async for response in task_fn(**kwargs):
+                yield response
+        elif inspect.iscoroutinefunction(task_fn):
+            # Non-generator async function — wrap result
+            result = await task_fn(**kwargs)
+            yield result
+        else:
+            raise TypeError(f"Task '{task_name}' must be an async function")
 
     def tool(
         self,
@@ -482,11 +549,10 @@ class AbiCore:
     def run(self, agent_instance) -> int:
         """Start the agent with A2A server and optional web interface.
 
-        If steps/tools were registered via decorators, a
-        ``ToolExecutionGraph`` is built and injected into the agent
-        as ``agent_instance.tool_graph``.  Tools decorated with
-        ``@agent.tool()`` are also added to the agent's LangChain
-        tools list.
+        Auto-discovers and imports ``tools``, ``steps``, and ``tasks``
+        modules from the agent's directory if they exist. This registers
+        any decorators defined in those files without requiring explicit
+        imports in main.py.
 
         Args:
             agent_instance: An already-instantiated AbiAgent subclass.
@@ -494,6 +560,19 @@ class AbiCore:
         Returns:
             Exit code (0 = clean shutdown, 1 = error).
         """
+        # Auto-discover sibling modules (tools.py, steps.py, tasks.py)
+        import importlib
+        for module_name in ("tools", "steps", "tasks"):
+            try:
+                importlib.import_module(module_name)
+            except ImportError:
+                pass
+            except Exception as e:
+                abi_logging(
+                    f"[⚠️] Failed to auto-import '{module_name}': {e}",
+                    level="warning",
+                )
+
         from abi_core.agent.agent_factory import agent_factory
 
         # Build DAG and inject into agent

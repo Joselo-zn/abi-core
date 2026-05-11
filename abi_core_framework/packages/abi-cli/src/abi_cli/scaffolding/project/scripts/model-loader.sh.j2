@@ -36,13 +36,13 @@ echo "========================================"
 
 # Check if service is running
 is_service_running() {
-  local service="$1"
+  local service="ollama"
   $DOCKER_COMPOSE ps --services --filter "status=running" 2>/dev/null | grep -q "^${service}$"
 }
 
 # Start a Docker Compose service
 start_service() {
-  local service="$1"
+  local service="ollama"
   
   # Check if already running
   if is_service_running "$service"; then

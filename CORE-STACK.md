@@ -12,7 +12,7 @@ packages/
     agent/                — Agent framework
       agent.py            — AbiAgent base class (stream, heartbeat, tool_graph)
       agent_factory.py    — Bootstrap: A2A server + web interface + uvicorn
-      abi_core_app.py     — AbiCore app runner with @agent.task/@agent.tool decorators
+      abi_core_app.py     — AbiCore app runner with @agent.step/@agent.tool decorators
       llm_provider.py     — Vendor-agnostic LLM invoke (Ollama, OpenAI, etc.)
     common/               — Shared utilities
       agent_executor.py   — Request handling, deferred cleanup for ephemeral agents
@@ -21,7 +21,7 @@ packages/
       library_tools.py    — Built-in tools: write_file, read_file, list_files, execute_command
       semantic_tools.py   — MCP tool wrappers: find_agent, register_agent, search_tool_registry
       artifact_store.py   — MinIO/S3 upload and download for artifacts
-      tool_graph.py       — ToolExecutionGraph: DAG engine for @agent.task pipelines
+      tool_graph.py       — ToolExecutionGraph: DAG engine for @agent.step pipelines
       workflow.py          — AgentInteractionFlow: multi-agent workflow with A2A
       prompts.py          — System prompts for all agents
       utils.py            — abi_logging, clean_llm_json, truncate
