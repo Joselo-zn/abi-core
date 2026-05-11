@@ -156,8 +156,8 @@ When you `create swarm`, you get these out of the box:
 |-------|-------------|
 | **Orchestrator** | Receives requests, checks security, routes to Planner |
 | **Planner** | Breaks complex requests into smaller tasks |
-| **Builder** | Creates temporary agents on-demand for specific tasks |
-| **Zombie** | Temporary agent — does the work, delivers results, cleans up |
+| **Builder** | Creates temporary agents on-demand for specific tasks *(beta)* |
+| **Zombie** | Temporary agent — does the work, delivers results, cleans up *(beta)* |
 
 The flow: User → Orchestrator → Planner → Builder → Zombie → Result → Done.
 
