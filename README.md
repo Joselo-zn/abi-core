@@ -14,7 +14,7 @@ Most agent frameworks solve how to wire an LLM to tools. ABI solves a different 
 | | ABI-Core | LangGraph / CrewAI / AutoGen |
 |---|---|---|
 | Architecture | Distributed swarm with semantic discovery | Centralized graph or crew definition |
-| Agent lifecycle | Ephemeral containers — spawn, execute, self-destruct | Long-running processes |
+| Agent lifecycle | Ephemeral containers — spawn, execute, self-destruct *(beta)* | Long-running processes |
 | Tool discovery | Semantic layer (Weaviate) — agents find each other by meaning | Hardcoded tool lists or registries |
 | Security | OPA policies + Guardian agent + HMAC per request | Varies, usually app-level |
 | Model serving | Local-first (Ollama), vendor-agnostic | Typically API-dependent (OpenAI, etc.) |
@@ -28,7 +28,7 @@ Most agent frameworks solve how to wire an LLM to tools. ABI solves a different 
 ### 1. Semantic-First
 Agents discover each other by meaning, not configuration. The Semantic Router queries Weaviate for the most relevant agent via embeddings — no hardcoded routes, no manual registries.
 
-### 2. Ephemeral by Design
+### 2. Ephemeral by Design *(beta)*
 Execution agents are born, work, and die. The Builder creates Docker containers with injected tools, the Zombie executes, uploads artifacts to MinIO, deregisters from Weaviate, and the container self-destructs. No residual state.
 
 ### 3. Human Veto Always
@@ -63,9 +63,9 @@ User query
 |-------|------|--------|
 | Orchestrator | Parallel triage + Guardian gate, calls Planner, builds execution workflow | ✅ Operational |
 | Planner | Task decomposition with steps, dependency resolution, model recommendation | ✅ Operational |
-| Builder | Creates ephemeral containers via Docker SDK, injects tools and agent cards | ✅ Operational |
+| Builder | Creates ephemeral containers via Docker SDK, injects tools and agent cards | ✅ Operational *(beta)* |
 | Guardian | OPA policy validation, risk scoring, prompt injection detection, emergency shutdown | ✅ Operational |
-| Zombie (ephemeral) | Executes tasks with library tools, uploads artifacts, self-deregisters on completion | ✅ Operational |
+| Zombie (ephemeral) | Executes tasks with library tools, uploads artifacts, self-deregisters on completion | ✅ Operational *(beta)* |
 
 ### Infrastructure
 
@@ -148,7 +148,7 @@ abi-image/        — Docker base image for agents and ephemeral containers
 pip install abi-core-ai
 ```
 
-### Create a Swarm
+### Create a Swarm *(beta)*
 ```bash
 abi-core create swarm --name "my-swarm"
 cd my-swarm
@@ -277,7 +277,7 @@ LLM-based query decomposition into structured plans. Each task includes descript
 
 DAG: `analyze_query` → `parse_plan` → `assign_agents`
 
-### Builder
+### Builder *(beta)*
 Receives a builder spec, resolves required tools from the semantic layer, generates ephemeral agent config (Dockerfile, agent card, tool list), spawns a Docker container with injected environment, and registers the ephemeral agent card in Weaviate. Returns the agent card so the Orchestrator can route tasks to it.
 
 DAG: `parse_spec` → `verify_tools` → `generate_config` → `build_container` → `register_card`
@@ -285,7 +285,7 @@ DAG: `parse_spec` → `verify_tools` → `generate_config` → `build_container`
 ### Guardian
 OPA policy validation for every request. Detects prompt injection, reverse engineering attempts, and policy violations. Returns risk scores with contextual modifiers. Immutable core policies auto-generated at startup — agents cannot modify them. Emergency shutdown always available.
 
-### Zombie (Ephemeral)
+### Zombie (Ephemeral) *(beta)*
 Short-lived execution agent spawned by the Builder. Gathers context, executes tasks using injected library tools (`write_file`, `read_file`, `list_files`, `execute_command`), uploads artifacts to MinIO, then self-deregisters from Weaviate via `self_deregister_ephemeral` MCP tool and exits the container.
 
 DAG: `gather_context` → `analyze_and_execute` → `synthesize_and_report`
