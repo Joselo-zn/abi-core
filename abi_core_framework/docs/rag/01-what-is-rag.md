@@ -1,10 +1,10 @@
 # What is RAG?
 
-RAG (Retrieval-Augmented Generation) = search your data first, then let the LLM answer using what you found.
+RAG (Retrieval-Augmented Generation) = search your data first, then let the AI answer using what you found.
 
 ## The problem
 
-LLMs know general things but nothing about your company, your products, or your internal docs.
+AI models know general things but nothing about your company, your products, or your internal docs.
 
 ```
 User: "What's the return policy?"

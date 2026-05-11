@@ -1,6 +1,6 @@
 # Agent Communication (A2A)
 
-Agents talk to each other using the A2A protocol — JSON-RPC over HTTP with streaming support.
+Agents talk to each other using a standard messaging protocol called A2A. One function call, streaming responses.
 
 ## The function
 
@@ -8,7 +8,7 @@ Agents talk to each other using the A2A protocol — JSON-RPC over HTTP with str
 from abi_core.common.abi_a2a import agent_connection
 ```
 
-`agent_connection()` takes a source card, a target card, and a payload. It validates access (HMAC + OPA), then streams the response back.
+`agent_connection()` takes your agent's card, the target agent's card, and a message. It checks security, sends the message, and streams the response back.
 
 ## Calling another agent
 
@@ -59,7 +59,7 @@ Agent A                          Agent B
 
 ## Discover then call
 
-The typical pattern: find an agent via Semantic Layer, then call it via A2A.
+The typical pattern: find an agent, then talk to it.
 
 ```python
 from abi_core.common.semantic_tools import tool_find_agent
@@ -75,17 +75,17 @@ if target:
 
 ## Security
 
-Every A2A call is validated before execution:
+Every agent-to-agent call is checked before it goes through:
 
-1. **HMAC signature** — The source agent signs the request with its `shared_secret`
-2. **OPA policy check** — Guardian evaluates if this agent-to-agent call is allowed
-3. **Audit log** — The call is logged for compliance
+1. **Signature check** — The message is signed to prove who sent it
+2. **Rules check** — Guardian checks if this communication is allowed
+3. **Logged** — Every call is recorded for auditing
 
-If validation fails, `agent_connection()` raises `PermissionError`.
+If the check fails, `agent_connection()` raises an error and the call doesn't happen.
 
 ## What the target agent sees
 
-The target agent receives the message through its normal `stream()` method — it doesn't know or care that the caller is another agent vs a user. The payload arrives as a query string (JSON), gets routed to a task, and executes steps.
+The target agent receives the message through its normal `stream()` method — it doesn't know or care if the caller is another agent or a human user. The message arrives, gets routed to a task, and runs normally.
 
 ## Next step
 

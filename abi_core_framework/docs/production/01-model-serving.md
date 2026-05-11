@@ -1,6 +1,6 @@
 # Model Serving
 
-Two strategies for running LLMs. Choose when you create the project.
+Two strategies for running AI models. Choose when you create the project.
 
 ## Centralized (recommended)
 

@@ -1,14 +1,14 @@
 # A2A Validation
 
-Controls which agents can talk to which. Uses OPA policies via Guardian.
+Controls which agents can talk to which. Uses security rules to decide.
 
 ## How it works
 
 ```
 Agent A calls Agent B
-  → A2AAccessValidator checks OPA policy
-    → Allowed? → Proceed with communication
-    → Denied? → Raise PermissionError, log audit event
+  → System checks the rules: "Is A allowed to talk to B?"
+    → Yes? → Message goes through
+    → No? → Blocked, error returned, event logged
 ```
 
 ## It's automatic

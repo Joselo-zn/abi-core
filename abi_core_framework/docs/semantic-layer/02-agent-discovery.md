@@ -4,7 +4,7 @@ How agents find each other through the Semantic Layer.
 
 ## The tools
 
-ABI-Core provides LangChain tools for discovery. Import them from `abi_core.common.semantic_tools`:
+ABI-Core provides ready-made functions for finding agents. Import them from `abi_core.common.semantic_tools`:
 
 | Tool | What it does |
 |------|-------------|

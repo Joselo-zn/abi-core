@@ -66,21 +66,21 @@ It prompts you for tasks/skills and generates the full card with auth credential
 
 ## How discovery works
 
-Agent cards are stored in the Semantic Layer (Weaviate). When an agent needs to find another:
+Agent cards are stored in the Semantic Layer. When an agent needs to find another, it searches by description:
 
 ```python
 from abi_core.common.semantic_tools import tool_find_agent, tool_list_agents
 
-# Find one agent by capability
+# Find one agent by what it does
 agent_card = await tool_find_agent.ainvoke("analyze sales data")
-# Returns an AgentCard object with url, name, capabilities
+# Returns the agent's card with its address and capabilities
 
 # Find multiple agents
 agents = await tool_list_agents.ainvoke("discuss topics and share opinions")
-# Returns a list of AgentCard objects
+# Returns a list of matching agents
 ```
 
-The search is semantic — it matches by meaning, not exact words. "analyze revenue" would find an agent described as "analyzes sales data".
+The search matches by meaning, not exact words. "analyze revenue" finds an agent described as "analyzes sales data".
 
 ## Where cards live
 
@@ -93,7 +93,7 @@ services/semantic_layer/
   └── agent_cards/               ← All cards copied here for indexing
 ```
 
-At startup, the Semantic Layer reads all cards from its `agent_cards/` directory, generates embeddings, and stores them in Weaviate for semantic search.
+At startup, the Semantic Layer reads all cards, converts their descriptions into searchable vectors, and stores them so other agents can find them.
 
 ## Next step
 

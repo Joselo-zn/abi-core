@@ -1,6 +1,6 @@
 # Artifact Store (MinIO)
 
-MinIO is the object storage for your agent system. Agents upload files here — reports, logs, generated documents, images — and the Orchestrator generates download links for users.
+MinIO is where agents save files — reports, logs, generated documents, images. When an agent creates something, it uploads it here, and the system generates a download link for the user.
 
 ## What it stores
 

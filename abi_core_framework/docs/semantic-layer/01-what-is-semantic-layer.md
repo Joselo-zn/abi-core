@@ -1,6 +1,6 @@
 # What is the Semantic Layer?
 
-A service that stores agent cards and tool cards in a vector database (Weaviate), so agents can find each other by describing what they need — not by knowing URLs.
+A service that stores information about all your agents, so they can find each other by describing what they need — not by knowing exact addresses.
 
 ## Without it
 
@@ -17,17 +17,18 @@ from abi_core.common.semantic_tools import tool_find_agent
 
 # Searches by meaning. Works even if you say it differently.
 agent = await tool_find_agent.ainvoke("examine revenue data")
-# → Returns the analyst agent's card
+# → Returns the analyst agent with its address
 ```
 
 ## What it includes
 
 | Component | What it does |
 |-----------|-------------|
-| Weaviate | Vector database — stores embeddings of agent/tool cards |
-| MCP Server | Exposes tools via Model Context Protocol (find_agent, register_agent, etc.) |
-| Embedding Mesh | Generates embeddings from card descriptions using `nomic-embed-text` |
-| Agent Cards | JSON files describing each agent's capabilities |
+| Weaviate | Database that understands meaning (finds similar descriptions) |
+| MCP Server | Provides tools like find_agent, register_agent, search_tools |
+| Embedding Mesh | Converts text descriptions into searchable numbers |
+| Agent Cards | JSON files describing what each agent can do |
+| Tool Cards | JSON files describing available tools |
 | Tool Cards | JSON files describing available tools |
 
 ## Add it to your project

@@ -20,13 +20,13 @@ Specialized agents:
   Translator → expert at languages
 ```
 
-Each agent has its own system prompt, its own tools, and can even use a different LLM model. The analyst might use a reasoning model while the writer uses a creative one.
+Each agent has its own system prompt, its own tools, and can even use a different AI model. The analyst might use a reasoning model while the writer uses a creative one.
 
 ## When to use multiple agents
 
 **Different skills needed** — An analysis task and a writing task need different prompts and tools.
 
-**Different LLMs** — One agent uses Ollama locally, another uses GPT-4o for complex reasoning.
+**Different LLMs** — One agent uses Ollama locally, another uses GPT-4o for harder tasks.
 
 **Independent scaling** — The support agent gets 100x more traffic than the report agent. Scale them independently.
 
@@ -35,7 +35,7 @@ Each agent has its own system prompt, its own tools, and can even use a differen
 ## How it works in ABI-Core
 
 ```bash
-# Create project with semantic discovery
+# Create project where agents can find each other
 abi-core create project my-system --with-semantic-layer
 
 # Add specialized agents
@@ -44,11 +44,11 @@ abi-core add agent writer --description "Writes reports and summaries"
 ```
 
 Each agent gets:
-- Its own container (Docker)
-- Its own agent card (registered in Semantic Layer)
-- Its own A2A endpoint (other agents can call it)
+- Its own container (runs independently)
+- Its own agent card (so others can find it)
+- Its own messaging endpoint (so others can talk to it)
 
-The Semantic Layer lets agents find each other by capability:
+Agents find each other by describing what they need:
 
 ```python
 # "Who can write reports?" → finds the writer agent

@@ -1,6 +1,6 @@
 # Vector Databases
 
-A vector database stores text as numerical vectors (embeddings) and lets you search by meaning instead of keywords.
+A vector database stores text in a way that lets you search by meaning instead of exact keywords. "analyze revenue" finds "sales analysis" because they mean similar things.
 
 ## Weaviate in ABI-Core
 

@@ -1,22 +1,22 @@
 # Planner & Orchestrator
 
-The Orchestrator is the entry point for complex requests. The Planner decomposes them into executable plans. Together they coordinate multi-agent workflows.
+The Orchestrator is the entry point for complex requests. The Planner breaks them into smaller tasks and assigns agents. Together they coordinate multi-agent work.
 
 ## How they work together
 
 ```
 User request
   → Orchestrator
-    ├─ Level 0 (parallel): classify_query + guardian_validate
-    ├─ Level 1: gate_decision (respond_direct | call_planner | blocked)
-    ├─ Level 2: call_planner → extract_plan → build_workflow
-    └─ Level 3: execute workflow → synthesize results
+    ├─ Step 1: Is this simple or complex? + Is it allowed?
+    ├─ Step 2: Decision (answer directly | send to Planner | block)
+    ├─ Step 3: Planner breaks it into tasks → assigns agents
+    └─ Step 4: Execute tasks → combine results
   → Response to user
 ```
 
 ## The Orchestrator
 
-Receives every request. Its DAG pipeline:
+Receives every request. Its pipeline:
 
 1. **classify_query** — Is this simple (answer directly) or complex (needs planning)?
 2. **guardian_validate** — Is this request allowed by security policies? (runs in parallel with classify)

@@ -1,10 +1,10 @@
 # Multi-Agent Workflows
 
-`AgentInteractionFlow` is the engine that executes plans across multiple agents.
+`AgentInteractionFlow` is the engine that runs plans across multiple agents.
 
 ## What it does
 
-Takes a plan (list of tasks with assigned agents) and executes them respecting dependencies. Each task becomes a node that calls an agent via A2A.
+Takes a plan (list of tasks with assigned agents) and runs them in the right order. Each task calls an agent and collects its response.
 
 ## Creating a workflow
 

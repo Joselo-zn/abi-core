@@ -1,8 +1,8 @@
 # Dependency Management
 
-How ABI-Core handles execution order — both within a single agent (DAG) and across multiple agents (workflow).
+How ABI-Core handles execution order — both within a single agent and across multiple agents.
 
-## Intra-agent: ToolExecutionGraph
+## Inside one agent
 
 Steps registered with `@agent.step(depends_on=[...])` compile into a `ToolExecutionGraph`. Nodes at the same level run in parallel. The graph enforces order.
 
@@ -36,7 +36,7 @@ Use `$node_name.key` to wire outputs between steps:
 | `$classify_query.classification` | The `classification` key from classify_query's return dict |
 | `$guardian_validate` | The entire return dict from guardian_validate |
 
-## Inter-agent: Plan dependencies
+## Across multiple agents
 
 The Planner produces tasks with `depends_on` arrays. The Orchestrator respects them:
 

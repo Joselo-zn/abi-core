@@ -1,6 +1,6 @@
 # OPA Policies
 
-OPA (Open Policy Agent) evaluates rules written in Rego. Guardian calls OPA, OPA returns allow or deny.
+OPA is the rules engine. You write rules in a language called Rego. Guardian asks OPA "is this allowed?" and OPA answers yes or no.
 
 ## Where policies live
 

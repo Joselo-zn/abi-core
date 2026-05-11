@@ -43,7 +43,7 @@ agents/assistant/
 ├── tasks.py            ← Your task functions
 ├── tools.py            ← Your tools
 ├── prompts.py          ← Prompts (never inline)
-├── config/config.py    ← LLM config, ports, env vars
+├── config/config.py    ← AI model, ports, env vars
 ├── web_interface.py    ← HTTP endpoints (SSE, REST)
 ├── main.py             ← Entry point
 └── Dockerfile
@@ -97,12 +97,12 @@ docker compose down
 1. `create project` scaffolded the infrastructure (Docker, networking, Ollama)
 2. `add agent` generated the agent code with all the right patterns
 3. `docker compose up` built containers and started everything
-4. Your agent received the HTTP request, routed it to a task, called the LLM, and streamed the response back
+4. Your agent received the HTTP request, routed it to a task, called the AI model, and streamed the response back
 
 ## Next steps
 
 Now that you have a running agent:
 
-- 👉 [Build a proper agent with steps](../single-agent/01-first-agent.md) — understand the DAG
-- 👉 [Add tools](../single-agent/03-agents-with-tools.md) — let the LLM call external APIs
+- 👉 [Build a proper agent with steps](../single-agent/01-first-agent.md) — understand the execution flow
+- 👉 [Add tools](../single-agent/03-agents-with-tools.md) — let the AI call external APIs
 - 👉 [Add memory](../single-agent/04-agents-with-memory.md) — remember conversations

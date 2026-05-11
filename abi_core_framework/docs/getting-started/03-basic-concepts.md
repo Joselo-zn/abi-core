@@ -6,7 +6,7 @@ The terms you'll see everywhere in ABI-Core, explained simply.
 
 ### Step
 
-A function that does one thing. Runs in a fixed order (DAG), not decided by the LLM.
+A function that does one thing. Runs in a fixed order you define — the AI doesn't decide when it runs.
 
 ```python
 @agent.step(name="classify")
@@ -17,7 +17,7 @@ async def classify(text):
 
 ### Task
 
-Orchestrates multiple steps. Can do branching, parallel execution, and streaming.
+Runs multiple steps in sequence. Can send progress updates to the user while working.
 
 ```python
 @agent.task(name="process", task_id="task-main")
@@ -29,7 +29,7 @@ async def process(query):
 
 ### Tool
 
-A step that the LLM can also call on its own. Useful for external APIs.
+A function the AI can decide to call on its own. Useful for things like searching the web or calling APIs.
 
 ```python
 @agent.tool(name="search_web")
@@ -40,7 +40,7 @@ async def search_web(query: str):
 
 ### Agent
 
-A Python class that wraps everything together. Has an identity, an LLM config, and runs as a service.
+A Python class that wraps everything together. Has an identity, an AI model config, and runs as a service.
 
 ```python
 class MyAgent(AbiAgent):
@@ -57,7 +57,7 @@ class MyAgent(AbiAgent):
 
 ### Agent Card
 
-A JSON file that describes what an agent can do. Other agents use it to find and talk to you.
+A JSON file that describes what an agent can do. Other agents use it to find yours and talk to it.
 
 ```json
 {
@@ -70,19 +70,19 @@ A JSON file that describes what an agent can do. Other agents use it to find and
 
 ### Semantic Layer
 
-Stores agent cards in a vector database (Weaviate). Lets you search agents by what they do, not by name.
+Stores agent cards and lets you search agents by what they do, not by name or address. "Find me someone who can write reports" → returns the writer agent.
 
 ### A2A Protocol
 
-The way agents send messages to each other. JSON-RPC over HTTP with streaming support.
+The way agents send messages to each other. A standard format so any agent can talk to any other agent.
 
 ### Guardian + OPA
 
-Security. Guardian is the gate, OPA evaluates the rules. Together they decide if a request is allowed.
+Security. Guardian is the gate that checks every request. OPA holds the rules. Together they decide if something is allowed to run.
 
-### LLM Provider
+### AI Model Provider
 
-ABI-Core supports multiple LLM backends through one config dict:
+ABI-Core supports multiple AI model providers through one config dict:
 
 | Provider | Config |
 |----------|--------|
@@ -98,14 +98,14 @@ Switch providers by changing the dict. No code changes.
 ## How they fit together
 
 ```
-You write:          ABI provides:
-─────────           ─────────────
-steps.py      →     DAG execution engine
-tasks.py      →     Streaming + routing
-tools.py      →     LLM tool integration
-config.py     →     Multi-provider LLM
-agent_card    →     Semantic discovery
-              →     A2A server (automatic)
+You write:          ABI handles:
+─────────           ────────────
+steps.py      →     Runs them in order
+tasks.py      →     Streams progress to the user
+tools.py      →     Lets the AI call them
+config.py     →     Connects to any AI model
+agent_card    →     Makes your agent discoverable
+              →     Messaging server (automatic)
               →     Docker container (automatic)
               →     Health checks (automatic)
 ```
@@ -114,16 +114,16 @@ agent_card    →     Semantic discovery
 
 | Term | One-line explanation |
 |------|---------------------|
-| Step | A function in the DAG. Deterministic. |
-| Task | Orchestrates steps. Streams responses. |
-| Tool | A step the LLM can call. |
-| Agent Card | JSON describing an agent's capabilities. |
-| Semantic Layer | Finds agents by what they do (Weaviate). |
-| A2A | Agent-to-agent communication protocol. |
-| Guardian | Security gate. Blocks unauthorized requests. |
-| OPA | Policy engine. Rules written in Rego. |
-| invoke() | Calls any LLM with one function. |
-| MCPToolkit | Calls remote tools on the Semantic Layer. |
+| Step | A function that runs in a fixed order. |
+| Task | Runs steps and streams progress. |
+| Tool | A function the AI can call. |
+| Agent Card | Describes what an agent can do (JSON file). |
+| Semantic Layer | Finds agents by what they do. |
+| A2A | How agents send messages to each other. |
+| Guardian | Checks if a request is allowed. |
+| OPA | Holds the security rules. |
+| invoke() | Calls any AI model with one function. |
+| MCPToolkit | Calls tools on the Semantic Layer. |
 
 ## Next step
 

@@ -1,6 +1,6 @@
 # Your First Agent
 
-You have a project. Now let's write an actual agent with steps, a task, and an LLM call.
+You have a project. Now let's write an actual agent with steps, a task, and an AI call.
 
 ## Create the agent
 
@@ -20,11 +20,11 @@ greet_user
 ```
 agents/greeter/
 ├── app.py              ← AbiCore instance (import this everywhere)
-├── agent_greeter.py    ← Agent class (identity + LLM config)
+├── agent_greeter.py    ← Agent class (identity + AI model config)
 ├── steps.py            ← Your step functions
 ├── tasks.py            ← Your task functions
 ├── prompts.py          ← All prompts live here
-├── config/config.py    ← LLM provider, ports, env vars
+├── config/config.py    ← AI model, ports, env vars
 ├── web_interface.py    ← HTTP endpoints
 ├── main.py             ← Entry point: agent.run()
 └── Dockerfile
@@ -32,7 +32,7 @@ agents/greeter/
 
 ## Write a step
 
-A step is a function that does one thing. Edit `agents/greeter/steps.py`:
+A step is a function that does one thing — in this case, ask the AI to generate a greeting. Edit `agents/greeter/steps.py`:
 
 ```python
 from app import agent
@@ -63,7 +63,7 @@ Respond warmly and helpfully. Keep it short.
 
 ## Write a task
 
-A task orchestrates steps and streams responses. Edit `agents/greeter/tasks.py`:
+A task runs steps and sends progress updates to the user. Edit `agents/greeter/tasks.py`:
 
 ```python
 import json
@@ -99,17 +99,17 @@ curl -X POST http://localhost:8002/stream \
 ## What happened
 
 1. The web interface received your HTTP request
-2. It wrapped your text into the JSON contract: `{"route": "user_request", "text": "Hey there!"}`
+2. It wrapped your text into a JSON message: `{"route": "user_request", "text": "Hey there!"}`
 3. The task `greet_user` ran
-4. It called `agent.execute_step("greet")` which invoked the LLM
-5. The response streamed back as SSE events
+4. It called `agent.execute_step("greet")` which asked the AI model for a response
+5. The response streamed back to you in real-time
 
 ## Key rules
 
-- Steps are pure functions. They receive data, call `invoke()`, return a dict.
-- Tasks orchestrate steps. They `yield` AgentResponse objects for streaming.
-- Prompts go in `prompts.py`. Never inline.
-- Config goes in `config/config.py`. Never hardcode URLs or model names.
+- Steps are simple functions. They receive data, call the AI, return a result.
+- Tasks run steps and send progress updates to the user.
+- Prompts go in `prompts.py`. Never write them inside your functions.
+- Config goes in `config/config.py`. Never hardcode addresses or model names.
 
 ## Next step
 

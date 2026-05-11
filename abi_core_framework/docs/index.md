@@ -2,7 +2,7 @@
 
 ⭐ **Into AI agents?** [Star ABI-Core on GitHub](https://github.com/Joselo-zn/abi-core) — it helps others discover the project.
 
-Welcome to **ABI-Core** documentation — a framework for building AI agent systems with deterministic DAG execution, semantic discovery, and governed autonomy.
+Welcome to **ABI-Core** documentation — build AI agents that work together, find each other, and follow the rules. All from Python.
 
 ```{toctree}
 :maxdepth: 2
@@ -120,19 +120,19 @@ roadmap
 
 ## Hello, I'm ABI
 
-I'm a framework that helps you build AI agents that actually work together. You define the logic, I handle the infrastructure — containers, communication, discovery, security. One `pip install`, a few decorators, and your agents are running.
+I help you build AI agents that actually work together. You write the logic, I handle everything else — running them, connecting them, keeping them secure. One `pip install`, a few decorators, and your agents are live.
 
-ABI-Core is a Python framework for creating autonomous agent systems where each agent runs as a containerized service with its own execution graph, identity, and communication protocol. Agents discover each other semantically, talk via A2A protocol, and operate under policy-driven governance.
+ABI-Core is a Python framework for creating AI agent systems. You write agents as simple Python functions. ABI packages them, runs them, connects them to each other, and makes sure they play by the rules. No glue code, no infrastructure headaches.
 
 ## What makes ABI different
 
-- **Deterministic execution** — `@agent.step` compiles into a DAG. The LLM reasons, the graph decides execution order. No hallucinated tool calls.
-- **Multi-provider LLM** — Switch between Ollama, OpenAI, Gemini, Grok, Bedrock, or Anthropic by changing one config dict. Same code, any model.
-- **Semantic discovery** — Agents and tools register in a vector store. Need a capability? Search by description, not by hardcoded URL.
-- **A2A protocol** — Agents communicate via a standardized JSON-RPC protocol. Language-agnostic, auditable, secure.
-- **Governed autonomy** — Every request passes through a Guardian gate with OPA policies before execution. Security is not optional.
-- **Ephemeral agents** — The Builder creates specialized agents on-demand as Docker containers. They execute, deliver artifacts, and self-destruct.
-- **One CLI** — `abi-core create swarm` scaffolds a complete multi-agent system with semantic layer, security, and orchestration ready to run.
+- **You control the order** — Your code decides what runs when. The AI thinks, but your graph executes. No surprises, no random tool calls.
+- **Any AI model** — Ollama running on your laptop, OpenAI, Gemini, Grok, Anthropic — switch by changing one line. Your agent code stays the same.
+- **Agents find each other** — You don't hardcode who talks to who. Agents describe what they can do, and others find them by asking "who can do X?"
+- **They talk to each other** — A standard protocol so any agent can call any other agent. Like HTTP for AI agents.
+- **Security built in** — Every action can be checked against rules before it runs. Not an afterthought — it's part of the system.
+- **Agents that appear and disappear** — Need a specialist for one task? The system creates one, it does the job, delivers the result, and cleans up after itself.
+- **One command to start** — `abi-core create swarm` gives you a complete multi-agent system ready to run. No manual wiring. *(beta)*
 
 ## Quick Start
 
@@ -145,11 +145,13 @@ abi-core add agent my-agent --description "My first agent" --with-web-interface
 abi-core run
 ```
 
+That's it. You now have an AI agent running in a Docker container with an HTTP endpoint you can talk to.
+
 ## Learning Paths
 
 ### Build your first agent
 
-Go from zero to a running agent with LLM calls and streaming responses:
+Go from zero to a running agent that talks to an AI model and responds in real-time:
 
 1. [Installation](getting-started/01-installation.md)
 2. [What is ABI-Core?](getting-started/02-what-is-abi.md)
@@ -160,18 +162,18 @@ Go from zero to a running agent with LLM calls and streaming responses:
 
 ### Connect multiple agents
 
-Make agents discover each other and collaborate on tasks:
+Make agents find each other and work together on tasks:
 
 1. [Why Multiple Agents?](multi-agent-basics/01-why-multiple-agents.md)
 2. [Agent Cards — Identity & Discovery](multi-agent-basics/02-agent-cards.md)
-3. [A2A Communication](multi-agent-basics/03-agent-communication.md)
-4. [Semantic Layer — Search by Capability](semantic-layer/01-what-is-semantic-layer.md)
-5. [MCP Toolkit — Remote Tool Calls](semantic-layer/05-mcp-toolkit.md)
+3. [How Agents Talk to Each Other](multi-agent-basics/03-agent-communication.md)
+4. [The Semantic Layer — Search by Capability](semantic-layer/01-what-is-semantic-layer.md)
+5. [MCPToolkit — Call Remote Tools](semantic-layer/05-mcp-toolkit.md)
 6. [Your First Multi-Agent System](multi-agent-basics/04-first-multi-agent-system.md)
 
 ### Orchestrate complex workflows
 
-Decompose tasks, assign agents, and synthesize results:
+Break big tasks into pieces, assign them to agents, combine the results:
 
 1. [Planner & Orchestrator](orchestration/01-planner-orchestrator.md)
 2. [Multi-Agent Workflows](orchestration/02-multi-agent-workflows.md)
@@ -180,11 +182,11 @@ Decompose tasks, assign agents, and synthesize results:
 
 ### Secure and deploy
 
-Governance, monitoring, and production deployment:
+Add security rules, monitor your system, and deploy to production:
 
 1. [Guardian Service](security/01-guardian-service.md)
-2. [OPA Policies](security/02-opa-policies.md)
-3. [A2A Validation](security/06-a2a-validation.md)
+2. [Writing Security Rules (OPA)](security/02-opa-policies.md)
+3. [Agent-to-Agent Validation](security/06-a2a-validation.md)
 4. [Model Serving Strategies](production/01-model-serving.md)
 5. [Monitoring & Logs](production/02-monitoring-logs.md)
 6. [Deployment](production/04-deployment.md)

@@ -1,12 +1,12 @@
 # Guardian Service
 
-Guardian is the security gate. Every request can be validated against policies before execution.
+Guardian is the security gate. Every request can be checked against your rules before it runs.
 
 ## What it does
 
-- Validates queries for prompt injection and policy compliance
-- Evaluates OPA policies (allow/deny/require_approval)
-- Logs all decisions for audit
+- Checks if a request is allowed before executing it
+- Evaluates security rules (allow, deny, or require approval)
+- Logs all decisions for auditing
 - Provides a monitoring dashboard
 
 ## Components
