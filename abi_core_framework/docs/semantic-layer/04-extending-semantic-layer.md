@@ -1,70 +1,80 @@
 # Extending the Semantic Layer
 
-Customize and extend the semantic layer for your needs.
+Add your own MCP tools to the Semantic Layer so any agent can call them via `MCPToolkit`.
 
-## Add Custom Metadata
+## Why extend it
 
-Edit agent cards to add additional information:
+The Semantic Layer is a shared service. If you add a tool there, every agent in your system can use it — store documents, query data, trigger workflows, anything.
 
-```json
-{
-  "id": "agent://my-agent",
-  "metadata": {
-    "domain": "finance",
-    "region": "LATAM",
-    "language": "en",
-    "custom_field": "value"
-  }
-}
-```
+## Add a custom MCP tool
 
-## Filter by Metadata
+In your semantic layer's MCP server, register a new tool:
 
 ```python
-# Search agents from a specific domain
-agents = await client.find_agents_by_metadata(
-    session,
-    {"domain": "finance"}
-)
-```
-
-## Create Custom MCP Tools
-
-You can create custom tools that work with MCPToolkit:
-
-```python
-# In your semantic layer MCP server
-from mcp.server import Server
-
-server = Server("my-semantic-layer")
+# services/semantic_layer/main.py (or wherever your MCP server is defined)
 
 @server.call_tool()
-async def my_custom_tool(
-    param1: str,
-    param2: int,
-    _request_context: dict = None
-) -> dict:
-    """Custom tool accessible via MCPToolkit"""
-    return {
-        "status": "success",
-        "data": f"Processed {param1} with {param2}"
-    }
+async def store_document(content: str, metadata: dict = None) -> dict:
+    """Store a document for future semantic retrieval."""
+    # Your storage logic here (Weaviate, database, etc.)
+    doc_id = await weaviate_store.insert(content, metadata)
+    return {"success": True, "doc_id": doc_id}
+
+
+@server.call_tool()
+async def search_documents(query: str, max_results: int = 5) -> list:
+    """Search stored documents by semantic similarity."""
+    results = await weaviate_store.search(query, limit=max_results)
+    return results
 ```
 
-Then call it from any agent using MCPToolkit:
+## Call it from any agent
 
 ```python
 from abi_core.common.semantic_tools import MCPToolkit
 
 toolkit = MCPToolkit()
-result = await toolkit.my_custom_tool(param1="value", param2=123)
+
+# Store something
+await toolkit.store_document(
+    content="Q4 revenue was $2.3M, up 15% from Q3",
+    metadata={"type": "financial", "quarter": "Q4"}
+)
+
+# Search later
+results = await toolkit.search_documents(query="revenue growth")
 ```
 
-## Next Steps
+## Add tool cards for discovery
 
-- [MCPToolkit - Dynamic Tool Access](05-mcp-toolkit.md) - Learn pythonic tool calling
-- [Advanced orchestration](../orchestration/01-planner-orchestrator.md)
+Create a JSON file in `services/semantic_layer/tool_cards/`:
 
----
+```json
+{
+  "tool_name": "store_document",
+  "description": "Stores documents for future semantic retrieval",
+  "objective": "Persist information that agents can query later",
+  "input_schema": {
+    "content": "string - the document text",
+    "metadata": "dict - optional metadata tags"
+  },
+  "output_schema": {
+    "success": "boolean",
+    "doc_id": "string"
+  },
+  "metadata": {
+    "tags": ["storage", "documents", "memory", "persistence"]
+  }
+}
+```
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+Now agents can discover this tool via `tool_search_tools`:
+
+```python
+tools = await tool_search_tools.ainvoke("store information for later")
+# → Returns your store_document tool card
+```
+
+## Next step
+
+👉 [MCPToolkit](05-mcp-toolkit.md)

@@ -1,67 +1,75 @@
-# Monitoring and Logs
+# Monitoring & Logs
 
-Monitor your agent system in production.
+How to see what your agents are doing.
 
-## View Logs
+## Logs
 
-### All services
 ```bash
-docker-compose logs -f
+# All services
+docker compose logs -f
+
+# One agent
+docker compose logs -f my-agent
+
+# Last 50 lines
+docker compose logs --tail=50 my-agent
 ```
 
-### Specific service
+## Health checks
+
+Every agent and service exposes `/health`:
+
 ```bash
-docker-compose logs -f my-agent-agent
+curl http://localhost:8002/health   # Agent web interface
+curl http://localhost:10100/health  # Semantic Layer
+curl http://localhost:11438/health  # Guardian
+curl http://localhost:8181/health   # OPA
+curl http://localhost:11434/api/tags # Ollama
 ```
 
-### Last N lines
-```bash
-docker-compose logs --tail=100 my-agent-agent
-```
-
-## Service Status
+## Service status
 
 ```bash
-# View status
-docker-compose ps
+# Container status
+docker compose ps
 
-# View resources
+# Resource usage (CPU, RAM)
 docker stats
 ```
 
-## Metrics
+## Agent logging in code
 
-### Guardian Dashboard
-```
-http://localhost:8080
-```
+Use `abi_logging()` — it writes to stdout (captured by Docker):
 
-Shows:
-- Active agents
-- Requests per second
-- Errors
-- Latency
+```python
+from abi_core.common.utils import abi_logging
 
-## Alerts
-
-Configure alerts in `services/guardian/alerting_config.json`:
-
-```json
-{
-  "alerts": [
-    {
-      "name": "high_error_rate",
-      "condition": "error_rate > 0.1",
-      "action": "send_email"
-    }
-  ]
-}
+abi_logging("[📥] Received query: ...")
+abi_logging("[✅] Step completed")
+abi_logging("[❌] Error: ...")
 ```
 
-## Next Steps
+## Artifact Store logs
 
-- [Troubleshooting](03-troubleshooting.md)
+If `LOG_TO_ARTIFACT_STORE=true`, agent execution logs are uploaded to MinIO for long-term storage:
 
----
+```yaml
+environment:
+  - LOG_TO_ARTIFACT_STORE=true
+  - LOG_AGENT_NAME=orchestrator
+  - LOG_BUCKET=abi-logs
+```
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+Access via MinIO console: `http://localhost:9001`
+
+## Security metrics
+
+```bash
+curl http://localhost:11438/v1/tools/get_security_metrics
+```
+
+Returns request counts, blocked requests, average risk scores, and active agents.
+
+## Next step
+
+👉 [Troubleshooting](03-troubleshooting.md)

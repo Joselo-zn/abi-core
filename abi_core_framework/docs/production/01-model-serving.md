@@ -1,49 +1,68 @@
 # Model Serving
 
-ABI-Core supports two model serving strategies.
+Two strategies for running LLMs. Choose when you create the project.
 
-## Centralized (Recommended for Production)
+## Centralized (recommended)
 
-One Ollama serves all agents:
+One shared Ollama instance serves all agents. Less RAM, easier to manage.
 
 ```bash
 abi-core create project my-app --model-serving centralized
 ```
 
-**Advantages**:
-- ✅ Less resources
-- ✅ Centralized management
-- ✅ Faster startup
-
-**Architecture**:
 ```
-Central Ollama
-  ↑
-  ├─ Agent 1
-  ├─ Agent 2
-  └─ Agent 3
+┌─────────────┐
+│   Ollama    │ ← All agents connect here
+└─────────────┘
+      ↑
+  Agent 1, Agent 2, Agent 3
 ```
 
-## Distributed (Development)
+Agents point to the same `OLLAMA_HOST`:
+```yaml
+environment:
+  - OLLAMA_HOST=http://my-app-ollama:11434
+  - START_OLLAMA=false
+```
 
-Each agent has its own Ollama:
+## Distributed
+
+Each agent runs its own Ollama. Full isolation, independent model versions.
 
 ```bash
 abi-core create project my-app --model-serving distributed
 ```
 
-**Advantages**:
-- ✅ Complete isolation
-- ✅ Independent versions
-
-**Architecture**:
 ```
-Agent 1 ← Ollama 1
-Agent 2 ← Ollama 2
-Agent 3 ← Ollama 3
+Agent 1 ← Ollama 1 (qwen2.5:3b)
+Agent 2 ← Ollama 2 (llama3:8b)
+Agent 3 ← Ollama 3 (mistral:7b)
 ```
 
-## Change Strategy
+Agents manage their own Ollama:
+```yaml
+environment:
+  - OLLAMA_HOST=http://localhost:11434
+  - START_OLLAMA=true
+  - LOAD_MODELS=true
+```
+
+## Cloud providers (no Ollama needed)
+
+If your agent uses OpenAI, Gemini, or another cloud provider, it doesn't need Ollama at all:
+
+```python
+# config.py
+LLM_CONFIG = {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "api_key": os.getenv("OPENAI_API_KEY"),
+}
+```
+
+You can mix: some agents use local Ollama, others use cloud APIs. Each agent has its own `LLM_CONFIG`.
+
+## Switch strategy
 
 Edit `.abi/runtime.yaml`:
 
@@ -52,10 +71,8 @@ project:
   model_serving: centralized  # or distributed
 ```
 
-## Next Steps
+Then rebuild: `docker compose up --build -d`
 
-- [Monitoring and logs](02-monitoring-logs.md)
+## Next step
 
----
-
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+👉 [Monitoring & Logs](02-monitoring-logs.md)

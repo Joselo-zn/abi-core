@@ -1,45 +1,60 @@
-# Audit and Compliance
+# Audit & Compliance
 
-Guardian logs all actions for auditing and regulatory compliance.
+Every security decision is logged. You can trace who did what, when, and why it was allowed or denied.
 
-## Audit Logs
+## What gets logged
 
-Guardian records:
-- Who did what
-- When they did it
-- Action result
-- Policies evaluated
+Every A2A call and MCP tool access produces an audit event:
 
-## View Logs
+```json
+{
+  "event_type": "a2a_access",
+  "timestamp": "2026-05-11T10:30:00Z",
+  "source_agent": "orchestrator",
+  "target_agent": "planner",
+  "allowed": true,
+  "reason": null,
+  "risk_score": 0.15
+}
+```
+
+## Where logs go
+
+- **Container logs** — `docker compose logs guardian`
+- **Emergency logs** — `services/guardian/emergency_logs/` (for blocked high-risk events)
+- **Artifact Store** — If `LOG_TO_ARTIFACT_STORE=true`, logs go to MinIO for long-term storage
+
+## View logs
 
 ```bash
-docker-compose logs guardian
+# Real-time Guardian logs
+docker compose logs -f <project>-guardian
+
+# Security metrics
+curl http://localhost:11438/v1/tools/get_security_metrics
+
+# Guardian status
+curl http://localhost:11438/v1/tools/get_guardian_status
 ```
 
-## Audit Dashboard
+## Log format in container output
 
-Access the dashboard:
 ```
-http://localhost:8080/audit
-```
-
-You'll see:
-- Action history
-- Violated policies
-- Security alerts
-- Compliance metrics
-
-## Export Logs
-
-```bash
-# Export logs to file
-docker-compose logs guardian > audit.log
+✅ Semantic access granted for 'agent://planner' | user: admin@co.com (risk: 0.15)
+❌ Semantic access denied for 'agent://unknown' | reason: Agent not registered (risk: 0.90)
+[📋 AUDIT] a2a_access: orchestrator → planner | allowed=True
 ```
 
-## Next Steps
+## Risk scoring
 
-- [Model serving](../production/01-model-serving.md)
+Guardian assigns a risk score (0.0 to 1.0) based on:
+- Agent trust level (registered vs unknown)
+- Request patterns (frequency, time of day)
+- Action sensitivity
+- Policy evaluation results
 
----
+If risk exceeds `MAX_RISK_THRESHOLD` (default 0.7), the request is blocked regardless of other rules.
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+## Next step
+
+👉 [A2A Validation](06-a2a-validation.md)

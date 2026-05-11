@@ -1,46 +1,57 @@
 # Vector Databases
 
-Vector databases store and search information by semantic similarity.
+A vector database stores text as numerical vectors (embeddings) and lets you search by meaning instead of keywords.
 
 ## Weaviate in ABI-Core
 
-ABI-Core uses **Weaviate** automatically when you add the semantic layer.
+ABI-Core uses Weaviate. It's included automatically when you add the Semantic Layer:
 
 ```bash
-abi-core add semantic-layer
-# Weaviate is included automatically
+abi-core create project my-app --with-semantic-layer
+# Weaviate runs on port 8080 (mapped to 8081 on host)
 ```
 
-## How It Works
+## What it stores
 
-1. Documents → Embeddings (vectors)
-2. Store in Weaviate
-3. Search by vector similarity
+| Collection | Content |
+|-----------|---------|
+| AgentCards | Agent descriptions + capabilities (for discovery) |
+| ToolRegistry | Tool descriptions + schemas (for tool search) |
+| Custom | Your documents (if you extend the Semantic Layer) |
 
-## Use Weaviate
+## How data gets in
+
+At startup, the Semantic Layer:
+1. Reads JSON files from `agent_cards/` and `tool_cards/`
+2. Generates embeddings using `nomic-embed-text:v1.5` (via Ollama)
+3. Upserts into Weaviate collections
+4. Skips cards that are already stored (deduplication by URI)
+
+## Check Weaviate
+
+```bash
+# Is it ready?
+curl http://localhost:8081/v1/.well-known/ready
+
+# What's stored?
+curl http://localhost:8081/v1/objects?limit=5
+```
+
+## Direct access (advanced)
+
+If you need to interact with Weaviate directly:
 
 ```python
 import weaviate
 
-# Connect
-client = weaviate.Client("http://localhost:8080")
+client = weaviate.Client("http://localhost:8081")
 
-# Add document
-client.data_object.create({
-    "content": "Python is a programming language",
-    "category": "technology"
-}, "Document")
-
-# Search
-result = client.query.get("Document", ["content"]).with_near_text({
-    "concepts": ["programming language"]
-}).do()
+# Query objects
+result = client.query.get("AgentCards", ["text", "uri"]).with_limit(5).do()
 ```
 
-## Next Steps
+But for most use cases, use `MCPToolkit` instead — it handles auth and sessions for you.
 
-- [Embeddings and search](03-embeddings-search.md)
+## Next step
 
----
-
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+👉 [Embeddings & Search](03-embeddings-search.md)

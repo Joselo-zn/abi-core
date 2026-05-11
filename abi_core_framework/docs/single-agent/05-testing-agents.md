@@ -1,74 +1,87 @@
-# Testing and Debugging Agents
+# Testing Agents
 
-Learn to test and debug your agents effectively.
+How to verify your agent works before deploying.
 
-## Basic Testing
+## Quick test with curl
 
-### With curl
 ```bash
-curl -X POST http://localhost:8000/stream \
+# Health check
+curl http://localhost:8002/health
+
+# Send a query
+curl -X POST http://localhost:8002/stream \
   -H "Content-Type: application/json" \
-  -d '{"query": "test", "context_id": "test", "task_id": "1"}'
+  -d '{"query": "Hello"}'
 ```
 
-### With Python
+## Test with Python
+
 ```python
 import requests
 
-def test_agent(query):
-    response = requests.post(
-        "http://localhost:8000/stream",
-        json={"query": query, "context_id": "test", "task_id": "1"}
+def ask(query, context_id="test"):
+    resp = requests.post(
+        "http://localhost:8002/stream",
+        json={"query": query, "context_id": context_id}
     )
-    assert response.status_code == 200
-    assert 'content' in response.json()
-    print(f"✅ Test passed: {query}")
+    return resp.json()
 
-test_agent("Hello")
-test_agent("What is Python?")
+# Test basic response
+result = ask("What is 2 + 2?")
+print(result)
+
+# Test memory
+ask("My name is Ana", context_id="mem-test")
+result = ask("What's my name?", context_id="mem-test")
+assert "Ana" in str(result)
+print("✅ Memory works")
 ```
 
-## View Logs
+## View logs
 
 ```bash
-# Real-time logs
-docker-compose logs -f my-agent-agent
+# All services
+docker compose logs -f
 
-# Last 100 lines
-docker-compose logs --tail=100 my-agent-agent
+# Just your agent
+docker compose logs -f my-agent
+
+# Last 50 lines
+docker compose logs --tail=50 my-agent
 ```
 
-## Debugging
+## Add logging to your code
 
-### Add Logs
 ```python
 from abi_core.common.utils import abi_logging
 
-def process(self, enriched_input):
-    abi_logging(f"INPUT: {enriched_input}")
-    # ... your code
-    abi_logging(f"OUTPUT: {result}")
-    return result
+@agent.step(name="my_step")
+async def my_step(text):
+    abi_logging(f"[📥] Input: {text}")
+    result = await invoke(config.LLM_CONFIG, prompt)
+    abi_logging(f"[📤] Output: {result[:100]}")
+    return {"result": result}
 ```
 
-### Test Locally
+Logs show up in `docker compose logs` with timestamps.
+
+## Common issues
+
+**Agent returns empty response** — Check that Ollama is running and the model is pulled:
+```bash
+docker exec <ollama-container> ollama list
+```
+
+**Connection refused** — The agent container isn't ready yet. Wait a few seconds or check:
+```bash
+docker compose ps
+```
+
+**LLM timeout** — The model is too large for your hardware. Try a smaller model in `config.py`:
 ```python
-# test_local.py
-from agents.my_agent.agent_my_agent import MyAgent
-import os
-
-os.environ['MODEL_NAME'] = 'qwen2.5:3b'
-os.environ['OLLAMA_HOST'] = 'http://localhost:11434'
-
-agent = MyAgent()
-result = agent.handle_input("test")
-print(result)
+LLM_CONFIG = {"provider": "ollama", "model": "qwen2.5:1.5b"}
 ```
 
-## Next Steps
+## Next step
 
-- [Multiple agents](../multi-agent-basics/01-why-multiple-agents.md)
-
----
-
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+👉 [Why Multiple Agents?](../multi-agent-basics/01-why-multiple-agents.md)

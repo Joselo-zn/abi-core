@@ -1,42 +1,63 @@
 # Semantic Search
 
-Semantic search finds agents by meaning, not just exact words.
+The Semantic Layer doesn't match keywords — it matches meaning.
 
-## Word Search vs Semantic
+## How it's different
 
-### Word Search
+**Keyword search:**
 ```
-Search: "analyze sales"
-Finds: Only agents with "analyze" AND "sales"
-```
-
-### Semantic Search
-```
-Search: "examine revenue"
-Finds: Sales analysis agent
-(Understands "examine" ≈ "analyze" and "revenue" ≈ "sales")
+Query: "analyze sales"
+Only finds agents with the exact words "analyze" AND "sales"
 ```
 
-## How It Works
+**Semantic search:**
+```
+Query: "examine revenue trends"
+Finds the "sales analysis" agent because the meaning is similar
+```
 
-1. Text → Embeddings (numerical vectors)
-2. Search by vector similarity
-3. Returns most relevant agents
+## Under the hood
 
-## Use Semantic Search
+1. Your query → embedding vector (via `nomic-embed-text`)
+2. Agent cards → embedding vectors (generated at startup)
+3. Cosine similarity → ranked results
+
+The embedding model understands that "examine" ≈ "analyze" and "revenue" ≈ "sales".
+
+## Tool cards too
+
+The Semantic Layer also indexes tool cards. Search for tools by capability:
 
 ```python
-# Different ways to ask for the same thing
-await client.find_agent(session, "analyze sales data")
-await client.find_agent(session, "examine revenue information")
-await client.find_agent(session, "review commercial statistics")
-# All find the same agent
+from abi_core.common.semantic_tools import tool_search_tools
+
+tools = await tool_search_tools.ainvoke("search documents by content")
+# Returns matching tool cards with name, description, and access_scope
 ```
 
-## Next Steps
+## What makes a good agent card for discovery
 
-- [Extend semantic layer](04-extending-semantic-layer.md)
+The more descriptive your card, the better the search works:
 
----
+```json
+{
+  "description": "Analyzes financial data including revenue, expenses, and profit margins",
+  "supportedTasks": ["analyze_revenue", "calculate_margins", "forecast_trends"],
+  "skills": [
+    {
+      "description": "Analyzes quarterly revenue data and identifies growth patterns",
+      "tags": ["finance", "revenue", "analysis", "trends", "quarterly"]
+    }
+  ]
+}
+```
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+Tips:
+- Use natural language in `description` (not just keywords)
+- Be specific in `supportedTasks`
+- Add relevant `tags` to skills
+- Include synonyms in descriptions ("revenue/sales", "analyze/examine")
+
+## Next step
+
+👉 [Extending the Semantic Layer](04-extending-semantic-layer.md)

@@ -1,123 +1,57 @@
-# ABI-Core Roadmap
+# Roadmap
 
-## ✅ Completed (v1.5.2)
+## Current (v1.11.x)
 
-### Core Infrastructure
-- **Multi-Agent Framework**: Complete agent orchestration system
-- **Semantic Layer**: AI agent discovery and routing via MCP
-- **Security System**: Complete A2A validation with OPA policies
-- **Guardian Service**: Security enforcement and audit logging
-- **Configuration Management**: Centralized config system for all agents
-- **Docker Orchestration**: Complete containerized deployment
+What's working today:
 
-### Agent Communication
-- **A2A Validation**: ✅ **Agent-to-Agent communication validation (COMPLETED 2024-12-13)**
-- **Policy Engine**: OPA-based security policies for inter-agent communication
-- **Audit Logging**: Complete audit trail for all agent interactions
-- **Clarification Handling**: Planner can request user clarification
+- ✅ Decorator-based agent framework (`@agent.step`, `@agent.task`, `@agent.tool`, `@agent.mcp_tool`)
+- ✅ Multi-provider LLM (Ollama, OpenAI, Gemini, Grok, Anthropic, Bedrock, Azure, Vertex)
+- ✅ A2A protocol with HMAC authentication
+- ✅ Semantic Layer (Weaviate + MCP + embedding mesh)
+- ✅ Guardian + OPA security policies
+- ✅ A2A access validation (strict/permissive/disabled)
+- ✅ Orchestrator + Planner + Builder agents
+- ✅ Ephemeral agent creation (Docker containers on-demand)
+- ✅ Artifact Store (MinIO)
+- ✅ CLI scaffolding (create project, add agent, create swarm)
+- ✅ Web interface (SSE streaming, Open WebUI compatible)
+- ✅ Task orchestration v2 (parallel, depends_on, routing)
+- ✅ MCPToolkit (dynamic MCP tool access)
+- ✅ Audit logging and risk scoring
 
-### Development Tools
-- **CLI Framework**: Complete project scaffolding and management
-- **MCPToolkit**: Dynamic access to MCP tools with pythonic syntax
-- **Agent Cards**: Standardized agent metadata and discovery
-- **Template System**: Jinja2-based code generation
+## Next (v2.x)
 
-### Modular Architecture (v1.5.2)
-- **Monorepo Structure**: ✅ **Modular package architecture (COMPLETED 2024-12-16)**
-- **Package Separation**: Core, agents, services, CLI, and framework packages
-- **Backward Compatibility**: All existing imports continue to work
-- **Community Development**: Easier contribution workflow with focused packages
+What's being worked on:
 
-### Enhanced Web Interfaces (v1.5.2)
-- **Open WebUI Compatibility**: ✅ **Fixed connection issues (COMPLETED 2024-12-16)**
-- **Streaming Improvements**: Better real-time response handling
-- **Template Consistency**: Synchronized web interfaces across all agents
-- **Connection Management**: Proper HTTP connection cleanup
+- 🔄 Plan Confirmation — user approves plan before execution
+- 🔄 Context Engine (Redis) — shared context across agents
+- 🔄 TUI improvements — interactive terminal dashboard
+- 🔄 Result validation — verify agent outputs against schemas
+- 🔄 Swarm knowledge base — persistent learning across sessions
 
----
+## Future
 
-## 🚀 Next Phase (v1.3.0) - Q1 2025
+Ideas and directions:
 
-### Enhanced Orchestration
-- **Parallel Execution**: Execute independent tasks in parallel
-- **Workflow Persistence**: Save and resume complex workflows
-- **Error Recovery**: Automatic retry and fallback mechanisms
-- **Performance Monitoring**: Real-time workflow performance metrics
+- Parallel task execution (declarative `parallel=["a", "b"]` in tasks)
+- Workflow persistence and resume
+- Multi-node deployment (Kubernetes-native)
+- Self-optimizing workflows (agents learn from execution history)
+- Plugin ecosystem for community tools
+- Visual workflow editor
 
-### Advanced Security
-- **Role-Based Access**: Fine-grained permissions per agent role
-- **Encryption**: End-to-end encryption for sensitive communications
-- **Compliance**: GDPR/SOC2 compliance features
-- **Threat Detection**: AI-powered security anomaly detection
+## Status
 
-### Developer Experience
-- **Visual Workflow Editor**: GUI for creating complex workflows
-- **Debug Tools**: Step-by-step workflow debugging
-- **Testing Framework**: Automated testing for multi-agent systems
-- **Performance Profiler**: Identify bottlenecks in agent communication
+| Component | Status |
+|-----------|--------|
+| Core framework | ✅ Stable |
+| CLI | ✅ Stable |
+| A2A + Security | ✅ Stable |
+| Semantic Layer | ✅ Stable |
+| Orchestration | ✅ Stable |
+| Documentation | ✅ Complete |
+| Examples | ✅ Published |
 
 ---
 
-## 🔮 Future Vision (v2.0.0) - Q2-Q3 2025
-
-### Distributed Architecture
-- **Multi-Node Deployment**: Scale across multiple servers
-- **Load Balancing**: Intelligent agent load distribution
-- **Service Mesh**: Advanced networking for agent communication
-- **Cloud Native**: Kubernetes-native deployment
-
-### AI Enhancement
-- **Self-Optimizing Workflows**: AI learns to optimize task execution
-- **Predictive Scaling**: Anticipate resource needs
-- **Intelligent Routing**: AI-powered agent selection
-- **Adaptive Policies**: Security policies that learn from usage
-
-### Enterprise Features
-- **Multi-Tenancy**: Support multiple organizations
-- **Advanced Analytics**: Business intelligence for agent workflows
-- **Integration Hub**: Pre-built connectors for enterprise systems
-- **Compliance Dashboard**: Real-time compliance monitoring
-
----
-
-## 📊 Current Status
-
-| Component | Status | Version | Notes |
-|-----------|--------|---------|-------|
-| Core Framework | ✅ Complete | v1.5.2 | Production ready |
-| A2A Security | ✅ Complete | v1.5.2 | **Fully operational** |
-| Semantic Layer | ✅ Complete | v1.5.2 | MCP integration working |
-| Guardian Service | ✅ Complete | v1.5.2 | OPA policies active |
-| CLI Tools | ✅ Complete | v1.5.2 | Full project lifecycle |
-| Modular Architecture | ✅ Complete | v1.5.2 | **Monorepo structure** |
-| Web Interfaces | ✅ Complete | v1.5.2 | **Open WebUI compatible** |
-| Documentation | ✅ Complete | v1.5.2 | Comprehensive guides |
-
----
-
-## 🎯 Community Goals
-
-### Open Source Growth
-- **Community Contributions**: Encourage external contributions
-- **Plugin Ecosystem**: Third-party agent and tool development
-- **Best Practices**: Establish patterns for multi-agent systems
-- **Training Materials**: Workshops and certification programs
-
-### Industry Adoption
-- **Case Studies**: Document real-world implementations
-- **Enterprise Partnerships**: Work with large organizations
-- **Standards Participation**: Contribute to AI agent standards
-- **Research Collaboration**: Partner with academic institutions
-
----
-
-## 📝 Release Schedule
-
-- **v1.2.x**: Monthly patch releases (bug fixes, minor features)
-- **v1.3.0**: Q1 2025 (Enhanced orchestration and security)
-- **v1.4.0**: Q2 2025 (Developer experience improvements)
-- **v2.0.0**: Q3 2025 (Distributed architecture)
-
----
-
-*Last updated: December 16, 2024*
+*Last updated: May 2026*

@@ -1,81 +1,104 @@
 # Troubleshooting
 
-Solutions to common problems.
+Common problems and how to fix them.
 
-## Agent Not Responding
+## Agent not responding
 
-**Symptom**: Timeout when calling agent
-
-**Solutions**:
 ```bash
-# 1. Verify it's running
-docker-compose ps
+# Is it running?
+docker compose ps
 
-# 2. View logs
-docker-compose logs my-agent-agent
+# What's in the logs?
+docker compose logs --tail=50 my-agent
 
-# 3. Restart
-docker-compose restart my-agent-agent
+# Restart it
+docker compose restart my-agent
 ```
 
-## Port in Use
+## "Model not found"
 
-**Symptom**: "Port already in use"
+The LLM model isn't pulled yet:
 
-**Solution**: Change port in `compose.yaml`:
+```bash
+docker exec <ollama-container> ollama pull qwen2.5:3b
+```
+
+Or check which models are available:
+
+```bash
+docker exec <ollama-container> ollama list
+```
+
+## Slow responses
+
+**Cause:** Model too large for your hardware.
+
+**Fix:** Use a smaller model:
+
+```python
+# config.py
+LLM_CONFIG = {"provider": "ollama", "model": "qwen2.5:1.5b"}  # Smaller, faster
+```
+
+Or check RAM usage: `docker stats`
+
+## Semantic Layer not finding agents
+
+```bash
+# Are agent cards in the right place?
+ls services/semantic_layer/agent_cards/
+
+# Is Weaviate healthy?
+curl http://localhost:8081/v1/.well-known/ready
+
+# Restart to re-index
+docker compose restart <project>-semantic-layer
+```
+
+## "Port already in use"
+
+Another process is using that port. Either stop it or change the port in `compose.yaml`:
+
 ```yaml
 ports:
-  - "9000:8000"  # Use 9000 instead of 8000
+  - "8003:8002"  # Map to a different host port
 ```
 
-## Model Not Found
+## A2A connection refused
 
-**Symptom**: "Model not found"
+The target agent isn't ready yet. Check:
 
-**Solution**:
 ```bash
-# Download model
-docker exec my-project-ollama ollama pull qwen2.5:3b
+# Is the target running?
+docker compose ps
 
-# Or reprovision
-abi-core provision-models
+# Can you reach it?
+curl http://<target-container>:<port>/health
 ```
 
-## Slow Agent
+Common cause: the agent depends on Semantic Layer which depends on Weaviate. Wait for health checks to pass.
 
-**Causes**:
-- Model too large
-- Low RAM
-- Slow CPU
+## "Session terminated" from MCP
 
-**Solutions**:
+The Semantic Layer connection dropped. `MCPToolkit.call_with_retry()` handles this automatically:
+
+```python
+result = await toolkit.call_with_retry("my_tool", max_retries=3, param="value")
+```
+
+## Container keeps restarting
+
+Check logs for the crash reason:
+
 ```bash
-# Use smaller model
-docker exec my-project-ollama ollama pull phi3:mini
-
-# Update configuration
-# Edit .abi/runtime.yaml:
-# model: phi3:mini
+docker compose logs --tail=100 <container>
 ```
 
-## Semantic Layer Not Finding Agents
+Common causes:
+- Missing environment variable
+- Agent card file not found
+- Python import error (missing dependency)
 
-**Solutions**:
-```bash
-# 1. Verify agent cards exist
-ls services/semantic_layer/layer/mcp_server/agent_cards/
+## Next step
 
-# 2. Restart semantic layer
-docker-compose restart semantic-layer
-
-# 3. View logs
-docker-compose logs semantic-layer
-```
-
-## Next Steps
-
-- [Deployment](04-deployment.md)
-
----
-
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+👉 [Deployment](04-deployment.md)

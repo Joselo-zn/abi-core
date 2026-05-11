@@ -1,128 +1,81 @@
 # Agents with Memory
 
-Learn to create agents that remember previous conversations.
+By default, each request is independent — the agent doesn't remember previous messages. Memory fixes that.
 
-## Why Memory?
+## How it works
 
-Without memory:
-```
-User: "My name is Ana"
-Agent: "Hello Ana"
-User: "What's my name?"
-Agent: "I don't know"  ❌
-```
-
-With memory:
-```
-User: "My name is Ana"
-Agent: "Hello Ana"
-User: "What's my name?"
-Agent: "Your name is Ana"  ✅
-```
-
-## Implement Memory
+ABI-Core uses `thread_id` in `invoke()` to maintain conversation history. The LLM sees all previous messages in the same thread.
 
 ```python
-from abi_core.agent.agent import AbiAgent
-from langchain_ollama import ChatOllama
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
-import os
+from abi_core.agent.llm_provider import invoke
 
-class MemoryAgent(AbiAgent):
-    def __init__(self):
-        super().__init__(
-            agent_name='memory-agent',
-            description='Agent with conversational memory'
-        )
-        self.conversations = {}  # Memory by context_id
-        self.setup_llm()
-    
-    def setup_llm(self):
-        self.llm = ChatOllama(
-            model=os.getenv('MODEL_NAME', 'qwen2.5:3b'),
-            base_url=os.getenv('OLLAMA_HOST', 'http://localhost:11434'),
-            temperature=0.7
-        )
-    
-    def get_conversation(self, context_id: str):
-        """Get or create conversation for a context"""
-        if context_id not in self.conversations:
-            memory = ConversationBufferMemory()
-            self.conversations[context_id] = ConversationChain(
-                llm=self.llm,
-                memory=memory,
-                verbose=True
-            )
-        return self.conversations[context_id]
-    
-    async def stream(self, query: str, context_id: str, task_id: str):
-        """Respond with memory"""
-        conversation = self.get_conversation(context_id)
-        response = conversation.predict(input=query)
-        
-        yield {
-            'content': response,
-            'response_type': 'text',
-            'is_task_completed': True
-        }
+# First message
+result = await invoke(config.LLM_CONFIG, "My name is Ana", thread_id="session-001")
+
+# Second message — the LLM remembers "Ana"
+result = await invoke(config.LLM_CONFIG, "What's my name?", thread_id="session-001")
+# → "Your name is Ana"
 ```
 
-## Test Memory
+## Add memory to your agent
+
+The key is passing `context_id` as the `thread_id`. Edit your step:
 
 ```python
-import requests
+@agent.step(name="chat_with_memory")
+async def chat_with_memory(text, context_id):
+    """Respond with conversation memory."""
+    from abi_core.agent.llm_provider import invoke
+    from prompts import CHAT_PROMPT
 
-def chat(message, context_id="conv-001"):
-    response = requests.post(
-        "http://localhost:8000/stream",
-        json={
-            "query": message,
-            "context_id": context_id,
-            "task_id": f"msg-{hash(message)}"
-        }
+    result = await invoke(
+        config.LLM_CONFIG,
+        CHAT_PROMPT.format(text=text),
+        thread_id=context_id,  # This enables memory
     )
-    return response.json()['content']
-
-# Conversation with memory
-print(chat("My name is Carlos"))
-# "Hello Carlos, how can I help you?"
-
-print(chat("What's my name?"))
-# "Your name is Carlos"
-
-print(chat("I'm 30 years old"))
-# "Understood, you're 30 years old"
-
-print(chat("How old am I?"))
-# "You're 30 years old"
+    return {"response": result}
 ```
 
-## Memory Types
+And your task passes the `context_id` through:
 
-### Buffer Memory (Simple)
 ```python
-from langchain.memory import ConversationBufferMemory
-memory = ConversationBufferMemory()
+@agent.task(name="chat", task_id="task-chat")
+async def chat(query):
+    data = json.loads(query) if isinstance(query, str) else query
+    text = data.get("text", "")
+    context_id = data.get("context_id", "default")
+
+    result = await agent.execute_step(
+        "chat_with_memory", text=text, context_id=context_id
+    )
+    yield AgentResponse.result(result)
 ```
 
-### Window Memory (Last N messages)
-```python
-from langchain.memory import ConversationBufferWindowMemory
-memory = ConversationBufferWindowMemory(k=5)  # Last 5 messages
+## Test it
+
+```bash
+# First message
+curl -X POST http://localhost:8002/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "My name is Carlos", "context_id": "session-42"}'
+
+# Second message — same context_id
+curl -X POST http://localhost:8002/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is my name?", "context_id": "session-42"}'
+# → "Your name is Carlos"
 ```
 
-### Summary Memory (Summary)
-```python
-from langchain.memory import ConversationSummaryMemory
-memory = ConversationSummaryMemory(llm=llm)
-```
+## How context_id works
 
-## Next Steps
+- Same `context_id` = same conversation (agent remembers)
+- Different `context_id` = fresh conversation (no memory)
+- The web interface generates a `context_id` per session automatically
 
-- [Test agents](05-testing-agents.md)
-- [Multiple agents](../multi-agent-basics/01-why-multiple-agents.md)
+## Memory is in-process
 
----
+The default memory (LangGraph `MemorySaver`) lives in the agent's process memory. If the container restarts, memory is lost. For persistent memory, store conversations in the Semantic Layer using `MCPToolkit`.
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+## Next step
+
+👉 [Testing Agents](05-testing-agents.md)

@@ -1,32 +1,59 @@
-# Embeddings and Search
+# Embeddings & Search
 
-Embeddings convert text to numerical vectors for semantic search.
+Embeddings turn text into numbers. Similar text → similar numbers → found by search.
 
-## What are Embeddings?
+## How embeddings work
 
 ```
-"Python is great" → [0.2, 0.8, 0.1, 0.5, ...]
-"Python is excellent" → [0.3, 0.7, 0.2, 0.4, ...]
-# Similar vectors = similar meaning
+"analyze revenue data"  → [0.82, 0.15, 0.91, ...]
+"examine sales figures" → [0.79, 0.18, 0.88, ...]  ← similar!
+"cook a pizza"          → [0.12, 0.95, 0.03, ...]  ← very different
 ```
 
-## Embedding Model
+When you search for "analyze revenue", the database finds documents with similar vectors — even if they use different words.
 
-ABI-Core uses `nomic-embed-text:v1.5` automatically.
+## The embedding model
 
-## Semantic Search
+ABI-Core uses `nomic-embed-text:v1.5` running on Ollama. It's pulled automatically during setup:
 
-```python
-# Search for similar documents
-query = "programming language"
-results = search_similar(query)
-# Finds: "Python", "JavaScript", "Java"
+```bash
+docker exec <ollama-container> ollama pull nomic-embed-text:v1.5
 ```
 
-## Next Steps
+The Semantic Layer's embedding mesh uses it to:
+- Embed agent card descriptions at startup
+- Embed tool card descriptions at startup
+- Embed search queries at runtime
 
-- [Agents with RAG](04-agents-with-rag.md)
+## Search in practice
 
----
+When you call `tool_find_agent("analyze revenue")`:
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+1. Your query is embedded → `[0.82, 0.15, 0.91, ...]`
+2. Weaviate compares against all stored agent card embeddings
+3. Returns the closest match (cosine similarity)
+4. That's your agent
+
+Same for `tool_search_tools("store documents")` — searches tool card embeddings.
+
+## Make your cards searchable
+
+The more descriptive your text, the better the search:
+
+```json
+{
+  "description": "Analyzes financial data including quarterly revenue, profit margins, and growth trends",
+  "skills": [
+    {
+      "description": "Performs deep analysis of revenue patterns across time periods",
+      "tags": ["finance", "revenue", "analysis", "quarterly", "trends"]
+    }
+  ]
+}
+```
+
+The embedding is generated from the combined text of description + skills + tags.
+
+## Next step
+
+👉 [Agents with RAG](04-agents-with-rag.md)

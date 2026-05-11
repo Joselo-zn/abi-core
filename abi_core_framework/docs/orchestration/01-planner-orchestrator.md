@@ -1,51 +1,105 @@
-# Planner and Orchestrator
+# Planner & Orchestrator
 
-The Planner and Orchestrator coordinate complex workflows with multiple agents.
+The Orchestrator is the entry point for complex requests. The Planner decomposes them into executable plans. Together they coordinate multi-agent workflows.
 
-## What They Do
+## How they work together
 
-### Planner
-- Divides complex tasks into subtasks
-- Finds appropriate agents
-- Creates execution plan
-
-### Orchestrator
-- Executes the plan
-- Coordinates agents
-- Synthesizes results
-
-## Add Orchestration Layer
-
-```bash
-abi-core add agentic-orchestration-layer
+```
+User request
+  → Orchestrator
+    ├─ Level 0 (parallel): classify_query + guardian_validate
+    ├─ Level 1: gate_decision (respond_direct | call_planner | blocked)
+    ├─ Level 2: call_planner → extract_plan → build_workflow
+    └─ Level 3: execute workflow → synthesize results
+  → Response to user
 ```
 
-This creates:
-- Planner Agent (port 11437)
-- Orchestrator Agent (port 8002)
+## The Orchestrator
 
-## Use the System
+Receives every request. Its DAG pipeline:
 
-```bash
-# Send complex query to Orchestrator
-curl -X POST http://localhost:8083/stream \
-  -d '{
-    "query": "Analyze last month sales and generate report",
-    "context_id": "session-001",
-    "task_id": "task-001"
-  }'
+1. **classify_query** — Is this simple (answer directly) or complex (needs planning)?
+2. **guardian_validate** — Is this request allowed by security policies? (runs in parallel with classify)
+3. **gate_decision** — Based on classification + security: respond directly, call planner, or block
+4. **call_planner** — Send to Planner via A2A for task decomposition
+5. **build_workflow** — Turn the plan into an `AgentInteractionFlow` with nodes for each agent
+6. **execute** — Run the workflow, collect results
+7. **synthesize** — Use LLM to combine all results into a coherent response
+
+```python
+# Orchestrator DAG (from main.py)
+@agent.step(name="classify_query", input_map={"query": "$input.query"})
+async def classify_query(query):
+    text = await invoke(config.LLM_CONFIG, TRIAGE_PROMPT.format(query=query))
+    parsed = clean_llm_json(text)
+    return {"classification": parsed.get("classification", "complex")}
+
+@agent.step(name="guardian_validate", input_map={...})
+async def guardian_validate(query, context_id):
+    # Calls Guardian agent via A2A
+    ...
+    return {"status": "approved", "allowed": True}
+
+@agent.step(name="gate_decision", depends_on=["classify_query", "guardian_validate"])
+async def gate_decision(classification, guardian_result):
+    if not guardian_result["allowed"]:
+        return {"action": "blocked", "message": guardian_result["reason"]}
+    if classification == "simple":
+        return {"action": "respond_direct"}
+    return {"action": "call_planner"}
 ```
 
-The Orchestrator:
-1. Sends query to Planner
-2. Planner creates plan with subtasks
-3. Orchestrator executes each subtask
-4. Combines results
+## The Planner
 
-## Next Steps
+Receives a query and produces a structured plan:
 
-- [Multi-agent workflows](02-multi-agent-workflows.md)
+1. **LLM decomposition** — Calls the LLM with a chain-of-thought prompt to break the task into sub-tasks
+2. **parse_plan** — Extracts structured JSON from the LLM response
+3. **assign_agents** — For each task, searches the Semantic Layer for the right agent
 
----
+Output:
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+```json
+{
+  "status": "ready",
+  "plan": {
+    "objective": "Analyze Q4 sales and generate report",
+    "execution_strategy": "sequential",
+    "tasks": [
+      {
+        "task_id": "task-1",
+        "type": "analysis",
+        "description": "Analyze Q4 revenue data",
+        "agents": [{"name": "analyst", "url": "http://..."}]
+      },
+      {
+        "task_id": "task-2",
+        "type": "generation",
+        "description": "Generate PDF report from analysis",
+        "agents": [{"name": "reporter", "url": "http://..."}],
+        "depends_on": ["task-1"]
+      }
+    ]
+  }
+}
+```
+
+If the Planner needs more info, it returns `{"status": "needs_clarification", "clarification": "..."}` and the Orchestrator forwards it to the user.
+
+## Get orchestration in your project
+
+```bash
+abi-core create swarm --name my-system
+```
+
+Or add to an existing project:
+
+```bash
+abi-core add abi-swarm
+```
+
+This adds the Orchestrator, Planner, and Builder agents with their DAG pipelines pre-configured.
+
+## Next step
+
+👉 [Multi-Agent Workflows](02-multi-agent-workflows.md)

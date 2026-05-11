@@ -1,70 +1,52 @@
 # What is RAG?
 
-RAG (Retrieval-Augmented Generation) allows agents to access specific information from your domain.
+RAG (Retrieval-Augmented Generation) = search your data first, then let the LLM answer using what you found.
 
-## The Problem
+## The problem
 
-LLMs have general knowledge but don't know about:
-- Your specific products
-- Your internal documents
-- Updated information
-
-## The Solution: RAG
-
-RAG = Retrieve relevant information + Generate response
+LLMs know general things but nothing about your company, your products, or your internal docs.
 
 ```
-User: "What's the price of product X?"
-  ↓
-1. Search in database → "Product X: $99"
-2. LLM generates response → "Product X costs $99"
+User: "What's the return policy?"
+LLM without RAG: "I don't have that information."
+LLM with RAG: "You have 30 days to return items. See policy doc #42."
 ```
 
-## RAG Components
-
-### 1. Vector Database
-Stores documents as vectors (Weaviate in ABI-Core).
-
-### 2. Embeddings
-Converts text to numerical vectors.
-
-### 3. Semantic Search
-Finds relevant documents.
-
-### 4. LLM
-Generates response using found documents.
-
-## RAG Flow
+## How it works
 
 ```
 User question
-  ↓
-Convert to embedding
-  ↓
-Search similar documents
-  ↓
-Pass documents + question to LLM
-  ↓
-Generated response
+  → Convert to embedding (vector)
+  → Search Weaviate for similar documents
+  → Pass documents + question to LLM
+  → LLM generates answer using your data
 ```
 
-## When to Use RAG
+## In ABI-Core
 
-✅ Use RAG when:
-- You need domain-specific information
-- You have documents/manuals/policies
-- You want answers based on your data
+The Semantic Layer already uses RAG internally — agent cards and tool cards are stored as embeddings in Weaviate and searched semantically. You can extend this to store your own documents.
 
-❌ Don't use RAG when:
-- You only need general knowledge
-- You don't have documents to index
+```python
+from abi_core.common.semantic_tools import MCPToolkit
 
-## Next Steps
+toolkit = MCPToolkit()
 
-- [Vector databases](02-vector-databases.md)
-- [Embeddings and search](03-embeddings-search.md)
-- [Agents with RAG](04-agents-with-rag.md)
+# Store a document
+await toolkit.store_document(
+    content="Return policy: 30 days, original packaging required.",
+    metadata={"type": "policy", "department": "support"}
+)
 
----
+# Search later
+results = await toolkit.search_documents(query="return policy")
+```
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+## When to use RAG
+
+- You have documents, manuals, or knowledge bases
+- You need answers grounded in your specific data
+- You want to reduce LLM hallucinations
+
+## Next step
+
+👉 [Vector Databases](02-vector-databases.md)

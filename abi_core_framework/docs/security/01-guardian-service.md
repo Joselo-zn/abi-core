@@ -1,46 +1,57 @@
 # Guardian Service
 
-Guardian is the security service that protects your agent system.
+Guardian is the security gate. Every request can be validated against policies before execution.
 
-## What Guardian Does
+## What it does
 
-- 🔒 Access control
-- 📝 Action auditing
-- ⚠️ Security alerts
-- 📊 Monitoring dashboard
+- Validates queries for prompt injection and policy compliance
+- Evaluates OPA policies (allow/deny/require_approval)
+- Logs all decisions for audit
+- Provides a monitoring dashboard
 
-## Add Guardian
+## Components
+
+| Service | Port | Role |
+|---------|------|------|
+| Guardian Agent | 11438 | Receives validation requests, calls OPA, returns decisions |
+| OPA | 8181 | Evaluates Rego policies, returns allow/deny |
+| Dashboard | 8080 | Web UI for monitoring security events |
+
+## Add Guardian to your project
 
 ```bash
 abi-core create project my-app --with-guardian
 ```
 
-Or add to existing project:
+Or add to an existing project:
+
 ```bash
 abi-core add service guardian-native
 ```
 
-## Components
+## How the Orchestrator uses it
 
-### 1. Guardian Agent
-Monitors and applies policies.
+In the Orchestrator's DAG, `guardian_validate` runs in parallel with `classify_query`:
 
-### 2. OPA (Open Policy Agent)
-Policy evaluation engine.
-
-### 3. Dashboard
-Web interface for monitoring.
-
-## Access Dashboard
-
-```
-http://localhost:8080
+```python
+@agent.step(name="guardian_validate")
+async def guardian_validate(query, context_id):
+    """Call Guardian via A2A to validate the request."""
+    guardian_card = await tool_find_agent.ainvoke("guardian")
+    # Sends validation request via AgentInteractionFlow
+    # Returns: {"status": "approved|blocked", "allowed": True|False, "reason": "..."}
 ```
 
-## Next Steps
+If Guardian says blocked, the Orchestrator stops immediately and returns the reason to the user.
 
-- [OPA policies](02-opa-policies.md)
+## Check Guardian status
 
----
+```bash
+curl http://localhost:11438/health
+curl http://localhost:11438/v1/tools/get_guardian_status
+curl http://localhost:11438/v1/tools/get_security_metrics
+```
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+## Next step
+
+👉 [OPA Policies](02-opa-policies.md)

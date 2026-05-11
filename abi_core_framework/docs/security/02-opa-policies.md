@@ -1,49 +1,65 @@
 # OPA Policies
 
-OPA (Open Policy Agent) evaluates security policies in real-time.
+OPA (Open Policy Agent) evaluates rules written in Rego. Guardian calls OPA, OPA returns allow or deny.
 
-## What is OPA?
+## Where policies live
 
-OPA is a policy engine that decides:
-- Can this agent do this action?
-- Does it comply with business rules?
-- Is it safe to proceed?
+```
+services/guardian/opa/policies/
+├── a2a_access.rego      ← Agent-to-agent communication rules
+├── semantic_access.rego ← Who can use which MCP tools
+└── custom.rego          ← Your domain-specific rules
+```
 
-## Policy Example
+## A simple policy
 
 ```rego
 package abi.custom
 
-# Allow only during business hours
+default allow = false
+
+# Allow all requests from the orchestrator
 allow if {
-    input.action == "execute_trade"
-    time.now_ns() >= business_hours_start
-    time.now_ns() <= business_hours_end
+    input.source_agent.name == "orchestrator"
 }
 
-# Deny large transactions
-deny["Amount exceeds limit"] if {
+# Allow only small transactions
+allow if {
     input.action == "execute_trade"
-    input.amount > 10000
+    input.amount < 10000
+}
+
+# Deny with a reason
+deny["Transaction exceeds limit"] if {
+    input.action == "execute_trade"
+    input.amount >= 10000
 }
 ```
 
-## Test Policy
+## Test a policy
 
 ```bash
-curl -X POST http://localhost:8181/v1/data/abi/custom \
+curl -X POST http://localhost:8181/v1/data/abi/custom/allow \
+  -H "Content-Type: application/json" \
   -d '{
     "input": {
+      "source_agent": {"name": "orchestrator"},
       "action": "execute_trade",
       "amount": 5000
     }
   }'
 ```
 
-## Next Steps
+Response: `{"result": true}`
 
-- [Policy development](03-policy-development.md)
+## How Guardian uses OPA
 
----
+1. Guardian receives a validation request (from Orchestrator or A2A validator)
+2. Builds an `input` object with agent info, action, and context
+3. POSTs to OPA at `http://opa:8181/v1/data/<package>/allow`
+4. OPA evaluates all rules and returns `true` or `false`
+5. Guardian returns the decision + any deny reasons
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+## Next step
+
+👉 [Policy Development](03-policy-development.md)

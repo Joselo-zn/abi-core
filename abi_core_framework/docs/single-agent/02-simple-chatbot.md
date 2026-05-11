@@ -1,189 +1,104 @@
 # Simple Chatbot
 
-Learn to create an interactive chatbot with a web interface.
+A chatbot with multiple steps: it classifies the message, then responds accordingly.
 
-## What You'll Build
+## What you'll build
 
-A chatbot that:
-- Responds to questions in real-time
-- Has a web interface
-- Maintains conversation context
+An agent that:
+1. Classifies the user's message (question, greeting, task)
+2. Generates a response based on the classification
+3. Streams status updates in real-time
 
-## Step 1: Create Agent with Web Interface
+## The steps
 
-```bash
-abi-core add agent chatbot \
-  --description "Interactive chatbot" \
-  --with-web-interface
-```
-
-This creates additional files:
-```
-agents/chatbot/
-├── agent_chatbot.py
-├── main.py
-├── web_interface.py    # ← Web interface
-└── ...
-```
-
-## Step 2: Chatbot Code
-
-Edit `agents/chatbot/agent_chatbot.py`:
+Edit `agents/chatbot/steps.py`:
 
 ```python
-from abi_core.agent.agent import AbiAgent
-from langchain_ollama import ChatOllama
-from langchain_core.prompts import ChatPromptTemplate
-import os
+from app import agent
+from config import config
+from abi_core.agent.llm_provider import invoke
 
-class ChatbotAgent(AbiAgent):
-    def __init__(self):
-        super().__init__(
-            agent_name='chatbot',
-            description='Friendly interactive chatbot'
-        )
-        self.setup_llm()
-    
-    def setup_llm(self):
-        self.llm = ChatOllama(
-            model=os.getenv('MODEL_NAME', 'qwen2.5:3b'),
-            base_url=os.getenv('OLLAMA_HOST', 'http://localhost:11434'),
-            temperature=0.7
-        )
-        
-        # System prompt
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", 
-             "You are a friendly and helpful assistant. "
-             "Respond clearly and concisely. "
-             "If you don't know something, admit it honestly."),
-            ("human", "{input}")
-        ])
-        
-        self.chain = self.prompt | self.llm
-    
-    def process(self, enriched_input):
-        query = enriched_input['query']
-        response = self.chain.invoke({"input": query})
-        
-        return {
-            'result': response.content,
-            'query': query
-        }
+
+@agent.step(name="classify")
+async def classify(text):
+    """Classify the user's intent."""
+    prompt = f"""Classify this message into one category: greeting, question, task, other.
+Message: {text}
+Reply with just the category name."""
+    result = await invoke(config.LLM_CONFIG, prompt)
+    return {"intent": result.strip().lower()}
+
+
+@agent.step(name="respond")
+async def respond(text, intent):
+    """Generate a response based on intent."""
+    prompt = f"""You are a helpful chatbot. The user's intent is: {intent}
+User message: {text}
+Respond naturally and concisely."""
+    result = await invoke(config.LLM_CONFIG, prompt)
+    return {"response": result}
 ```
 
-## Step 3: Start the Chatbot
+## The task
 
-```bash
-docker-compose up -d chatbot-agent
-```
-
-## Step 4: Test the Chatbot
-
-### Swagger Interface
-
-Open in your browser:
-```
-http://localhost:8000/docs
-```
-
-You'll see an interactive interface where you can:
-1. Expand `/stream`
-2. Click "Try it out"
-3. Enter your query
-4. See the response
-
-### With curl
-
-```bash
-curl -X POST http://localhost:8000/stream \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Hello, how are you?",
-    "context_id": "chat-001",
-    "task_id": "msg-001"
-  }'
-```
-
-### Simple Python Client
+Edit `agents/chatbot/tasks.py`:
 
 ```python
-import requests
 import json
+from app import agent
+from abi_core.agent.agent_response import AgentResponse
 
-def chat(message):
-    response = requests.post(
-        "http://localhost:8000/stream",
-        json={
-            "query": message,
-            "context_id": "chat-001",
-            "task_id": f"msg-{hash(message)}"
-        }
+
+@agent.task(name="chat", task_id="task-chat")
+async def chat(query):
+    """Classify then respond."""
+    data = json.loads(query) if isinstance(query, str) else query
+    text = data.get("text", "")
+
+    yield AgentResponse.status("Understanding your message...")
+    classification = await agent.execute_step("classify", text=text)
+
+    yield AgentResponse.status(f"Got it — this is a {classification['intent']}...")
+    response = await agent.execute_step(
+        "respond", text=text, intent=classification["intent"]
     )
-    
-    return response.json()['content']
 
-# Use the chatbot
-print("Chatbot: Hello, how can I help you?")
+    yield AgentResponse.result({
+        "intent": classification["intent"],
+        "response": response["response"],
+    })
 
-while True:
-    user_input = input("You: ")
-    if user_input.lower() in ['exit', 'quit', 'bye']:
-        break
-    
-    response = chat(user_input)
-    print(f"Chatbot: {response}")
+
+@agent.task(name="route_to_task", task_id="task-router")
+async def route_to_task(query):
+    """All requests go to chat."""
+    async for response in agent.execute_task("chat", query=query):
+        yield response
 ```
 
-## Customize the Chatbot
+## Test it
 
-### Change Personality
+```bash
+docker compose up --build -d
 
-```python
-self.prompt = ChatPromptTemplate.from_messages([
-    ("system", 
-     "You are a tech expert with a sense of humor. "
-     "Use funny analogies to explain complex concepts. "
-     "Always end with a relevant emoji."),
-    ("human", "{input}")
-])
+curl -X POST http://localhost:8002/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is machine learning?"}'
 ```
 
-### Add Quick Responses
-
-```python
-def process(self, enriched_input):
-    query = enriched_input['query'].lower()
-    
-    # Quick responses
-    quick_responses = {
-        'hello': '👋 Hello! How can I help you today?',
-        'bye': '👋 Goodbye! Have a great day.',
-        'thanks': '😊 You're welcome! I'm here to help.'
-    }
-    
-    if query in quick_responses:
-        return {
-            'result': quick_responses[query],
-            'query': query,
-            'quick_response': True
-        }
-    
-    # Normal LLM response
-    response = self.chain.invoke({"input": query})
-    
-    return {
-        'result': response.content,
-        'query': query,
-        'quick_response': False
-    }
+You'll see:
+```
+event: status → "Understanding your message..."
+event: status → "Got it — this is a question..."
+event: result → {"intent": "question", "response": "Machine learning is..."}
 ```
 
-## Next Steps
+## What's different from the first agent
 
-- [Add tools](03-agents-with-tools.md)
-- [Add memory](04-agents-with-memory.md)
+- **Two steps** instead of one — classify and respond are separate, reusable
+- **Status updates** — the user sees progress in real-time
+- **Structured output** — the result includes both intent and response
 
----
+## Next step
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+👉 [Agents with Tools](03-agents-with-tools.md)

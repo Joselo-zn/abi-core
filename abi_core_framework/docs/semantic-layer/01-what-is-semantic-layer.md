@@ -1,110 +1,83 @@
 # What is the Semantic Layer?
 
-The semantic layer is the "intelligent directory" that enables automatic agent discovery.
+A service that stores agent cards and tool cards in a vector database (Weaviate), so agents can find each other by describing what they need — not by knowing URLs.
 
-## The Problem Without Semantic Layer
-
-```python
-# You have to know exactly which agent to call
-call_agent("http://analyst:8000", "analyze data")
-call_agent("http://reporter:8001", "generate report")
-# What if URLs change?
-# What if you add new agents?
-```
-
-## The Solution: Semantic Layer
+## Without it
 
 ```python
-# Automatically finds the right agent
-agent = find_agent("I need to analyze data")
-# Returns: Analyst Agent
-
-agent = find_agent("I need to generate a report")
-# Returns: Reporter Agent
+# Hardcoded. Breaks when you add/move agents.
+response = await call("http://analyst:8001", "analyze sales")
+response = await call("http://reporter:8002", "write report")
 ```
 
-## Components
+## With it
 
-### 1. MCP Server
-Server that manages agent cards and searches.
+```python
+from abi_core.common.semantic_tools import tool_find_agent
 
-### 2. Weaviate
-Vector database for semantic search.
+# Searches by meaning. Works even if you say it differently.
+agent = await tool_find_agent.ainvoke("examine revenue data")
+# → Returns the analyst agent's card
+```
 
-### 3. Agent Cards
-Metadata for each agent.
+## What it includes
 
-## Add Semantic Layer
+| Component | What it does |
+|-----------|-------------|
+| Weaviate | Vector database — stores embeddings of agent/tool cards |
+| MCP Server | Exposes tools via Model Context Protocol (find_agent, register_agent, etc.) |
+| Embedding Mesh | Generates embeddings from card descriptions using `nomic-embed-text` |
+| Agent Cards | JSON files describing each agent's capabilities |
+| Tool Cards | JSON files describing available tools |
+
+## Add it to your project
 
 ```bash
-abi-core add semantic-layer
+abi-core create project my-app --with-semantic-layer
+```
+
+Or add to an existing project:
+
+```bash
+abi-core add service semantic-layer
 ```
 
 This creates:
+
 ```
 services/semantic_layer/
-├── layer/
-│   ├── mcp_server/        # MCP server
-│   │   └── agent_cards/   # Agent cards
-│   └── embedding_mesh/    # Embeddings
+├── embedding_mesh/     ← Embedding generation + Weaviate CRUD
+├── agent_cards/        ← Agent card JSON files (auto-indexed)
+├── tool_cards/         ← Tool card JSON files (auto-indexed)
+├── config/
+├── main.py
 ├── Dockerfile
 └── requirements.txt
 ```
 
-## Use the Semantic Layer
+## How it works at startup
 
-### Option 1: Using MCPToolkit (Recommended)
+1. Semantic Layer reads all JSON files from `agent_cards/` and `tool_cards/`
+2. Generates embeddings for each card's description + skills + tags
+3. Stores them in Weaviate collections
+4. Exposes MCP tools for search (`find_agent`, `list_agents`, `search_tool_registry`)
 
-The easiest way to interact with the semantic layer:
+## Use it from your agent
 
 ```python
-from abi_core.common.semantic_tools import MCPToolkit
+from abi_core.common.semantic_tools import tool_find_agent, tool_list_agents, MCPToolkit
 
-toolkit = MCPToolkit()
+# Find one agent
+agent = await tool_find_agent.ainvoke("write reports")
 
-# Find an agent
-agent = await toolkit.find_agent(query="agent that analyzes sales")
-
-# List all agents
-agents = await toolkit.list_agents(query="all")
+# Find multiple agents
+agents = await tool_list_agents.ainvoke("discuss and share opinions")
 
 # Call any custom MCP tool
-result = await toolkit.my_custom_tool(param="value")
+toolkit = MCPToolkit()
+result = await toolkit.store_document(content="...", metadata={...})
 ```
 
-### Option 2: Using Client Directly
+## Next step
 
-For more control:
-
-```python
-from abi_core.abi_mcp import client
-from abi_core.common.utils import get_mcp_server_config
-
-async def search(description):
-    config = get_mcp_server_config()
-    
-    async with client.init_session(
-        config.host, config.port, config.transport
-    ) as session:
-        result = await client.find_agent(session, description)
-        return result
-
-# Search
-agent = await search("agent that analyzes sales")
-```
-
-### List Agents via HTTP
-
-```bash
-curl http://localhost:10100/v1/agents
-```
-
-## Next Steps
-
-- [Agent discovery](02-agent-discovery.md)
-- [Semantic search](03-semantic-search.md)
-- [MCPToolkit - Dynamic Tool Access](05-mcp-toolkit.md) - Pythonic tool calling
-
----
-
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+👉 [Agent Discovery](02-agent-discovery.md)

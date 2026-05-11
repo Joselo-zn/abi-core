@@ -1,45 +1,33 @@
 # Agent Cards
 
-Agent cards allow agents to discover and communicate with each other.
+An agent card is a JSON file that tells the world what your agent can do and how to reach it. Other agents use it to discover and communicate with yours.
 
-## What is an Agent Card?
-
-An **agent card** is a JSON document that describes:
-- Agent name
-- What it can do
-- How to contact it
-- What tasks it supports
-
-**Analogy**: It's like a professional business card.
-
-## Create an Agent Card
-
-```bash
-abi-core add agent-card analyst \
-  --description "Analyzes sales data" \
-  --url "http://localhost:8000" \
-  --tasks "analyze_sales,generate_insights,calculate_metrics"
-```
-
-This creates:
-```
-services/semantic_layer/layer/mcp_server/agent_cards/analyst.json
-```
-
-## Agent Card Structure
+## What's in a card
 
 ```json
 {
-  "@context": ["https://..."],
+  "@context": ["https://...a2a_context.jsonld"],
   "@type": "Agent",
-  "id": "agent://analyst",
-  "name": "analyst",
-  "description": "Analyzes sales data",
-  "url": "http://localhost:8000",
+  "id": "agent://my_agent",
+  "name": "My Agent",
+  "description": "Analyzes sales data and generates insights",
+  "url": "http://my-project-my-agent:8001",
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": "True",
+    "pushNotifications": "True"
+  },
   "supportedTasks": [
     "analyze_sales",
-    "generate_insights",
-    "calculate_metrics"
+    "generate_insights"
+  ],
+  "skills": [
+    {
+      "id": "analyze_sales",
+      "name": "Analyze Sales",
+      "description": "Analyzes sales data for trends and patterns",
+      "tags": ["sales", "analysis", "data"]
+    }
   ],
   "llmConfig": {
     "provider": "ollama",
@@ -47,77 +35,66 @@ services/semantic_layer/layer/mcp_server/agent_cards/analyst.json
   },
   "auth": {
     "method": "hmac_sha256",
-    "key_id": "agent://analyst-default",
-    "shared_secret": "UNIQUE_TOKEN"
+    "key_id": "agent://my_agent-default",
+    "shared_secret": "auto-generated-secret"
   }
 }
 ```
 
-## Important Fields
+## Key fields
 
-### id
-Unique agent identifier:
-```json
-"id": "agent://analyst"
-```
+| Field | What it does |
+|-------|-------------|
+| `id` | Unique identifier (`agent://name`) |
+| `name` | Display name |
+| `description` | What the agent does (used for semantic search) |
+| `url` | Where to reach it (Docker container hostname + port) |
+| `supportedTasks` | List of tasks it can handle |
+| `skills` | Detailed skill descriptions with tags (used for discovery) |
+| `auth` | HMAC credentials for secure A2A communication |
 
-### supportedTasks
-List of tasks the agent can perform:
-```json
-"supportedTasks": [
-  "analyze_sales",
-  "generate_insights"
-]
-```
+## How cards are created
 
-### url
-Address where the agent can be contacted:
-```json
-"url": "http://localhost:8000"
-```
-
-### auth
-Authentication credentials:
-```json
-"auth": {
-  "method": "hmac_sha256",
-  "shared_secret": "SECURE_TOKEN"
-}
-```
-
-## Using Agent Cards
-
-### Search for an Agent
-
-```python
-from abi_core.abi_mcp import client
-from abi_core.common.utils import get_mcp_server_config
-
-async def find_agent(task):
-    config = get_mcp_server_config()
-    
-    async with client.init_session(
-        config.host, config.port, config.transport
-    ) as session:
-        result = await client.find_agent(session, task)
-        return result
-
-# Search for agent that can analyze sales
-agent = await find_agent("analyze sales data")
-print(agent)  # Returns: analyst
-```
-
-### List All Agents
+The CLI generates them automatically when you add an agent:
 
 ```bash
-curl http://localhost:10100/v1/agents
+abi-core add agent analyst --description "Analyzes sales data"
+# → Creates agents/analyst/agent_cards/analyst_agent.json
 ```
 
-## Next Steps
+It prompts you for tasks/skills and generates the full card with auth credentials.
 
-- [Agent communication](03-agent-communication.md)
-- [Your first multi-agent system](04-first-multi-agent-system.md)
+## How discovery works
 
----
+Agent cards are stored in the Semantic Layer (Weaviate). When an agent needs to find another:
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+```python
+from abi_core.common.semantic_tools import tool_find_agent, tool_list_agents
+
+# Find one agent by capability
+agent_card = await tool_find_agent.ainvoke("analyze sales data")
+# Returns an AgentCard object with url, name, capabilities
+
+# Find multiple agents
+agents = await tool_list_agents.ainvoke("discuss topics and share opinions")
+# Returns a list of AgentCard objects
+```
+
+The search is semantic — it matches by meaning, not exact words. "analyze revenue" would find an agent described as "analyzes sales data".
+
+## Where cards live
+
+```
+agents/my_agent/
+  └── agent_cards/
+      └── my_agent_agent.json    ← The card
+
+services/semantic_layer/
+  └── agent_cards/               ← All cards copied here for indexing
+```
+
+At startup, the Semantic Layer reads all cards from its `agent_cards/` directory, generates embeddings, and stores them in Weaviate for semantic search.
+
+## Next step
+
+👉 [Agent Communication](03-agent-communication.md)

@@ -1,58 +1,85 @@
 # Agent Discovery
 
-Learn how the semantic layer finds agents automatically.
+How agents find each other through the Semantic Layer.
 
-## How It Works
+## The tools
 
-1. Agents register with agent cards
-2. Semantic layer indexes the cards
-3. Searches find agents by capability
+ABI-Core provides LangChain tools for discovery. Import them from `abi_core.common.semantic_tools`:
 
-## Search for Agents
+| Tool | What it does |
+|------|-------------|
+| `tool_find_agent` | Find one agent matching a description |
+| `tool_list_agents` | Find multiple agents matching a description |
+| `tool_recommend_agents` | Recommend agents for a complex task (with scores) |
+| `tool_check_agent_capability` | Check if an agent supports specific tasks |
+| `tool_check_agent_health` | Ping an agent to see if it's alive |
 
-### Using MCPToolkit (Recommended)
-
-```python
-from abi_core.common.semantic_tools import MCPToolkit
-
-toolkit = MCPToolkit()
-
-# Find single agent
-agent = await toolkit.find_agent(query="analyze sales data")
-
-# Recommend multiple agents
-agents = await toolkit.recommend_agents(
-    task_description="process transactions",
-    max_agents=3
-)
-
-# Check agent capabilities
-capabilities = await toolkit.check_agent_capability(
-    agent_name="analyst",
-    required_tasks=["analyze", "visualize"]
-)
-
-# Check agent health
-health = await toolkit.check_agent_health(agent_name="analyst")
-```
-
-### Using Client Directly
+## Find one agent
 
 ```python
-from abi_core.abi_mcp import client
+from abi_core.common.semantic_tools import tool_find_agent
 
-# Search by task
-agent = await client.find_agent(session, "analyze sales data")
+agent_card = await tool_find_agent.ainvoke("analyze financial data")
 
-# Search multiple
-agents = await client.recommend_agents(session, "process transactions", max_agents=3)
+if agent_card:
+    print(agent_card.name)  # "analyst"
+    print(agent_card.url)   # "http://my-project-analyst:8001"
 ```
 
-## Next Steps
+The search is semantic — "examine revenue" matches an agent described as "analyzes sales data".
 
-- [Semantic search](03-semantic-search.md)
-- [MCPToolkit - Dynamic Tool Access](05-mcp-toolkit.md)
+## Find multiple agents
 
----
+```python
+from abi_core.common.semantic_tools import tool_list_agents
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+agents = await tool_list_agents.ainvoke("share opinions and discuss topics")
+# Returns a list of AgentCard objects
+
+for agent in agents:
+    print(f"{agent.name} at {agent.url}")
+```
+
+## Check if an agent is alive
+
+```python
+from abi_core.common.semantic_tools import tool_check_agent_health
+
+health = await tool_check_agent_health.ainvoke("analyst")
+# {"agent": "analyst", "status": "healthy", "response_time_ms": 45}
+```
+
+## How matching works
+
+The Semantic Layer generates embeddings from:
+- Agent `description`
+- `supportedTasks` list
+- `skills[].description` and `skills[].tags`
+
+When you search, your query is also embedded and compared by cosine similarity. The closest match wins.
+
+This means:
+- "analyze sales" → finds "revenue analysis agent"
+- "write a report" → finds "document generation agent"
+- "translate to Spanish" → finds "multilingual agent"
+
+## Register a new agent at runtime
+
+```python
+from abi_core.common.semantic_tools import tool_register_agent
+
+await tool_register_agent.ainvoke({
+    "id": "agent://new_agent",
+    "name": "new_agent",
+    "description": "Does something new",
+    "url": "http://new-agent:8005",
+    "supportedTasks": ["new_task"],
+    "auth": {"method": "hmac_sha256", "key_id": "...", "shared_secret": "..."}
+})
+```
+
+This is how the Builder agent registers ephemeral agents dynamically.
+
+## Next step
+
+👉 [Semantic Search](03-semantic-search.md)

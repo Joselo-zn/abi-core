@@ -1,338 +1,116 @@
 # Your First Agent
 
-You've already created your first project. Now you'll learn to create and customize AI agents from scratch.
+You have a project. Now let's write an actual agent with steps, a task, and an LLM call.
 
-## What is an Agent?
-
-An **agent** is a program that:
-- Understands natural language
-- Generates intelligent responses
-- Can use tools
-- Learns from context
-
-## Create a Basic Agent
-
-### Step 1: Create the Agent
+## Create the agent
 
 ```bash
-abi-core add agent my-agent --description "My custom agent"
+abi-core add agent greeter \
+  --description "Greets users and answers questions" \
+  --with-web-interface
 ```
 
-This creates:
+Tasks/skills when prompted:
 ```
-agents/my-agent/
-├── agent_my_agent.py    # Main code
-├── main.py               # Entry point
-├── models.py             # Data models
-├── Dockerfile
-└── requirements.txt
+greet_user
 ```
 
-### Step 2: Understand the Code
+## Understand the structure
 
-Open `agents/my-agent/agent_my_agent.py`:
+```
+agents/greeter/
+├── app.py              ← AbiCore instance (import this everywhere)
+├── agent_greeter.py    ← Agent class (identity + LLM config)
+├── steps.py            ← Your step functions
+├── tasks.py            ← Your task functions
+├── prompts.py          ← All prompts live here
+├── config/config.py    ← LLM provider, ports, env vars
+├── web_interface.py    ← HTTP endpoints
+├── main.py             ← Entry point: agent.run()
+└── Dockerfile
+```
+
+## Write a step
+
+A step is a function that does one thing. Edit `agents/greeter/steps.py`:
 
 ```python
-from abi_core.agent import AbiAgent
-from abi_core.common import prompts
+from app import agent
 from config import config
+from abi_core.agent.llm_provider import invoke
+from prompts import GREET_PROMPT
 
 
-class MyAgentAgent(AbiAgent):
-    """My custom agent"""
-
-    def __init__(self):
-        super().__init__(
-            agent_name=config.AGENT_NAME,
-            description=config.AGENT_DESCRIPTION,
-            llm_config=config.LLM_CONFIG,
-            tools=[],  # Add your tools here
-            system_prompt=prompts.WORKER_PROMPT,
-        )
-
-    # stream() is inherited from AbiAgent — override only if needed:
-    #
-    # async def stream(self, query, context_id, task_id):
-    #     yield AgentResponse.success("custom response")
+@agent.step(name="greet")
+async def greet(text):
+    """Generate a greeting response."""
+    result = await invoke(config.LLM_CONFIG, GREET_PROMPT.format(text=text))
+    return {"response": result}
 ```
 
-And `agents/my-agent/main.py`:
+## Write the prompt
+
+Edit `agents/greeter/prompts.py`:
 
 ```python
-from agent_my_agent import MyAgentAgent
-from abi_core.agent import AbiCore
+GREET_PROMPT = """You are a friendly assistant. The user said:
 
-agent = AbiCore()
-agent.run(MyAgentAgent())
+{text}
+
+Respond warmly and helpfully. Keep it short.
+"""
 ```
 
-`AbiCore()` auto-imports `config` and `AGENT_CARD` from the local `config/` package. The `agent.run()` call starts the A2A server.
+## Write a task
 
-## Customize Your Agent
-
-### Change Temperature
-
-Temperature controls creativity:
+A task orchestrates steps and streams responses. Edit `agents/greeter/tasks.py`:
 
 ```python
-def setup_llm(self):
-    self.llm = ChatOllama(
-        model='qwen2.5:3b',
-        base_url=ollama_host,
-        temperature=0.1  # More precise and deterministic
-        # temperature=0.9  # More creative and varied
-    )
+import json
+from app import agent
+from abi_core.agent.agent_response import AgentResponse
+
+
+@agent.task(name="greet_user", task_id="task-greet")
+async def greet_user(query):
+    """Greet the user."""
+    data = json.loads(query) if isinstance(query, str) else query
+    text = data.get("text", "")
+
+    yield AgentResponse.status("Thinking...")
+    result = await agent.execute_step("greet", text=text)
+    yield AgentResponse.result(result)
 ```
 
-**Examples**:
-- `temperature=0.1`: For precise technical responses
-- `temperature=0.5`: Balance between precision and creativity
-- `temperature=0.9`: For creative content
-
-### Add a System Prompt
-
-```python
-def setup_llm(self):
-    from langchain_core.prompts import ChatPromptTemplate
-    
-    self.llm = ChatOllama(
-        model='qwen2.5:3b',
-        base_url=ollama_host,
-        temperature=0.7
-    )
-    
-    # Define agent behavior
-    self.prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a Python expert assistant. "
-                   "Always respond with code examples."),
-        ("human", "{input}")
-    ])
-    
-    self.chain = self.prompt | self.llm
-
-def process(self, enriched_input):
-    query = enriched_input['query']
-    
-    # Use chain with prompt
-    response = self.chain.invoke({"input": query})
-    
-    return {
-        'result': response.content,
-        'query': query
-    }
-```
-
-### Add Input Validation
-
-```python
-def process(self, enriched_input):
-    query = enriched_input['query']
-    
-    # Validate input
-    if not query or len(query) < 3:
-        return {
-            'result': 'Please provide a more specific query.',
-            'query': query,
-            'error': 'Query too short'
-        }
-    
-    if len(query) > 1000:
-        return {
-            'result': 'Query is too long. Maximum 1000 characters.',
-            'query': query,
-            'error': 'Query too long'
-        }
-    
-    # Process normally
-    response = self.llm.invoke(query)
-    
-    return {
-        'result': response.content,
-        'query': query
-    }
-```
-
-## Test Your Agent
-
-### Start the Agent
+## Run it
 
 ```bash
-docker-compose up -d my-agent-agent
+docker compose up --build -d
 ```
 
-### Test with curl
+## Talk to it
 
 ```bash
-curl -X POST http://localhost:8000/stream \
+curl -X POST http://localhost:8002/stream \
   -H "Content-Type: application/json" \
-  -d '{
-    "query": "What is Python?",
-    "context_id": "test-001",
-    "task_id": "task-001"
-  }'
+  -d '{"query": "Hey there!"}'
 ```
 
-### Test with Python
+## What happened
 
-```python
-import requests
+1. The web interface received your HTTP request
+2. It wrapped your text into the JSON contract: `{"route": "user_request", "text": "Hey there!"}`
+3. The task `greet_user` ran
+4. It called `agent.execute_step("greet")` which invoked the LLM
+5. The response streamed back as SSE events
 
-def test_agent(query):
-    response = requests.post(
-        "http://localhost:8000/stream",
-        json={
-            "query": query,
-            "context_id": "test-001",
-            "task_id": "task-001"
-        }
-    )
-    
-    result = response.json()
-    print(f"Question: {query}")
-    print(f"Answer: {result['content']}")
-    print("-" * 50)
+## Key rules
 
-# Test multiple queries
-test_agent("What is Python?")
-test_agent("Give me a function example")
-test_agent("How to use a dictionary?")
-```
+- Steps are pure functions. They receive data, call `invoke()`, return a dict.
+- Tasks orchestrate steps. They `yield` AgentResponse objects for streaming.
+- Prompts go in `prompts.py`. Never inline.
+- Config goes in `config/config.py`. Never hardcode URLs or model names.
 
-## Specialized Agent Examples
+## Next step
 
-### Math Agent
-
-```python
-class MathAgent(AbiAgent):
-    def __init__(self):
-        super().__init__(
-            agent_name='math-agent',
-            description='Solves math problems'
-        )
-        self.setup_llm()
-    
-    def setup_llm(self):
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_ollama import ChatOllama
-        
-        self.llm = ChatOllama(
-            model='qwen2.5:3b',
-            temperature=0.1  # Mathematical precision
-        )
-        
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", 
-             "You are a math expert. "
-             "Explain step by step how to solve each problem. "
-             "Show all calculations."),
-            ("human", "{input}")
-        ])
-        
-        self.chain = self.prompt | self.llm
-```
-
-### Code Agent
-
-```python
-class CodeAgent(AbiAgent):
-    def __init__(self):
-        super().__init__(
-            agent_name='code-agent',
-            description='Generates and explains code'
-        )
-        self.setup_llm()
-    
-    def setup_llm(self):
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_ollama import ChatOllama
-        
-        self.llm = ChatOllama(
-            model='qwen2.5:3b',
-            temperature=0.2
-        )
-        
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system",
-             "You are an expert programmer. "
-             "Generate clean, well-documented code following best practices. "
-             "Include explanatory comments. "
-             "If there are errors, explain how to fix them."),
-            ("human", "{input}")
-        ])
-        
-        self.chain = self.prompt | self.llm
-```
-
-## Debugging
-
-### View Logs in Real-Time
-
-```bash
-docker-compose logs -f my-agent-agent
-```
-
-### Add Debug Points
-
-```python
-def process(self, enriched_input):
-    import json
-    
-    # Log input
-    abi_logging(f"INPUT: {json.dumps(enriched_input, indent=2)}")
-    
-    query = enriched_input['query']
-    
-    # Log before LLM
-    abi_logging(f"Sending to LLM: {query}")
-    
-    response = self.llm.invoke(query)
-    
-    # Log response
-    abi_logging(f"LLM Response: {response.content}")
-    
-    result = {
-        'result': response.content,
-        'query': query
-    }
-    
-    # Log output
-    abi_logging(f"OUTPUT: {json.dumps(result, indent=2)}")
-    
-    return result
-```
-
-### Test Locally (Without Docker)
-
-```python
-# test_local.py
-from agents.my_agent.agent_my_agent import MyAgentAgent
-import os
-
-# Configure environment variables
-os.environ['MODEL_NAME'] = 'qwen2.5:3b'
-os.environ['OLLAMA_HOST'] = 'http://localhost:11434'
-
-# Create agent
-agent = MyAgentAgent()
-
-# Test
-result = agent.handle_input("Hello, how are you?")
-print(result)
-```
-
-Run:
-```bash
-python test_local.py
-```
-
-## Next Steps
-
-Now that you know how to create basic agents:
-
-1. [Create a chatbot with interface](02-simple-chatbot.md)
-2. [Add tools to your agent](03-agents-with-tools.md)
-3. [Add conversational memory](04-agents-with-memory.md)
-
----
-
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+👉 [Simple Chatbot](02-simple-chatbot.md)

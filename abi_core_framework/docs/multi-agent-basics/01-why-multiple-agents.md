@@ -1,123 +1,60 @@
 # Why Multiple Agents?
 
-Learn when and why to use multiple agents instead of one.
+One agent that does everything gives generic answers. Multiple specialized agents give expert answers.
 
-## The Problem with One Agent
+## The problem
 
+```
 One agent doing everything:
-```
-Universal Agent
-├─ Analyzes data
-├─ Writes code
-├─ Translates languages
-├─ Answers questions
-├─ Generates reports
-└─ ... (does everything poorly)
+  "Analyze sales" → mediocre
+  "Write a report" → mediocre
+  "Translate to Spanish" → mediocre
 ```
 
-**Problems**:
-- ❌ Not expert in anything
-- ❌ Generic responses
-- ❌ Hard to maintain
-- ❌ Not scalable
-
-## The Solution: Specialized Agents
-
-Multiple agents, each expert:
-```
-Multi-Agent System
-├─ Analyst Agent → Expert in analysis
-├─ Programmer Agent → Expert in code
-├─ Translator Agent → Expert in languages
-└─ Reporter Agent → Expert in reports
-```
-
-**Advantages**:
-- ✅ Each agent is expert
-- ✅ Specialized responses
-- ✅ Easy to maintain
-- ✅ Scalable
-
-## When to Use Multiple Agents
-
-### Case 1: Complex Tasks
-
-**Task**: "Analyze last month's sales and generate a PDF report"
-
-**With one agent**: Does everything poorly
-**With multiple agents**:
-1. Analyst Agent → Analyzes sales
-2. Reporter Agent → Generates PDF
-
-### Case 2: Different Domains
-
-**Project**: E-commerce system
-
-**Agents needed**:
-- Product Agent (catalog)
-- Sales Agent (transactions)
-- Support Agent (customer help)
-- Inventory Agent (stock)
-
-### Case 3: Scalability
-
-**Problem**: One agent can't handle the load
-
-**Solution**: Multiple instances of the same agent
-```
-User 1 → Agent A
-User 2 → Agent B
-User 3 → Agent C
-```
-
-## Multi-Agent Architecture
+## The solution
 
 ```
-User
-  ↓
-Orchestrator (coordinates)
-  ↓
-├─ Agent 1 (specialist)
-├─ Agent 2 (specialist)
-└─ Agent 3 (specialist)
-  ↓
-Combined result
+Specialized agents:
+  Analyst → expert at analysis
+  Writer → expert at reports
+  Translator → expert at languages
 ```
 
-## Practical Example
+Each agent has its own system prompt, its own tools, and can even use a different LLM model. The analyst might use a reasoning model while the writer uses a creative one.
 
-### Financial Analysis System
+## When to use multiple agents
+
+**Different skills needed** — An analysis task and a writing task need different prompts and tools.
+
+**Different LLMs** — One agent uses Ollama locally, another uses GPT-4o for complex reasoning.
+
+**Independent scaling** — The support agent gets 100x more traffic than the report agent. Scale them independently.
+
+**Team collaboration** — Agents discuss a topic, each contributing their expertise, then synthesize a conclusion.
+
+## How it works in ABI-Core
 
 ```bash
-# Create project
-abi-core create project finance --with-semantic-layer
+# Create project with semantic discovery
+abi-core create project my-system --with-semantic-layer
 
-# Agent 1: Data collector
-abi-core add agent collector \
-  --description "Collects financial data"
-
-# Agent 2: Analyst
-abi-core add agent analyst \
-  --description "Analyzes financial data"
-
-# Agent 3: Reporter
-abi-core add agent reporter \
-  --description "Generates reports"
+# Add specialized agents
+abi-core add agent analyst --description "Analyzes data and trends"
+abi-core add agent writer --description "Writes reports and summaries"
 ```
 
-**Flow**:
-1. User: "Analyze Apple stock"
-2. Collector → Gets Apple data
-3. Analyst → Analyzes the data
-4. Reporter → Generates report
-5. User receives complete report
+Each agent gets:
+- Its own container (Docker)
+- Its own agent card (registered in Semantic Layer)
+- Its own A2A endpoint (other agents can call it)
 
-## Next Steps
+The Semantic Layer lets agents find each other by capability:
 
-- [Agent Cards](02-agent-cards.md)
-- [Agent communication](03-agent-communication.md)
-- [Your first multi-agent system](04-first-multi-agent-system.md)
+```python
+# "Who can write reports?" → finds the writer agent
+agent = await tool_find_agent("write reports")
+```
 
----
+## Next step
 
-**Created by [José Luis Martínez](https://github.com/Joselo-zn)** | jl.mrtz@gmail.com
+👉 [Agent Cards](02-agent-cards.md)
