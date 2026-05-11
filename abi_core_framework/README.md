@@ -5,9 +5,9 @@
 [![License](https://img.shields.io/pypi/l/abi-core-ai.svg)](https://github.com/Joselo-zn/abi-core-ai/blob/main/LICENSE)
 [![Documentation](https://readthedocs.org/projects/abi-core/badge/?version=latest)](https://abi-core.readthedocs.io/en/latest/?badge=latest)
 
-**Build AI agents with deterministic DAG execution, semantic discovery, and governed autonomy.**
+**Build AI agents that work together, find each other, and follow the rules.**
 
-ABI-Core is a Python framework for creating agents that run as containerized services with structured execution graphs, inter-agent communication, and policy-driven security. One `pip install`, one CLI command, and you have a running agent system.
+ABI-Core is a Python framework for creating AI agents. You write the logic as simple functions, ABI packages them into services, connects them to each other, and makes sure they play by the rules. One `pip install`, one CLI command, and you have a running agent system.
 
 ```bash
 pip install abi-core-ai
@@ -15,13 +15,13 @@ abi-core create swarm --name my-system
 abi-core run
 ```
 
-> ⚠️ **Beta** — Pipeline is functional end-to-end. APIs may change between minor versions.
+> ⚠️ **Beta** — Pipeline works end-to-end. APIs may change between minor versions.
 
 ---
 
 ## Create an Agent in 3 Files
 
-### 1. Define the DAG (`app.py`)
+### 1. Define the steps (`app.py`)
 
 ```python
 from abi_core.agent import AbiCore
@@ -45,7 +45,7 @@ async def respond(result: dict) -> dict:
 agent.run(MyAgent())
 ```
 
-### 2. Define the Agent Class (`my_agent.py`)
+### 2. Define the agent (`my_agent.py`)
 
 ```python
 from abi_core.agent import AbiAgent
@@ -54,81 +54,78 @@ class MyAgent(AbiAgent):
     def __init__(self):
         super().__init__(
             agent_name="my-agent",
-            description="Processes user queries with structured reasoning",
+            description="Processes user queries",
             llm_config={"provider": "ollama", "model": "qwen3:8b", "temperature": 0.3},
-            system_prompt="You are a helpful assistant that...",
+            system_prompt="You are a helpful assistant.",
         )
 ```
 
-### 3. Configure Identity (`config/config.py`)
+### 3. Configure it (`config/config.py`)
 
 ```python
 import os
 
 AGENT_NAME = "my-agent"
-DESCRIPTION = "Processes user queries with structured reasoning"
+DESCRIPTION = "Processes user queries"
 LLM_CONFIG = {"provider": "ollama", "model": "qwen3:8b", "temperature": 0.3}
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 ```
 
-That's it. `abi-core run` containerizes and starts your agent with A2A protocol, health checks, and semantic registration.
+That's it. `abi-core run` packages and starts your agent with messaging, health checks, and automatic registration.
 
 ---
 
 ## Key Concepts
 
-### Decorator API
+### Decorators
 
-| Decorator | Purpose |
-|-----------|---------|
-| `@agent.step(name, depends_on, input_map)` | Deterministic DAG node — compiled at init, executed per request |
-| `@agent.tool(name)` | DAG node + LangChain tool — LLM can invoke on demand |
-| `@agent.mcp_tool(name)` | Remote tool via MCP protocol with HMAC auth |
-| `@agent.task(name, tools)` | Programmatic orchestrator — manual step execution with branching |
+| Decorator | What it does |
+|-----------|-------------|
+| `@agent.step(name, depends_on)` | A function that runs in a fixed order you define |
+| `@agent.tool(name)` | A function the AI can decide to call |
+| `@agent.mcp_tool(name)` | A remote tool on the Semantic Layer |
+| `@agent.task(name, task_id)` | Runs steps in sequence with progress updates |
 
-### DAG Execution
+### Steps run in order
 
-Steps registered with `@agent.step()` compile into a `ToolExecutionGraph` (LangGraph). Nodes at the same dependency level run in parallel. The LLM never decides execution order — the graph does.
+Steps run in the order you define with `depends_on`. Steps at the same level run in parallel. The AI never decides execution order — your code does.
 
 ```python
-# These two run in parallel (no dependencies between them)
+# These two run at the same time (no dependency between them)
 @agent.step(name="classify")
 async def classify(raw_input): ...
 
 @agent.step(name="validate")
 async def validate(raw_input): ...
 
-# This waits for both
+# This waits for both to finish
 @agent.step(name="decide", depends_on=["classify", "validate"],
             input_map={"cls": "$classify.result", "valid": "$validate.result"})
 async def decide(cls, valid): ...
 ```
 
-### invoke() — Unified LLM Calls
+### invoke() — Call any AI model
 
 ```python
 from abi_core.agent import invoke
 
-# Simple LLM call
+# Simple call
 result = await invoke(config.LLM_CONFIG, "Classify this query...")
 
 # With conversation memory
 result = await invoke(config.LLM_CONFIG, "Follow up...", thread_id=session_id)
 
-# With tools
+# With tools the AI can use
 result = await invoke(config.LLM_CONFIG, "Find...", tools=[search_tool, write_tool])
 ```
 
-### Inter-Agent Communication
-
-Agents talk to each other via A2A protocol using `AgentInteractionFlow`:
+### Agents talk to each other
 
 ```python
-from abi_core.common.workflow import AgentInteractionFlow
+from abi_core.common.abi_a2a import agent_connection
 
-flow = AgentInteractionFlow(source_agent="my-agent", target_agent="planner", host=planner_url)
-async for event in flow.stream(query="Decompose this task"):
-    process(event)
+async for chunk in agent_connection(my_card, target_card, payload):
+    process(chunk)
 ```
 
 ---
@@ -136,17 +133,17 @@ async for event in flow.stream(query="Decompose this task"):
 ## CLI
 
 ```bash
-# Scaffold
+# Create
 abi-core create swarm --name <name>          # Full system: agents + services + compose
 abi-core create project <name>               # Project only
 abi-core add agent <name> --description "…"  # Add agent to existing project
-abi-core add semantic-layer                  # Add Weaviate semantic discovery
-abi-core add service guardian-native         # Add OPA security gate
+abi-core add semantic-layer                  # Add agent discovery service
+abi-core add service guardian-native         # Add security gate
 
 # Run
-abi-core run                # Detached (status table)
+abi-core run                # Start everything
 abi-core run --logs         # With container output
-abi-core run --build        # Rebuild containers first
+abi-core run --build        # Rebuild first
 ```
 
 ---
@@ -155,21 +152,23 @@ abi-core run --build        # Rebuild containers first
 
 When you `create swarm`, you get these out of the box:
 
-| Agent | Role |
-|-------|------|
-| **Orchestrator** | Entry point. Triage + Guardian gate + routes to Planner |
-| **Planner** | Decomposes queries into structured task plans |
-| **Builder** | Spawns ephemeral containers from task specs |
-| **Zombie** | Ephemeral executor — runs task, uploads artifacts, self-destructs |
+| Agent | What it does |
+|-------|-------------|
+| **Orchestrator** | Receives requests, checks security, routes to Planner |
+| **Planner** | Breaks complex requests into smaller tasks |
+| **Builder** | Creates temporary agents on-demand for specific tasks |
+| **Zombie** | Temporary agent — does the work, delivers results, cleans up |
 
-The pipeline: User → Orchestrator → Planner → Builder → Zombie → Artifact → Done.
+The flow: User → Orchestrator → Planner → Builder → Zombie → Result → Done.
 
 ---
 
-## Multi-Provider LLM
+## Any AI Model
+
+Switch providers by changing one config dict. Same code, any model:
 
 ```python
-# Ollama (local, default)
+# Local (Ollama)
 {"provider": "ollama", "model": "qwen3:8b"}
 
 # OpenAI
@@ -187,13 +186,13 @@ The pipeline: User → Orchestrator → Planner → Builder → Zombie → Artif
 
 ---
 
-## Security & Governance
+## Security
 
-- **Guardian Agent** — validates every request against OPA policies before execution
-- **HMAC Authentication** — inter-agent calls are signed and verified
-- **Semantic Access Validation** — agents can only call tools within their `access_scope`
-- **Audit Trail** — all decisions logged with risk scores
-- **Human Veto** — Plan Confirmation allows blocking execution before it starts
+- **Guardian** — checks every request against rules before it runs
+- **Signed messages** — agent-to-agent calls are signed and verified
+- **Access control** — agents can only use tools they're allowed to
+- **Audit trail** — every decision is logged with a risk score
+- **Human veto** — you can block execution before it starts
 
 ---
 
@@ -202,13 +201,13 @@ The pipeline: User → Orchestrator → Planner → Builder → Zombie → Artif
 ```
 my-swarm/
 ├── agents/
-│   ├── orchestrator/     # Triage + routing
-│   ├── planner/          # Task decomposition
-│   ├── builder/          # Container spawning
+│   ├── orchestrator/     # Receives and routes requests
+│   ├── planner/          # Breaks tasks into pieces
+│   ├── builder/          # Creates temporary agents
 │   └── my-agent/         # Your custom agents
 ├── services/
-│   ├── semantic_layer/   # Weaviate + MCP tools
-│   └── guardian/         # OPA policies
+│   ├── semantic_layer/   # Agent discovery + search
+│   └── guardian/         # Security rules
 ├── compose.yaml
 └── .abi/runtime.yaml
 ```
