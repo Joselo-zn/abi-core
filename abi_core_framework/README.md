@@ -11,7 +11,7 @@ ABI-Core is a Python framework for creating AI agents. You write the logic as si
 
 ```bash
 pip install abi-core-ai
-abi-core create swarm --name my-system
+abi-core create swarm --name my-system  # beta
 abi-core run
 ```
 
@@ -134,7 +134,7 @@ async for chunk in agent_connection(my_card, target_card, payload):
 
 ```bash
 # Create
-abi-core create swarm --name <name>          # Full system: agents + services + compose
+abi-core create swarm --name <name>          # Full system: agents + services + compose (beta)
 abi-core create project <name>               # Project only
 abi-core add agent <name> --description "…"  # Add agent to existing project
 abi-core add semantic-layer                  # Add agent discovery service
