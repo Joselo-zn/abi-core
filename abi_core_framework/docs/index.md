@@ -94,6 +94,7 @@ production/01-model-serving
 production/02-monitoring-logs
 production/03-troubleshooting
 production/04-deployment
+production/05-artifact-store
 ```
 
 ```{toctree}
