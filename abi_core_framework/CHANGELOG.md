@@ -95,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Version Synchronization**: Updated all version references to 1.5.8 for next PyPI release
-- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.10.4`
+- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.11.5`
 - **Documentation**: Updated version references across all documentation files to 1.5.8
 
 ## [1.5.7] - 2024-12-20
@@ -122,7 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation Version**: Updated Sphinx configuration to reflect current version
 
 ### Changed
-- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.10.4`
+- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.11.5`
 - **Documentation**: Updated version references across all documentation files
 
 ## [1.4.0] - 2024-12-16

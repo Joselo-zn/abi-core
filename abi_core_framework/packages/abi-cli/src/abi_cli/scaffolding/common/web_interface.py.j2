@@ -214,7 +214,8 @@ class AgentWebInterface:
                         context_id=context_id, 
                         task_id=task_id
                     ):
-                        yield_chunk_data(chunk)
+                        async for sse_bytes in yield_chunk_data(chunk):
+                            yield sse_bytes
                     
                     # 3) Normal completion
                     completion_data = {
