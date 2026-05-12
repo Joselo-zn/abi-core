@@ -92,13 +92,7 @@ If the Planner needs more info, it returns `{"status": "needs_clarification", "c
 abi-core create swarm --name my-system
 ```
 
-Or add to an existing project:
-
-```bash
-abi-core add abi-swarm
-```
-
-This adds the Orchestrator, Planner, and Builder agents with their DAG pipelines pre-configured.
+This creates a complete project with Orchestrator, Planner, Builder, Semantic Layer, Guardian, and all infrastructure ready to run.
 
 ## Next step
 

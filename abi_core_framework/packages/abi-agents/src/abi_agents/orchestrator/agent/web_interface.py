@@ -26,8 +26,8 @@ class OrchestratorWebinterface:
                     async for chunk in self.orchestrator_agent.stream(
                         query=query, context_id=context_id, task_id=task_id
                     ):
-                    
-                        yield yield_chunk_data(chunk)
+                        async for sse_bytes in yield_chunk_data(chunk):
+                            yield sse_bytes
 
                     yield b"event: done\ndata: {}\n\n"
                 except asyncio.CancelledError:

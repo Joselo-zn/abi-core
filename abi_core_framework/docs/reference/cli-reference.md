@@ -66,10 +66,6 @@ abi-core add service <type>
 
 Types: `semantic-layer`, `guardian-native`
 
-### `abi-core add abi-swarm`
-
-Adds Orchestrator + Planner + Builder to an existing project.
-
 ---
 
 ## Run
