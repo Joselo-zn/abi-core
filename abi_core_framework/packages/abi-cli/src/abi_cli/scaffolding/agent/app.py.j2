@@ -1,0 +1,14 @@
+"""{{ agent_display_name }} — AbiCore instance.
+
+This file creates the AbiCore app instance that tools.py, steps.py,
+and tasks.py import to register their decorators.
+"""
+
+from {{ agent_file_name }} import {{ agent_class_name }}
+{% if with_web_interface %}from web_interface import AgentWebInterface
+{% endif %}from abi_core.agent import AbiCore
+
+agent = AbiCore(
+{% if with_web_interface %}    web_interface_cls=AgentWebInterface,
+    interface_name="{{ agent_display_name }} Web Interface",
+{% endif %})

@@ -1,0 +1,18 @@
+"""{{ agent_display_name }} — Tools.
+
+Tools are functions exposed as LangChain tools that the LLM can invoke.
+They are also DAG nodes like steps.
+
+Register tools here with @agent.tool().
+"""
+
+from app import agent
+
+
+# Example:
+#
+# @agent.tool(name="search_database")
+# async def search_database(query: str):
+#     """Search the database for relevant information."""
+#     # Your implementation here
+#     return {"results": []}

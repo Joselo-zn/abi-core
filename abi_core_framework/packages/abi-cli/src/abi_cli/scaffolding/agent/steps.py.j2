@@ -1,0 +1,42 @@
+"""{{ agent_display_name }} — Steps.
+
+Steps are atomic DAG nodes. Deterministic, compiled at agent init.
+Each step has declared inputs (input_map) and dependencies (depends_on).
+
+Register steps here with @agent.step().
+"""
+
+from app import agent
+
+{% if tasks %}
+{% for task in tasks %}
+
+@agent.step(name="{{ task }}_step", input_map={"query": "$input.query"})
+async def {{ task }}_step(query):
+    """TODO: Implement the {{ task }} step logic.
+
+    Args:
+        query: Input query from the request.
+
+    Returns:
+        dict with the step output.
+    """
+    # TODO: Add your implementation here
+    return {"result": None}
+{% endfor %}
+{% else %}
+# Example:
+#
+# @agent.step(name="gather_context", input_map={"query": "$input.query"})
+# async def gather_context(query):
+#     """Fetch relevant context for the query."""
+#     return {"context": f"Context for: {query}"}
+#
+# @agent.step(
+#     name="process",
+#     depends_on=["gather_context"],
+#     input_map={"context": "$gather_context.context", "query": "$input.query"},
+# )
+# async def process(context, query):
+#     return {"result": f"Processed {query} with {context}"}
+{% endif %}

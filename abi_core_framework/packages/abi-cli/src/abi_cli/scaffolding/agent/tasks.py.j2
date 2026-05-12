@@ -1,0 +1,43 @@
+"""{{ agent_display_name }} — Tasks.
+
+Tasks are the orchestration layer. They compose steps programmatically
+using agent.execute_step() and agent.execute_task().
+
+Use asyncio.gather() for parallel execution.
+Yield AgentResponse objects for streaming status to the client.
+
+Register tasks here with @agent.task().
+"""
+
+from app import agent
+from abi_core.agent.agent_response import AgentResponse
+
+{% if tasks %}
+{% for task in tasks %}
+
+@agent.task(name="{{ task }}", task_id="task-{{ task | replace('_', '-') }}")
+async def {{ task }}(query):
+    """{{ task | replace('_', ' ') | title }} — orchestrates the {{ task }}_step.
+
+    Extend this task to:
+    - Call multiple steps in sequence or parallel
+    - Add branching logic
+    - Stream status updates to the client
+    - Call other tasks with agent.execute_task()
+    """
+    yield AgentResponse.status("Processing {{ task | replace('_', ' ') }}...")
+
+    result = await agent.execute_step("{{ task }}_step", query=query)
+
+    yield AgentResponse.result(result)
+{% endfor %}
+{% else %}
+# Example:
+#
+# @agent.task(name="process_query", task_id="task-001")
+# async def process_query(query):
+#     yield AgentResponse.status("Working...")
+#     context = await agent.execute_step("gather_context", query=query)
+#     result = await agent.execute_step("process", context=context["context"], query=query)
+#     yield AgentResponse.result(result)
+{% endif %}
