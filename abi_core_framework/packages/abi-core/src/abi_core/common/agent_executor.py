@@ -5,24 +5,18 @@ from abi_core.common.utils import abi_logging
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from a2a.utils import new_agent_text_message, new_task
-from a2a.utils.errors import ServerError
+from a2a.utils.errors import A2AError
 from abi_core.agent.agent import AbiAgent
 from a2a.types import (
-    DataPart,
-    InvalidParamsError,
-    SendStreamingMessageSuccessResponse,
+    Part,
     Task,
-    TaskArtifactUpdateEvent,
     TaskState,
-    TaskStatusUpdateEvent,
-    TextPart,
-    UnsupportedOperationError
+    UnsupportedOperationError,
 )
 
 
 class ABIAgentExecutor(AgentExecutor):
-    """Execute ABI agents"""
+    """Execute ABI agents via the a2a-sdk 1.0 AgentExecutor interface."""
 
     def __init__(self, agent: AbiAgent):
         self.agent = agent
@@ -30,95 +24,77 @@ class ABIAgentExecutor(AgentExecutor):
     async def execute(
         self,
         context: RequestContext,
-        event_queue: EventQueue
+        event_queue: EventQueue,
     ) -> None:
-        abi_logging(f'Executing ABI AGENT {self.agent.agent_name}')
+        abi_logging(f"Executing ABI AGENT {self.agent.agent_name}")
 
         self._validate_request(context)
 
         query = context.get_user_input()
         task = context.current_task
+        task_id = context.task_id or ""
+        context_id = context.context_id or ""
 
-        if not task:
-            task = new_task(context.message)
-            await event_queue.enqueue_event(task)
-        
-        #This will taking care to update de status
-        updater = TaskUpdater(event_queue, task.id, task.context_id)
+        updater = TaskUpdater(event_queue, task_id, context_id)
+
+        # Enqueue Task object first (required by a2a-sdk 1.0)
+        from a2a.types import Task as A2ATask, TaskStatus
+        from google.protobuf.timestamp_pb2 import Timestamp
+        from datetime import datetime, timezone
+        ts = Timestamp()
+        ts.FromDatetime(datetime.now(timezone.utc))
+        initial_task = A2ATask(
+            id=task_id,
+            context_id=context_id,
+            status=TaskStatus(state=TaskState.TASK_STATE_SUBMITTED, timestamp=ts),
+        )
+        await event_queue.enqueue_event(initial_task)
 
         try:
-            #Taking the reponse from the agent and send it
-            async for item in self.agent.stream(query, task.context_id, task.id):
-                if hasattr(item, 'root'):
-                    abi_logging(f'ITEM ROOT TYPE: {type(item.root)}')
-                if hasattr(
-                    item, 
-                    'root'
-                    ) and isinstance(
-                        item.root,
-                        SendMessageSuccessResponse
-                        ):
-                        event = item.root.result
-                        if isinstance(
-                            event,
-                            (TaskStatusUpdateEvent | TaskArtifactUpdateEvent)
-                        ):
-                            await event_queue.equeue_event(event)
-                        continue
+            async for item in self.agent.stream(query, context_id, task_id):
+                is_task_completed = item.get("is_task_completed", False)
+                require_user_input = item.get("require_user_input", True)
 
-                #Getting task status
-                is_task_completed = item.get('is_task_completed', False)
-                require_user_input = item.get('require_user_input', True)
                 if is_task_completed:
-                    content = item['content']
+                    content = item["content"]
                     if isinstance(content, dict):
-                        part = DataPart(data=content)
+                        part = Part(text=json.dumps(content))
                     elif isinstance(content, str):
-                        part = TextPart(text=content)
+                        part = Part(text=content)
                     else:
-                        part = TextPart(text=str(content))
+                        part = Part(text=str(content))
+
                     await updater.add_artifact(
                         [part],
-                        name=f'{self.agent.agent_name}-result',
+                        name=f"{self.agent.agent_name}-result",
                     )
                     await updater.complete()
                     break
 
                 if require_user_input:
-                    content = item['content']
+                    content = item["content"]
                     text_content = content if isinstance(content, str) else json.dumps(content)
-                    abi_logging(f'REQUIERE INPUT {text_content[:200]}')
-                    await updater.update_status(
-                        TaskState.input_required,
-                        new_agent_text_message(
-                            text_content,
-                            task.context_id,
-                            task.id
-                        ),
-                        final=True
-                    )
+                    abi_logging(f"REQUIERE INPUT {text_content[:200]}")
+                    msg = updater.new_agent_message([Part(text=text_content)])
+                    await updater.requires_input(msg)
                     break
-                status_content = item['content']
+
+                # Status update (working)
+                status_content = item["content"]
                 status_text = status_content if isinstance(status_content, str) else json.dumps(status_content)
-                await updater.update_status(
-                    TaskState.working,
-                    new_agent_text_message(
-                        status_text,
-                        task.context_id,
-                        task.id
-                    )
-                )
+                msg = updater.new_agent_message([Part(text=status_text)])
+                await updater.update_status(TaskState.TASK_STATE_WORKING, msg)
+
         finally:
-            # Flush logs to MinIO after every request (all agents)
+            # Flush logs to MinIO after every request
             try:
                 from abi_core.common.utils import flush_logs
-                _tid = task.id if task else None
-                await flush_logs(agent_name=self.agent.agent_name, task_id=_tid)
+                await flush_logs(agent_name=self.agent.agent_name, task_id=task_id)
             except Exception:
-                pass  # never break the request pipeline
+                pass
 
             # Post-response cleanup hook (used by ephemeral agents)
-            if hasattr(self.agent, 'on_response_sent') and self.agent.on_response_sent:
+            if hasattr(self.agent, "on_response_sent") and self.agent.on_response_sent:
                 import asyncio
                 asyncio.ensure_future(self._deferred_cleanup())
 
@@ -136,6 +112,6 @@ class ABIAgentExecutor(AgentExecutor):
             print(f"[⚠️] Deferred cleanup error: {e}", flush=True)
 
     async def cancel(
-        self, request: RequestContext, event_queue: EventQueue
-    ) -> Task | None:
-        raise ServerError(error=UnsupportedOperationError())
+        self, context: RequestContext, event_queue: EventQueue
+    ) -> None:
+        raise A2AError(error=UnsupportedOperationError())

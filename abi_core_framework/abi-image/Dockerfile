@@ -1,23 +1,33 @@
-# ABI Base Image - Single Stage
-# Common dependencies for all ABI services
-# Updated: 2026-03-24
+# ABI Base Image v2
+# Optimized: no bundled Ollama, smaller footprint
+# Ollama runs as a separate service in compose
+# Updated: 2026-05-13
 
+FROM python:3.12-slim AS builder
+
+# Build dependencies (only needed for compilation)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY requirements.txt .
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# --- Final stage ---
 FROM python:3.12-slim
 
-# Install system dependencies (single layer)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    tar \
-    build-essential \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
-WORKDIR /app
+# Copy venv from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy and install Python requirements
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /app
 
 # Copy ABI scripts and banner
 COPY agents.d/ /opt/abi/agents.d/
@@ -25,36 +35,21 @@ COPY shared/abi-motd /etc/abi-motd
 COPY shared/abi-motd.sh /etc/profile.d/abi-motd.sh
 COPY agent_cards /app/agent_cards
 
-# Zombie agent is now part of abi-core-ai package (installed at runtime via pip)
-
-# Make scripts executable
-RUN chmod +x /opt/abi/agents.d/*.sh
-RUN chmod +x /etc/profile.d/abi-motd.sh
-
-# Install Ollama from pre-downloaded tarball
-COPY abi-ollama/ollama-linux-amd64.tgz /tmp/ollama.tgz
-COPY abi-ollama/install-ollama.sh /usr/local/bin/install-ollama.sh
-RUN chmod +x /usr/local/bin/install-ollama.sh && \
-    OLLAMA_TARBALL=/tmp/ollama.tgz /usr/local/bin/install-ollama.sh
+RUN chmod +x /opt/abi/agents.d/*.sh && \
+    chmod +x /etc/profile.d/abi-motd.sh
 
 # Environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV OLLAMA_HOST=0.0.0.0
-ENV OLLAMA_MODELS=/root/.ollama/models
 
-# Expose common ports
-EXPOSE 8000 11434
+# Expose common agent port
+EXPOSE 8000
 
-# Health check
+# Health check (agent HTTP)
 HEALTHCHECK --interval=60s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:11434/api/tags || exit 1
-
-# Volume for model storage (shared with services)
-VOLUME ["/root/.ollama"]
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Set default entrypoint (can be overridden by services)
 ENTRYPOINT ["/opt/abi/agents.d/abi-entrypoint.sh"]
 
-# Default command (can be overridden by services)
-CMD ["python", "-c", "print('ABI Base Image Ready')"]
+CMD ["python", "-c", "print('ABI Image v2 Ready')"]

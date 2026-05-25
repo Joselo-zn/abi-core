@@ -344,7 +344,7 @@ async def yield_chunk_data(chunk: str) -> str:
 
         abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...", level="debug")
 
-        yield (f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n").encode()
+        yield (f"data: {json.dumps(chunk_data, ensure_ascii=False, default=str)}\n\n").encode()
     except Exception as serialize_error:
         error_data = {
             "error": "Serialization failed",

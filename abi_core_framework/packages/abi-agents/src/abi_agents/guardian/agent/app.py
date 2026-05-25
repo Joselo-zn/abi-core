@@ -12,7 +12,7 @@ sequential policy checks.
 from abi_core.agent import AbiCore
 from abi_core.agent.agent_response import AgentResponse
 
-from config.config import config
+from config import config
 
 agent = AbiCore()
 

@@ -32,7 +32,7 @@ abi-core run
 ### Ephemeral Containers
 
 The Builder spawns additional Docker containers at runtime for each task:
-- Based on `smarbuy/abi-image:latest` (the ABI base image)
+- Based on `agentbase/abi-image-v2:latest` (the ABI base image)
 - Each installs `abi-core-ai` via pip on boot
 - Tools, agent card, and config injected as environment variables
 - Container self-destructs after task completion

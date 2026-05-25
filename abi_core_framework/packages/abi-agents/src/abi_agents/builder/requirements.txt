@@ -1,5 +1,6 @@
 # Builder Agent Dependencies
-abi-core-ai>=1.11.7
+abi-core-ai>=1.12.42
 
 # All other base dependencies inherited from abi-image
 # Add only builder-specific dependencies here if needed
+ 

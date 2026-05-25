@@ -13,11 +13,16 @@ import json
 from app import agent
 from abi_core.common.utils import abi_logging
 from abi_core.common.a2a_response import A2AResponse
-from abi_core.common.semantic_tools import tool_find_agent
+from abi_core.common.semantic_tools import tool_find_agent, MCPToolkit
 from abi_core.common.workflow import AgentInteractionFlow, InteractionFlowNode
 from abi_core.common import prompts
 from a2a.types import AgentCard
+from abi_core.common.agent_card_loader import build_agent_card, get_agent_url
+from abi_core.agent.agent import AbiAgent
 from config import AGENT_CARD, config
+
+# Agents that must NEVER be deregistered (infrastructure)
+INFRA_AGENTS = {"builder", "planner", "orchestrator", "guardian", "semantic-layer"}
 
 @agent.step(
     name="classify_query",
@@ -306,10 +311,37 @@ async def build_workflow(plan_result, context_id, task_id):
 
             agent_dict = agents[0]
             target = (
-                AgentCard(**agent_dict)
+                build_agent_card(agent_dict)[0]
                 if isinstance(agent_dict, dict)
                 else agent_dict
             )
+
+            # Health check before adding to workflow
+            target_url = get_agent_url(target)
+            if target_url:
+                health = await AbiAgent.check_health(target_url, target.name)
+                if health.get("status") not in ("healthy",):
+                    abi_logging(
+                        f"[❌] Task {tid}: agent '{target.name}' unreachable "
+                        f"({health.get('status')}), attempting cleanup"
+                    )
+                    # Deregister only if it's NOT an infrastructure agent
+                    agent_name_lower = target.name.lower()
+                    is_infra = any(infra in agent_name_lower for infra in INFRA_AGENTS)
+                    if not is_infra:
+                        try:
+                            toolkit = MCPToolkit()
+                            dereg_result = await toolkit.call("unregister_agent", agent_name=target.name)
+                            if isinstance(dereg_result, dict) and dereg_result.get("success"):
+                                abi_logging(f"[🗑️] Deregistered stale agent '{target.name}'")
+                            else:
+                                abi_logging(f"[⚠️] Deregister failed for '{target.name}': {dereg_result}")
+                        except Exception as e:
+                            abi_logging(f"[⚠️] Deregister error for '{target.name}': {e}")
+                    else:
+                        abi_logging(f"[🛡️] Skipping deregister for infrastructure agent '{target.name}'")
+                    continue
+
             abi_logging(f"[✅] Task {tid}: execute → {target.name}")
 
         elif task_type in ("build_and_execute", "create_tools_and_execute"):
@@ -353,6 +385,14 @@ async def build_workflow(plan_result, context_id, task_id):
                     if resp.data:
                         builder_response = resp.data
                         break
+                    if resp.text:
+                        try:
+                            parsed = json.loads(resp.text)
+                            if isinstance(parsed, dict) and ("agent" in parsed or "agent_card" in parsed):
+                                builder_response = parsed
+                                break
+                        except (json.JSONDecodeError, TypeError):
+                            pass
 
             if not builder_response or builder_response.get("status") == "error":
                 error_msg = (
@@ -370,7 +410,7 @@ async def build_workflow(plan_result, context_id, task_id):
                 abi_logging(f"[❌] Task {tid}: builder returned no agent card")
                 continue
 
-            target = AgentCard(**ephemeral_card_data)
+            target = build_agent_card(ephemeral_card_data)[0]
             ephemeral_agents.append(ephemeral_agent)
 
             abi_logging(
@@ -381,7 +421,7 @@ async def build_workflow(plan_result, context_id, task_id):
             abi_logging(f"[⚠️] Task {tid}: unknown type '{task_type}', skipping")
             continue
 
-        abi_logging(f"[✅] Task {tid}: assigned to agent '{target.name}' at {target.url} with prompt {desc}")
+        abi_logging(f"[✅] Task {tid}: assigned to agent '{target.name}' at {get_agent_url(target)} with prompt {desc}")
         node = InteractionFlowNode(
             task=desc,
             source_agent_card=AGENT_CARD,

@@ -109,7 +109,7 @@ async def load_agent_context(
                     result["lib_tools"].append(base_by_name[name])
                 else:
                     abi_logging(f"[⚠️] Library tool '{name}' not found")
-            abi_logging(f"[🔧] Loaded {len(result['lib_tools'])} library tools")
+                    
         except Exception as e:
             abi_logging(f"[⚠️] Failed to load library tools: {e}")
 

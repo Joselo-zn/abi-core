@@ -1,5 +1,6 @@
 import json
 import uuid
+import operator
 
 from collections.abc import AsyncIterable
 from enum import Enum
@@ -11,22 +12,31 @@ import httpx
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
-from a2a.client import A2AClient
+from a2a.client import Client, ClientFactory, ClientConfig
 from abi_core.common.utils import get_mcp_server_config, abi_logging
 from abi_core.abi_mcp import client
 from abi_core.common.abi_a2a import agent_connection
+from abi_core.common.agent_card_loader import get_agent_url
 
 from a2a.types import (
     AgentCard,
-    MessageSendParams,
-    SendStreamingMessageRequest,
-    SendStreamingMessageSuccessResponse,
-    TaskArtifactUpdateEvent,
     TaskState,
-    TaskStatusUpdateEvent,
 )
 
 from abi_core.common.utils import abi_logging
+
+
+def _merge_results(existing: dict, new: dict) -> dict:
+    """Reducer: merge result dicts from parallel nodes."""
+    merged = existing.copy() if existing else {}
+    if new:
+        merged.update(new)
+    return merged
+
+
+def _last_value(existing: str, new: str) -> str:
+    """Reducer: keep the last value written (for tracking fields)."""
+    return new
 
 class Status(Enum):
     """Reprents the status of the workflow"""
@@ -115,15 +125,18 @@ class InteractionFlowState(TypedDict):
     Tracks the current execution state, completed nodes, and flow status
     throughout the multi-agent interaction lifecycle.
     
-    Previously known as WorkflowState.
+    Uses Annotated reducers to support parallel node execution:
+    - current_node_id: last node that wrote wins (tracking only)
+    - completed_nodes: accumulates from all parallel branches
+    - results: merges dicts from all parallel branches
     """
-    current_node_id: str
-    completed_nodes: list[str]
+    current_node_id: Annotated[str, _last_value]
+    completed_nodes: Annotated[list[str], operator.add]
     paused_node_id: str | None
     status: str
     context_id: str
     task_id: str
-    results: dict[str, any]
+    results: Annotated[dict[str, any], _merge_results]
 
 
 class AgentInteractionFlow:
@@ -184,32 +197,31 @@ class AgentInteractionFlow:
                 raise ValueError("source_card not provided in node attributes")
             
             results = []
-            async for chunk in node.run_node(query, task_id, context_id, source_card):
-                results.append(chunk)
+            async for event in node.run_node(query, task_id, context_id, source_card):
+                results.append(event)
                 
-                # Check for pause condition
-                if isinstance(chunk.root, SendStreamingMessageSuccessResponse) and \
-                   isinstance(chunk.root.result, TaskStatusUpdateEvent):
-                    task_status_event = chunk.root.result
-                    if task_status_event.status.state == TaskState.input_required:
-                        node.state = Status.PAUSED
-                        return {
-                            **state,
-                            'status': Status.PAUSED.value,
-                            'paused_node_id': node.id,
-                            'context_id': task_status_event.contextId,
-                            'results': {**state.get('results', {}), node.id: results}
-                        }
+                # Check for pause condition — new client yields (Task, UpdateEvent) or Message
+                if isinstance(event, tuple) and len(event) == 2:
+                    task, update = event
+                    if task and hasattr(task, 'status') and task.status:
+                        if task.status.state == TaskState.input_required:
+                            node.state = Status.PAUSED
+                            return {
+                                'status': Status.PAUSED.value,
+                                'paused_node_id': node.id,
+                                'context_id': task.context_id if hasattr(task, 'context_id') else '',
+                                'current_node_id': node.id,
+                                'completed_nodes': [],
+                                'results': {node.id: results}
+                            }
             
             # Node completed
             node.state = Status.COMPLETED
-            completed = state.get('completed_nodes', []) + [node.id]
             
             return {
-                **state,
-                'completed_nodes': completed,
+                'completed_nodes': [node.id],
                 'current_node_id': node.id,
-                'results': {**state.get('results', {}), node.id: results}
+                'results': {node.id: results}
             }
         
         # Add node to LangGraph

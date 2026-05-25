@@ -113,6 +113,7 @@ reference/architecture
 :hidden:
 :caption: Additional Resources
 
+migration/a2a-sdk-1.0
 changelog
 faq
 roadmap

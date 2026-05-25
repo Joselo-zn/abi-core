@@ -32,8 +32,9 @@ class ZombieAgent(AbiAgent):
             system_prompt=config.SYSTEM_PROMPT
         )
 
-        abi_logging(f"[🔧] Loaded {len(ZOMBIE_TOOLS)} tools: {ZOMBIE_TOOLS}")
-        abi_logging(f"System prompt injected: {config.SYSTEM_PROMPT}")
+        tool_list = [tool.name for tool in ZOMBIE_TOOLS]
+        abi_logging(f"[🤖] My task: {config.SYSTEM_PROMPT}")
+        abi_logging(f"[🔧] My tools to complete the task: {len(ZOMBIE_TOOLS)} tools: {tool_list}")
 
         super().__init__(
             agent_name=config.AGENT_NAME,

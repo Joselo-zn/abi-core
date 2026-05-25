@@ -1122,10 +1122,10 @@ def _create_guardian_native_service(service_dir, name, domain):
         'domain': domain or 'general'
     }
     
-    # Guardian config files
+    # Guardian config files (inside agent/)
     guardian_config_files = [
-        ('config/__init__.py', 'service_guardian/config/__init__.py'),
-        ('config/config.py', 'service_guardian/config/config.py'),
+        ('agent/config/__init__.py', 'service_guardian/agent/config/__init__.py'),
+        ('agent/config/config.py', 'service_guardian/agent/config/config.py'),
     ]
     
     # Guardian agent files
@@ -1191,8 +1191,8 @@ def _create_basic_guardian_structure(service_dir, name, domain):
     }
     
     config_files = [
-        ('config/__init__.py', 'service_guardian/config/__init__.py'),
-        ('config/config.py', 'service_guardian/config/config.py'),
+        ('agent/config/__init__.py', 'service_guardian/agent/config/__init__.py'),
+        ('agent/config/config.py', 'service_guardian/agent/config/config.py'),
     ]
     
     for file_path, template_path in config_files:
@@ -1215,7 +1215,7 @@ def _create_basic_guardian_structure(service_dir, name, domain):
 
 def _get_guardian_dockerfile(domain):
     """Get Dockerfile for guardian service"""
-    return f'''FROM smarbuy/abi-image:latest
+    return f'''FROM agentbase/abi-image-v2:latest
 
 WORKDIR /app
 
@@ -1902,7 +1902,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
         project_dir = project_name.lower().replace(' ', '-').replace('_', '-')
         
         # Get model serving mode from runtime.yaml
-        provision_mode = runtime_config.get('project', {}).get('model_serving', 'distributed')
+        provision_mode = runtime_config.get('project', {}).get('model_serving', 'centralized')
         
         console.print(f"[📊] Model serving mode from runtime.yaml: {provision_mode}", style="cyan")
         
@@ -1910,6 +1910,8 @@ def _update_compose_with_orchestration(runtime_config: dict):
         agents = runtime_config.get('agents', {})
         planner_port = agents.get('planner', {}).get('port', 11437)
         orchestrator_port = agents.get('orchestrator', {}).get('port', 8002)
+        builder_port = agents.get('builder', {}).get('port', 11439)
+        web_interface_port = 8083
         
         # Find available Ollama ports
         used_ports = set()
@@ -1918,6 +1920,12 @@ def _update_compose_with_orchestration(runtime_config: dict):
                 if isinstance(port_mapping, str) and ':' in port_mapping:
                     host_port = port_mapping.split(':')[0]
                     used_ports.add(int(host_port))
+        
+        # Also reserve the agent ports we're about to assign
+        used_ports.add(planner_port)
+        used_ports.add(orchestrator_port)
+        used_ports.add(builder_port)
+        used_ports.add(web_interface_port)
         
         # Assign Ollama ports dynamically
         planner_ollama_port = 11434
@@ -1929,11 +1937,6 @@ def _update_compose_with_orchestration(runtime_config: dict):
         while orchestrator_ollama_port in used_ports:
             orchestrator_ollama_port += 1
         used_ports.add(orchestrator_ollama_port)
-        
-        # Web interface port for orchestrator
-        web_interface_port = 8083
-        while web_interface_port in used_ports:
-            web_interface_port += 1
         
         # Find network
         existing_networks = []
@@ -1984,7 +1987,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
             planner_env.extend([
                 'START_OLLAMA=false',
                 'LOAD_MODELS=false',
-                f'OLLAMA_HOST=http://{project_dir}-ollama:11434'
+                'OLLAMA_HOST=http://ollama:11434'
             ])
         
         # Add Planner service
@@ -2019,7 +2022,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
             'LOG_AGENT_NAME=orchestrator',
             'LOG_BUCKET=abi-logs',
             'EPHEMERAL_AUTO_DESTROY=true',
-            f'DOCKER_NETWORK={project_dir}-network',
+            f'DOCKER_NETWORK={project_dir}_abi-network',
         ]
         
         orchestrator_volumes = [
@@ -2040,7 +2043,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
             orchestrator_env.extend([
                 'START_OLLAMA=false',
                 'LOAD_MODELS=false',
-                f'OLLAMA_HOST=http://{project_dir}-ollama:11434'
+                'OLLAMA_HOST=http://ollama:11434'
             ])
         
         # Add Orchestrator service
@@ -2055,7 +2058,6 @@ def _update_compose_with_orchestration(runtime_config: dict):
         }
         
         # Configure Builder
-        builder_port = agents.get('builder', {}).get('port', 11439)
         builder_model = agents.get('builder', {}).get('model', default_model)
         
         builder_env = [
@@ -2068,7 +2070,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
             f'SEMANTIC_LAYER_HOST=http://{project_dir}-semantic-layer:10100',
             f'GUARDIAN_URL=http://{project_dir}-guardian:11438',
             f'OPA_URL=http://{project_dir}-opa:8181',
-            f'DOCKER_NETWORK={project_dir}_{project_dir}-network',
+            f'DOCKER_NETWORK={project_dir}_abi-network',
             f'ARTIFACT_ENDPOINT=http://{project_dir}-minio:9000',
             'ARTIFACT_ACCESS_KEY=minioadmin',
             'ARTIFACT_SECRET_KEY=minioadmin',
@@ -2097,7 +2099,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
             builder_env.extend([
                 'START_OLLAMA=false',
                 'LOAD_MODELS=false',
-                f'OLLAMA_HOST=http://{project_dir}-ollama:11434'
+                'OLLAMA_HOST=http://ollama:11434'
             ])
         
         # Add Builder service
@@ -2124,7 +2126,9 @@ def _update_compose_with_orchestration(runtime_config: dict):
             yaml.dump(compose_data, f, default_flow_style=False, indent=2, sort_keys=False)
         
     except Exception as e:
-        console.print(f"⚠️  Error updating compose file: {e}", style="yellow")
+        console.print(f"❌ Error updating compose file: {e}", style="red")
+        import traceback
+        traceback.print_exc()
 
 
 def _update_compose_with_agent(context: dict):

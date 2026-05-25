@@ -122,7 +122,7 @@ class AbiOrchestratorAgent(AbiAgent):
                 for hb in heartbeats:
                     yield hb
 
-                yield AgentResponse.success(result_holder.get('response') or "No response generated")
+                yield AgentResponse.text(result_holder.get('response') or "No response generated")
                 return
 
             # ── action == "call_planner" — check planning results ──
@@ -226,7 +226,7 @@ class AbiOrchestratorAgent(AbiAgent):
                 if artifacts and "download" not in final_response.lower():
                     final_response += format_artifact_links(artifacts)
 
-                yield AgentResponse.success(final_response)
+                yield AgentResponse.text(final_response)
 
         except Exception as e:
             abi_logging(f"[❌] Error in orchestration: {e}")

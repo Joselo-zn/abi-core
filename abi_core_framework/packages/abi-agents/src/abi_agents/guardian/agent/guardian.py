@@ -16,7 +16,7 @@ from abi_core.common import prompts
 from abi_core.agent.agent import AbiAgent
 from abi_core.agent.agent_response import AgentResponse
 
-from config.config import config
+from config import config
 
 logger = logging.getLogger(__name__)
 

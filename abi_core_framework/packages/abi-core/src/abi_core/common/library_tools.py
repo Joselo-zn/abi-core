@@ -34,12 +34,19 @@ def write_file(filename: str, content: str) -> str:
     Returns:
         Confirmation message with the file path.
     """
-    os.makedirs(WORKSPACE, exist_ok=True)
-    filepath = os.path.join(WORKSPACE, filename)
-    with open(filepath, "w") as f:
-        f.write(content)
-    abi_logging(f"[📝] File written: {filepath} ({len(content)} bytes)")
-    return f"File written: {filepath}"
+    try:
+        os.makedirs(WORKSPACE, exist_ok=True)
+        filepath = os.path.join(WORKSPACE, filename)
+
+        with open(filepath, "w") as f:
+            f.write(content)
+
+        abi_logging(f"[📝] File written: {filepath} ({len(content)} bytes)")
+        return f"File written: {filepath}"
+
+    except Exception as e:
+        abi_logging(f"[❌] File write error: {str(e)}")
+        return f"Error writing file: {e}"
 
 
 @langchain_tool

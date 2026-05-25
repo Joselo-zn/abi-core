@@ -75,6 +75,14 @@ class A2AAccessValidator:
             source_info = source_agent_card.dict()
         elif isinstance(source_agent_card, dict):
             source_info = source_agent_card
+        elif hasattr(source_agent_card, 'DESCRIPTOR'):
+            # Protobuf AgentCard
+            from abi_core.common.agent_card_loader import get_agent_url
+            source_info = {
+                "name": source_agent_card.name,
+                "description": source_agent_card.description,
+                "url": get_agent_url(source_agent_card),
+            }
         else:
             source_info = {"name": str(source_agent_card)}
         
@@ -85,6 +93,14 @@ class A2AAccessValidator:
             target_info = target_agent_card.dict()
         elif isinstance(target_agent_card, dict):
             target_info = target_agent_card
+        elif hasattr(target_agent_card, 'DESCRIPTOR'):
+            # Protobuf AgentCard
+            from abi_core.common.agent_card_loader import get_agent_url
+            target_info = {
+                "name": target_agent_card.name,
+                "description": target_agent_card.description,
+                "url": get_agent_url(target_agent_card),
+            }
         else:
             target_info = {"name": str(target_agent_card)}
         

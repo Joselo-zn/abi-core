@@ -79,34 +79,67 @@ class A2AResponse:
     def parse(cls, result) -> "A2AResponse":
         """Parse a single raw A2A streaming result into an A2AResponse.
 
-        Handles two shapes:
-        1. Full Task object: result.root.result = Task (non-streaming / coroutine)
-        2. Streaming events: result.root.result = TaskArtifactUpdateEvent
-           or TaskStatusUpdateEvent (streaming path)
+        Handles:
+        1. Protobuf StreamResponse (a2a-sdk 1.0): has .task, .status_update, .artifact_update
+        2. Legacy pydantic format: result.root.result = Task/Event
         """
         resp = cls(raw=result)
 
-        # Navigate: result.root → SendStreamingMessageSuccessResponse
+        # ── Protobuf StreamResponse (a2a-sdk 1.0) ─────────────
+        if hasattr(result, 'HasField'):
+            # It's a protobuf message
+            if result.HasField('artifact_update'):
+                artifact = result.artifact_update.artifact
+                resp.artifacts_raw = [artifact]
+                for part in artifact.parts:
+                    cls._extract_part(part, resp)
+                return resp
+
+            if result.HasField('status_update'):
+                status = result.status_update.status
+                state_val = status.state
+                resp.state = str(state_val) if state_val else None
+                # Extract message text
+                if status.HasField('message'):
+                    for part in status.message.parts:
+                        text = getattr(part, 'text', None)
+                        if text:
+                            resp.status_message = text
+                            break
+                return resp
+
+            if result.HasField('task'):
+                task = result.task
+                resp.state = str(task.status.state) if task.status.state else None
+                return resp
+
+            if result.HasField('message'):
+                msg = result.message
+                for part in msg.parts:
+                    text = getattr(part, 'text', None)
+                    if text and resp.text is None:
+                        resp.text = text
+                return resp
+
+            return resp
+
+        # ── Legacy pydantic format ─────────────────────────────
         root = getattr(result, "root", result)
-        inner = _safe_get(root, "result")  # Task or event object
+        inner = _safe_get(root, "result")
         if inner is None:
             return resp
 
-        # ── Detect streaming events vs full Task ───────────────
         inner_type = type(inner).__name__
 
         if inner_type == "TaskArtifactUpdateEvent":
-            # Streaming artifact: inner.artifact.parts[]
             artifact = getattr(inner, "artifact", None)
             if artifact:
                 resp.artifacts_raw = [artifact]
                 for part in getattr(artifact, "parts", []):
                     cls._extract_part(part, resp)
-            # TaskArtifactUpdateEvent carries no state — leave as None
             return resp
 
         if inner_type == "TaskStatusUpdateEvent":
-            # Streaming status: inner.status.state + inner.status.message
             status = getattr(inner, "status", None)
             if status:
                 state_obj = getattr(status, "state", None)
@@ -119,23 +152,16 @@ class A2AResponse:
                 resp.status_message = cls._extract_message_from_status(status)
             return resp
 
-        # ── Full Task object (non-streaming path) ──────────────
+        # Full Task object
         task = inner
-
-        # State
         state_obj = _safe_get(task, "status", "state")
         if state_obj is not None:
             resp.state = (
                 state_obj.value if hasattr(state_obj, "value") else str(state_obj)
             )
-
-        # Status message (used for clarifications)
         resp.status_message = cls._extract_status_message(task)
-
-        # Artifacts → text and data
         artifacts = getattr(task, "artifacts", None) or []
         resp.artifacts_raw = list(artifacts)
-
         for artifact in artifacts:
             for part in getattr(artifact, "parts", []):
                 cls._extract_part(part, resp)

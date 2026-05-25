@@ -9,7 +9,7 @@ Usage:
 
     result = await run_container(
         name="ephemeral_task_1",
-        image="smarbuy/abi-image:latest",
+        image="agentbase/abi-image-v2:latest",
         env_vars={"ZOMBIE_MODE": "active", "AGENT_NAME": "task_1"},
         network="abi_network",
         port=11440,
@@ -39,7 +39,7 @@ def _get_docker_client():
 
 
 async def check_container_health(
-    url: str, timeout: int = 30, interval: float = 1.0
+    url: str, timeout: int = 30, interval: float = 1.0, container_name: str = None
 ) -> bool:
     """Poll a health endpoint until ready or timeout."""
     import urllib.request
@@ -50,9 +50,23 @@ async def check_container_health(
             urllib.request.urlopen(req, timeout=2)
             abi_logging(f"[✅] Health check passed: {url}")
             return True
-        except Exception:
+        except Exception as e:
             await asyncio.sleep(interval)
+
     abi_logging(f"[⚠️] Health check timeout after {timeout}s: {url}")
+
+    # Dump container logs to understand why it's not responding
+    if container_name:
+        try:
+            client = _get_docker_client()
+            container = client.containers.get(container_name)
+            state = container.attrs.get("State", {})
+            abi_logging(f"[🔍] Container state: status={state.get('Status')}, running={state.get('Running')}, exit_code={state.get('ExitCode')}")
+            logs = container.logs(tail=50).decode("utf-8", errors="replace")
+            abi_logging(f"[📋] Container logs for '{container_name}':\n{logs}")
+        except Exception as log_err:
+            abi_logging(f"[⚠️] Could not fetch container logs: {log_err}")
+
     return False
 
 
@@ -100,7 +114,7 @@ async def run_container(
         healthy = True
         if health_check_url:
             healthy = await check_container_health(
-                health_check_url, timeout=health_timeout
+                health_check_url, timeout=health_timeout, container_name=name
             )
 
         url = f"http://{name}:{port}" if port else None

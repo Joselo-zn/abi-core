@@ -1,7 +1,7 @@
 # Orchestrator Agent Dockerfile
 # Part of ABI Swarm
 
-FROM smarbuy/abi-image:latest
+FROM agentbase/abi-image-v2:latest
 
 # Set working directory
 WORKDIR /app

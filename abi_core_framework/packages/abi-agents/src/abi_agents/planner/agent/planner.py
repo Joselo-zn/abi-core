@@ -122,17 +122,8 @@ class AbiPlannerAgent(AbiAgent):
                 plan = plan_data.get("plan", {})
                 abi_logging(f"[✅] Plan ready with {len(plan.get('tasks', []))} tasks")
 
-                yield AgentResponse(
-                    content=format_plan_summary(plan),
-                    response_type='text',
-                    is_task_completed=False,
-                )
-                yield AgentResponse.success(
-                    plan,
-                    status='ready',
-                    task_count=len(plan.get('tasks', [])),
-                    execution_strategy=plan.get('execution_strategy', 'sequential'),
-                )
+                yield AgentResponse.status(format_plan_summary(plan))
+                yield AgentResponse.result(plan)
             else:
                 yield AgentResponse.error(plan_data.get("message", "Unknown planning error"))
 

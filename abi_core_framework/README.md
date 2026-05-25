@@ -17,6 +17,8 @@ abi-core run
 
 > ⚠️ **Beta** — Pipeline works end-to-end. APIs may change between minor versions.
 
+> 🔄 **v1.12+**: Requires `a2a-sdk>=1.0.0`. If you have an existing project with a custom `config.py` using `AgentCard(**data)`, see the [migration guide](https://abi-core.readthedocs.io/en/latest/migration/a2a-sdk-1.0.html). Projects running on the ABI Docker image are unaffected.
+
 ---
 
 ## Create an Agent in 3 Files

@@ -14,6 +14,7 @@ from abi_core.common.utils import get_mcp_server_config, abi_logging
 from abi_core.abi_mcp import client
 from abi_core.security.agent_auth import build_semantic_context_from_card
 from abi_core.common.service_card import ServiceCard
+from abi_core.common.agent_card_loader import build_agent_card, get_agent_url
 
 from langchain.tools import tool
 from a2a.types import AgentCard
@@ -439,7 +440,8 @@ async def tool_find_agent(query: str) -> Optional[AgentCard]:
                     if not agent_card_json.get("capabilities"):
                         abi_logging(f"[⏭️] Skipping non-agent card (no capabilities): {agent_card_json.get('name', 'unknown')}")
                         return None
-                    return AgentCard(**agent_card_json)
+                    card, _meta = build_agent_card(agent_card_json)
+                    return card
                 else:
                     return None
             except Exception as e:
@@ -476,7 +478,7 @@ async def tool_list_agents(query: str) -> List[AgentCard]:
                         continue
                     if not agent_card_json.get("capabilities"):
                         continue
-                    agents.append(AgentCard(**agent_card_json))
+                    agents.append(build_agent_card(agent_card_json)[0])
                 return agents
             except Exception as e:
                 abi_logging(f'[X] Error parsing agent cards {e}')
@@ -608,7 +610,7 @@ async def tool_check_agent_health(agent_name: str) -> Dict[str, Any]:
     agent_url = (
         agent_card.get("url", "")
         if isinstance(agent_card, dict)
-        else getattr(agent_card, "url", "")
+        else get_agent_url(agent_card)
     )
     if not agent_url:
         return {"agent": agent_name, "status": "error", "error": "No URL in agent card"}

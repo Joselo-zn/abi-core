@@ -211,13 +211,18 @@ async def build_container(config):
 
     abi_logging(f"[🐳] Step 3b: Cloning zombie as '{agent_name}' on port {port}")
 
+    # Zombie package path after pip install
+    zombie_pkg = "abi_agents/zombie/agent"
+    site_packages = "/opt/venv/lib/python3.12/site-packages"
+
     result = await run_container(
         name=agent_name,
-        image=os.getenv("ABI_IMAGE", "smarbuy/abi-image:latest"),
+        image=os.getenv("ABI_IMAGE", "agentbase/abi-image-v2:latest"),
         env_vars={
             "ZOMBIE_MODE": "active",
             "AGENT_NAME": agent_name,
             "AGENT_PORT": str(port),
+            "AGENT_HOST": "0.0.0.0",
             "SYSTEM_PROMPT": config["system_prompt"],
             "TOOLS": tools_json,
             "LIBRARY_TOOLS": json.dumps(config.get("library_tools_resolved", [])),
@@ -237,19 +242,23 @@ async def build_container(config):
             "LOG_BUCKET": os.getenv("LOG_BUCKET", "abi-logs"),
             "AGENT_CARD_JSON": config.get("agent_card_json", ""),
             "SERVICE_MODULE": "",
+            "SERVICE_COMMAND": (
+                f"pip install --quiet --no-cache-dir --upgrade abi-core-ai && "
+                f"cp -r {site_packages}/{zombie_pkg}/* /app/ && "
+                f"python3 main.py"
+            ),
+            "PYTHONPATH": "/app",
         },
         network=os.getenv("DOCKER_NETWORK", "abi_network"),
         port=port,
-        entrypoint="sh",
-        command=["-c", "pip install --quiet --upgrade abi-core-ai && abi-zombie"],
         health_check_url=f"http://{agent_name}:{port}/health",
         health_timeout=60,
     )
 
-    if result["status"] == "error":
+    if result["status"] in ("error", "unhealthy"):
         return {
             "status": "error",
-            "message": result.get("error", "Container failed to start"),
+            "message": result.get("error", f"Container '{agent_name}' is {result['status']} (health check failed)"),
             "agent_name": agent_name,
             "task_id": config["task_id"],
         }

@@ -88,7 +88,7 @@ def create():
 def create_swarm(name, description, domain, model_serving):
     """Create a complete ABI Swarm with all agents and services.
 
-    Creates everything in one command:
+    Creates everything in one command — no prompts, no extra steps:
     - Project structure with webapp
     - Semantic layer + Weaviate
     - Guardian + OPA
@@ -103,11 +103,16 @@ def create_swarm(name, description, domain, model_serving):
       docker compose up --build
     """
     import os
+    import shutil
+    import json
+    import yaml
 
-    # Step 1: Create project with all services
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
     console.print("\n🚀 Creating ABI Swarm", style="cyan bold")
     console.print("=" * 60, style="cyan")
 
+    # Step 1: Create project with all services (no interactive prompts)
     ctx = click.get_current_context()
     ctx.invoke(
         create_project,
@@ -119,16 +124,310 @@ def create_swarm(name, description, domain, model_serving):
         model_serving=model_serving,
     )
 
-    # Step 2: cd into project and add abi-swarm agents
+    # Step 2: cd into project
     project_dir = name.lower().replace(' ', '-').replace('_', '-')
     os.chdir(project_dir)
 
-    from abi_cli.cli.commands.add import add_abi_swarm
-    ctx.invoke(add_abi_swarm)
+    # Step 3: Upgrade Guardian service with the new agent from abi-agents
+    import abi_agents
+    package_root = Path(abi_agents.__file__).parent
+    source_guardian_agent = package_root / 'guardian' / 'agent'
 
-    console.print(f"\n🎉 ABI Swarm '{name}' ready!", style="green bold")
-    console.print(f"📁 Location: {Path(project_dir).absolute()}", style="blue")
-    console.print(f"\n▶️  To start: cd {project_dir} && docker compose up --build", style="cyan")
+    if source_guardian_agent.exists():
+        dest_guardian_agent = Path('services/guardian/agent')
+        if dest_guardian_agent.exists():
+            shutil.rmtree(dest_guardian_agent)
+        dest_guardian_agent.mkdir(parents=True)
+
+        for item in source_guardian_agent.iterdir():
+            if item.is_file():
+                shutil.copy(item, dest_guardian_agent / item.name)
+            elif item.is_dir():
+                shutil.copytree(item, dest_guardian_agent / item.name, dirs_exist_ok=True)
+
+        # Update the service Dockerfile to use the agent's PYTHONPATH
+        # The new agent expects to run from /app/agent/ with PYTHONPATH=/app/agent
+        guardian_dockerfile = Path('services/guardian/Dockerfile')
+        if guardian_dockerfile.exists():
+            content = guardian_dockerfile.read_text()
+            if 'PYTHONPATH=/app/agent' not in content:
+                content = content.replace(
+                    'ENV PYTHONPATH=/app',
+                    'ENV PYTHONPATH=/app/agent:/app'
+                )
+            # Remove legacy agent_cards move commands (new agent has cards in the right place)
+            lines = content.split('\n')
+            lines = [l for l in lines if 'agent_cards/guardian_agent.json' not in l and 'rm -rf /app/agent_cards' not in l]
+            guardian_dockerfile.write_text('\n'.join(lines))
+
+    # Step 4: Add swarm agents directly (no prerequisite checks, no prompts)
+    runtime_file = Path('.abi/runtime.yaml')
+    with open(runtime_file, 'r') as f:
+        runtime_config = yaml.safe_load(f) or {}
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+
+        # Find available ports
+        def find_available_port(start_port, used_ports):
+            port = start_port
+            while port in used_ports:
+                port += 1
+            return port
+
+        used_ports = set()
+        for agent in runtime_config.get('agents', {}).values():
+            if 'port' in agent:
+                used_ports.add(agent['port'])
+        for service in runtime_config.get('services', {}).values():
+            if 'port' in service:
+                used_ports.add(service['port'])
+
+        planner_port = find_available_port(11437, used_ports)
+        used_ports.add(planner_port)
+        orchestrator_port = find_available_port(8002, used_ports)
+        used_ports.add(orchestrator_port)
+        builder_port = find_available_port(11439, used_ports)
+        used_ports.add(builder_port)
+        web_interface_port = 8083
+
+        # Locate agent source files
+        import abi_agents
+        package_root = Path(abi_agents.__file__).parent
+
+        # ── Create Planner ──────────────────────────────────────
+        task = progress.add_task("Creating Planner Agent...", total=None)
+        source_planner = package_root / 'planner'
+        if not source_planner.exists():
+            console.print(f"❌ Planner source not found at {source_planner}", style="red")
+            return
+
+        dest_planner = Path('agents/planner')
+        dest_planner.mkdir(parents=True, exist_ok=True)
+
+        for item in (source_planner / 'agent').iterdir():
+            if item.is_file():
+                shutil.copy(item, dest_planner / item.name)
+            elif item.is_dir():
+                shutil.copytree(item, dest_planner / item.name, dirs_exist_ok=True)
+
+        shutil.copy(source_planner / 'Dockerfile', dest_planner / 'Dockerfile')
+        shutil.copy(source_planner / 'requirements.txt', dest_planner / 'requirements.txt')
+        if (source_planner / 'README.md').exists():
+            shutil.copy(source_planner / 'README.md', dest_planner / 'README.md')
+
+        from .add import _generate_agent_card
+        planner_agent_card = _generate_agent_card(
+            name="Planner Agent",
+            description="Decomposes tasks and assigns agents",
+            model="qwen2.5:3b",
+            url=f"http://{project_dir}-planner:{planner_port}",
+            tasks=["decompose complex queries", "assign agents to tasks", "create execution plans", "manage task dependencies"]
+        )
+        planner_cards_dir = dest_planner / 'agent_cards'
+        planner_cards_dir.mkdir(exist_ok=True)
+        with open(planner_cards_dir / 'planner_agent.json', 'w') as f:
+            json.dump(planner_agent_card, f, indent=2)
+
+        progress.update(task, description="✅ Planner Agent created")
+
+        # ── Create Orchestrator ─────────────────────────────────
+        task = progress.add_task("Creating Orchestrator Agent...", total=None)
+        source_orch = package_root / 'orchestrator'
+        if not source_orch.exists():
+            console.print(f"❌ Orchestrator source not found at {source_orch}", style="red")
+            return
+
+        dest_orch = Path('agents/orchestrator')
+        dest_orch.mkdir(parents=True, exist_ok=True)
+
+        for item in (source_orch / 'agent').iterdir():
+            if item.is_file():
+                shutil.copy(item, dest_orch / item.name)
+            elif item.is_dir():
+                shutil.copytree(item, dest_orch / item.name, dirs_exist_ok=True)
+
+        shutil.copy(source_orch / 'Dockerfile', dest_orch / 'Dockerfile')
+        shutil.copy(source_orch / 'requirements.txt', dest_orch / 'requirements.txt')
+        if (source_orch / 'README.md').exists():
+            shutil.copy(source_orch / 'README.md', dest_orch / 'README.md')
+
+        orchestrator_agent_card = _generate_agent_card(
+            name="Abi Orchestrator Agent",
+            description="Coordinates multi-agent workflow execution",
+            model="qwen2.5:3b",
+            url=f"http://{project_dir}-orchestrator:{orchestrator_port}",
+            tasks=["coordinate workflows", "execute multi-agent plans", "monitor task execution", "synthesize results"]
+        )
+        orch_cards_dir = dest_orch / 'agent_cards'
+        orch_cards_dir.mkdir(exist_ok=True)
+        with open(orch_cards_dir / 'orchestrator_agent.json', 'w') as f:
+            json.dump(orchestrator_agent_card, f, indent=2)
+
+        progress.update(task, description="✅ Orchestrator Agent created")
+
+        # ── Create Builder ──────────────────────────────────────
+        task = progress.add_task("Creating Builder Agent...", total=None)
+        source_builder = package_root / 'builder'
+        if not source_builder.exists():
+            console.print(f"❌ Builder source not found at {source_builder}", style="red")
+            return
+
+        dest_builder = Path('agents/builder')
+        dest_builder.mkdir(parents=True, exist_ok=True)
+
+        for item in (source_builder / 'agent').iterdir():
+            if item.is_file():
+                shutil.copy(item, dest_builder / item.name)
+            elif item.is_dir():
+                shutil.copytree(item, dest_builder / item.name, dirs_exist_ok=True)
+
+        shutil.copy(source_builder / 'Dockerfile', dest_builder / 'Dockerfile')
+        shutil.copy(source_builder / 'requirements.txt', dest_builder / 'requirements.txt')
+        if (source_builder / 'README.md').exists():
+            shutil.copy(source_builder / 'README.md', dest_builder / 'README.md')
+
+        builder_agent_card = _generate_agent_card(
+            name="Builder Agent",
+            description="Builds and deploys ephemeral AI agents on demand",
+            model="qwen2.5:3b",
+            url=f"http://{project_dir}-builder:{builder_port}",
+            tasks=["build ephemeral agents", "create MCP tools", "deploy containers", "manage agent lifecycle"]
+        )
+        builder_agent_card["permissions"] = ["register_agents", "unregister_agents"]
+        builder_cards_dir = dest_builder / 'agent_cards'
+        builder_cards_dir.mkdir(exist_ok=True)
+        with open(builder_cards_dir / 'builder_agent.json', 'w') as f:
+            json.dump(builder_agent_card, f, indent=2)
+
+        progress.update(task, description="✅ Builder Agent created")
+
+        # ── Create Guardian agent card ──────────────────────────
+        task = progress.add_task("Creating Guardian agent card...", total=None)
+        guardian_agent_card = _generate_agent_card(
+            name="Guardian Agent",
+            description="Guards execution by validating intents and actions against security policies",
+            model="qwen2.5:3b",
+            url=f"http://{project_dir}-guardian:11438",
+            tasks=["validate_query", "guardian_security", "policy_validation", "risk_assessment"]
+        )
+        guardian_cards_dir = Path('services/guardian/agent/agent_cards')
+        guardian_cards_dir.mkdir(parents=True, exist_ok=True)
+        with open(guardian_cards_dir / 'guardian_agent.json', 'w') as f:
+            json.dump(guardian_agent_card, f, indent=2)
+        progress.update(task, description="✅ Guardian agent card created")
+
+        # ── Copy agent cards to semantic layer ──────────────────
+        task = progress.add_task("Copying cards to semantic layer...", total=None)
+        semantic_service_dir = None
+        services_dir = Path('services')
+        if services_dir.exists():
+            for service_path in services_dir.iterdir():
+                if service_path.is_dir():
+                    if (service_path / 'embedding_mesh').exists():
+                        semantic_service_dir = service_path
+                        break
+
+        if semantic_service_dir:
+            semantic_agent_cards_dir = semantic_service_dir / 'agent_cards'
+            semantic_agent_cards_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy(planner_cards_dir / 'planner_agent.json', semantic_agent_cards_dir / 'planner_agent.json')
+            shutil.copy(orch_cards_dir / 'orchestrator_agent.json', semantic_agent_cards_dir / 'orchestrator_agent.json')
+            shutil.copy(builder_cards_dir / 'builder_agent.json', semantic_agent_cards_dir / 'builder_agent.json')
+            shutil.copy(guardian_cards_dir / 'guardian_agent.json', semantic_agent_cards_dir / 'guardian_agent.json')
+
+            # Copy tool cards if available
+            semantic_tool_cards_dir = semantic_service_dir / 'tool_cards'
+            semantic_tool_cards_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                import abi_core
+                abi_core_root = Path(abi_core.__file__).parent.parent.parent.parent.parent
+                tool_cards_sources = [
+                    abi_core_root / 'abi-image' / 'tool_cards',
+                    Path(__file__).parent.parent.parent / 'tool_cards',
+                ]
+                for source_dir in tool_cards_sources:
+                    if source_dir.exists():
+                        for tc_file in source_dir.glob('*.json'):
+                            shutil.copy(tc_file, semantic_tool_cards_dir / tc_file.name)
+                        break
+            except Exception:
+                pass
+
+        progress.update(task, description="✅ Agent cards copied to semantic layer")
+
+        # ── Update runtime.yaml ─────────────────────────────────
+        task = progress.add_task("Updating runtime.yaml...", total=None)
+        from .utils import update_runtime_config
+
+        # Ensure project section has model_serving
+        update_runtime_config('project', {
+            'name': name,
+            'model_serving': model_serving,
+            'default_model': 'qwen2.5:3b',
+        })
+
+        update_runtime_config('agents', {
+            'planner': {
+                'name': 'Planner Agent',
+                'description': 'Decomposes tasks and assigns agents',
+                'port': planner_port,
+                'type': 'planner',
+                'path': 'agents/planner'
+            },
+            'orchestrator': {
+                'name': 'Orchestrator Agent',
+                'description': 'Coordinates multi-agent workflow execution',
+                'port': orchestrator_port,
+                'type': 'orchestrator',
+                'path': 'agents/orchestrator'
+            },
+            'builder': {
+                'name': 'Builder Agent',
+                'description': 'Builds and deploys ephemeral AI agents on demand',
+                'port': builder_port,
+                'type': 'builder',
+                'path': 'agents/builder'
+            }
+        })
+        progress.update(task, description="✅ runtime.yaml updated")
+
+        # ── Update compose.yaml ─────────────────────────────────
+        task = progress.add_task("Updating compose.yaml...", total=None)
+
+        # Reload runtime for compose update — ensure our ports are there
+        with open(runtime_file, 'r') as f:
+            runtime_config = yaml.safe_load(f) or {}
+
+        # Force correct ports in runtime_config to avoid stale data
+        if 'agents' not in runtime_config:
+            runtime_config['agents'] = {}
+        runtime_config['agents']['planner'] = runtime_config.get('agents', {}).get('planner', {})
+        runtime_config['agents']['planner']['port'] = planner_port
+        runtime_config['agents']['orchestrator'] = runtime_config.get('agents', {}).get('orchestrator', {})
+        runtime_config['agents']['orchestrator']['port'] = orchestrator_port
+        runtime_config['agents']['builder'] = runtime_config.get('agents', {}).get('builder', {})
+        runtime_config['agents']['builder']['port'] = builder_port
+
+        from .add import _update_compose_with_orchestration
+        _update_compose_with_orchestration(runtime_config)
+
+        progress.update(task, description="✅ compose.yaml updated")
+
+    console.print("\n" + "=" * 60, style="green")
+    console.print("✅ ABI Swarm created successfully!", style="green bold")
+    console.print("=" * 60, style="green")
+    console.print(f"\n📁 Location: {Path.cwd()}", style="blue")
+    console.print(f"\n▶️  To start:", style="cyan")
+    console.print(f"   cd {project_dir}", style="blue")
+    console.print(f"   docker compose up --build -d", style="blue")
+    console.print(f"\n🧪 To test:", style="cyan")
+    console.print(f"   curl -X POST http://localhost:{web_interface_port}/stream \\", style="blue")
+    console.print(f'     -H "Content-Type: application/json" \\', style="blue")
+    console.print(f'     -d \'{{"query": "hello", "context_id": "test", "task_id": "task1"}}\'', style="blue")
 
 
 @create.command("project")
@@ -275,10 +574,10 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
             policies_dir = opa_dir / 'policies'
             policies_dir.mkdir()
             
-            # Guardian config files
+            # Guardian config files (inside agent/)
             guardian_config_files = [
-                ('config/__init__.py', 'service_guardian/config/__init__.py'),
-                ('config/config.py', 'service_guardian/config/config.py'),
+                ('agent/config/__init__.py', 'service_guardian/agent/config/__init__.py'),
+                ('agent/config/config.py', 'service_guardian/agent/config/config.py'),
             ]
             
             # Guardian agent files
@@ -727,7 +1026,7 @@ starlette>=1.0.0
 def _get_semantic_dockerfile_template():
     """Get semantic layer Dockerfile template"""
     return '''# Semantic Layer Service Dockerfile
-FROM smarbuy/abi-image:latest
+FROM agentbase/abi-image-v2:latest
 
 WORKDIR /app
 

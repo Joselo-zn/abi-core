@@ -297,19 +297,14 @@ class AbiAgent:
                 last_output = outputs.get(completed[-1]) if completed else None
 
                 if last_output is not None:
-                    yield AgentResponse.success(
-                        last_output,
-                        agent=self.agent_name,
-                        context_id=context_id,
-                        task_id=task_id,
-                    )
+                    yield AgentResponse.result(last_output)
                 else:
-                    yield AgentResponse.empty()
+                    yield AgentResponse.text("Completed")
                 return
 
             except Exception as e:
                 abi_logging(f'[❌] Error in {self.agent_name} DAG: {e}', level='error')
-                yield AgentResponse.error(str(e), agent=self.agent_name)
+                yield AgentResponse.error(str(e))
                 return
 
         # ── Path B: no tool_graph → use LLM agent ──────────────
@@ -350,21 +345,15 @@ class AbiAgent:
 
             final_response = result_holder.get('response')
             if final_response:
-                yield AgentResponse.success(
-                    final_response,
-                    agent=self.agent_name,
-                    model=self.llm_config.get('model', 'unknown'),
-                    context_id=context_id,
-                    task_id=task_id,
-                )
+                yield AgentResponse.text(final_response)
             else:
-                yield AgentResponse.empty()
+                yield AgentResponse.text("No response generated")
 
         except Exception as e:
             abi_logging(f'[❌] Error in {self.agent_name}: {e}', level='error')
             if not llm_task.done():
                 llm_task.cancel()
-            yield AgentResponse.error(str(e), agent=self.agent_name)
+            yield AgentResponse.error(str(e))
 
     def get_info(self) -> Dict[str, Any]:
         """Get agent information."""

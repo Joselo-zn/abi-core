@@ -9,6 +9,8 @@ from app import agent
 from abi_core.common.utils import abi_logging, clean_llm_json
 from abi_core.common.plan_models import PlannerOutput
 from abi_core.common.semantic_tools import tool_find_agent
+from abi_core.agent.agent import AbiAgent
+from abi_core.common.agent_card_loader import get_agent_url
 
 
 @agent.step(
@@ -88,10 +90,38 @@ async def assign_agents(plan_data):
                 found_agent = None
 
         if found_agent:
-            agent_data = found_agent.model_dump() if hasattr(found_agent, "model_dump") else found_agent
+            # Verify agent is actually reachable before assigning
+            agent_url = get_agent_url(found_agent) if hasattr(found_agent, "supported_interfaces") else ""
+            if not agent_url and isinstance(found_agent, dict):
+                agent_url = found_agent.get("url", "")
+
+            if agent_url:
+                agent_name_str = (
+                    found_agent.name if hasattr(found_agent, "name") else
+                    found_agent.get("name", "unknown") if isinstance(found_agent, dict) else "unknown"
+                )
+                health = await AbiAgent.check_health(agent_url, agent_name_str)
+                if health.get("status") not in ("healthy",):
+                    abi_logging(
+                        f"[⚠️] Task '{task_id}': agent '{agent_name_str}' found but unavailable "
+                        f"({health.get('status')}), falling back to build_and_execute"
+                    )
+                    found_agent = None
+
+        if found_agent:
+            if hasattr(found_agent, "model_dump"):
+                agent_data = found_agent.model_dump()
+            elif hasattr(found_agent, "DESCRIPTOR"):
+                # Protobuf AgentCard — convert to dict
+                from google.protobuf.json_format import MessageToDict
+                agent_data = MessageToDict(found_agent)
+            elif isinstance(found_agent, dict):
+                agent_data = found_agent
+            else:
+                agent_data = {"name": str(found_agent)}
             task["type"] = "execute"
             task["agents"] = [agent_data]
-            abi_logging(f"[✅] Task '{task_id}': agent found → execute")
+            abi_logging(f"[✅] Task '{task_id}': agent found and healthy → execute")
             continue
 
         task["type"] = "build_and_execute"

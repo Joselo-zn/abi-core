@@ -273,7 +273,7 @@ networks:
     
     elif template_name == 'dockerfile':
         return f'''# {context.get('project_name', 'ABI Project')} Dockerfile
-FROM smarbuy/abi-image:latest
+FROM agentbase/abi-image-v2:latest
 
 WORKDIR /app
 

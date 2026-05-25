@@ -1,3 +1,0 @@
-"""
-testproject - Guardian Agent Package
-"""

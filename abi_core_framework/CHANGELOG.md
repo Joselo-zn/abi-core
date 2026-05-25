@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+- **a2a-sdk upgraded to 1.0+** — `AgentCard` is now protobuf (was pydantic). If you have a custom `config.py` that does `AgentCard(**data)`, replace it with:
+  ```python
+  from abi_core.common.agent_card_loader import load_agent_card
+  card, meta = load_agent_card("path/to/card.json")
+  ```
+  The `meta` dict contains ABI-specific fields (`auth`, `id`, `supportedTasks`, `llmConfig`).
+  Access URL via `card.supported_interfaces[0].url` or `get_agent_url(card)`.
+- **Docker image stays on a2a-sdk 0.3.25** — existing projects running on the base image are unaffected. Only projects that install `abi-core-ai` directly from PyPI get the new SDK.
+
+### Added
+- `abi_core.common.agent_card_loader` — new module that separates A2A protocol fields from ABI metadata when loading agent cards
+- `load_agent_card(path)` → returns `(AgentCard, abi_metadata_dict)`
+- `build_agent_card(dict)` → same but from a dict instead of file
+- `get_agent_url(card)` → extracts URL from `supported_interfaces[0]`
+
+### Changed
+- `a2a_server.py` — uses `create_jsonrpc_routes` + `create_agent_card_routes` (replaces removed `A2AStarletteApplication`)
+- `agent_executor.py` — rewritten for protobuf types (`Part`, `TaskState.TASK_STATE_WORKING`)
+- `abi_a2a.py` — uses `ClientFactory.connect()` and `Client.send_message()` (replaces `A2AClient`)
+- `workflow.py` — updated event handling for new client response format
+- `semantic_tools.py` — `tool_find_agent`/`tool_list_agents` use `build_agent_card()`
+- All agent `config.py` files — use `load_agent_card()` instead of `AgentCard(**data)`
+- CLI scaffolding templates updated for new pattern
+
 ### Added
 - **AbiCore Application Runner**: FastAPI-style `agent = AbiCore()` with auto-config import
   - Auto-imports `config` and `AGENT_CARD` from the local `config` package
@@ -95,7 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Version Synchronization**: Updated all version references to 1.5.8 for next PyPI release
-- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.11.7`
+- **Package Dependencies**: All requirements.txt files now correctly reference `abi-core-ai>=1.12.0`
 - **Documentation**: Updated version references across all documentation files to 1.5.8
 
 ## [1.5.7] - 2024-12-20
@@ -122,7 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation Version**: Updated Sphinx configuration to reflect current version
 
 ### Changed
-- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.11.7`
+- **Version Alignment**: All package requirements now point to `abi-core-ai>=1.12.0`
 - **Documentation**: Updated version references across all documentation files
 
 ## [1.4.0] - 2024-12-16

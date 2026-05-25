@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from a2a.types import AgentCard
+from abi_core.common.agent_card_loader import load_agent_card
 
 
 class AgentConfig:
@@ -105,23 +106,15 @@ config = AgentConfig()
 
 def _load_agent_card() -> AgentCard:
     """Load and validate the agent card from file."""
-    card_path = Path(config.AGENT_CARD)
+    card, _meta = load_agent_card(config.AGENT_CARD)
 
-    if not card_path.exists():
-        raise FileNotFoundError(f"Agent card not found: {config.AGENT_CARD}")
-
-    with card_path.open() as f:
-        data = json.load(f)
-
-    agent_card = AgentCard(**data)
-
-    if agent_card.name != config.AGENT_DISPLAY_NAME:
+    if card.name != config.AGENT_DISPLAY_NAME:
         raise ValueError(
             f"Agent card name mismatch. "
-            f"Expected: {config.AGENT_DISPLAY_NAME}, Got: {agent_card.name}"
+            f"Expected: {config.AGENT_DISPLAY_NAME}, Got: {card.name}"
         )
 
-    return agent_card
+    return card
 
 
 AGENT_CARD = _load_agent_card()

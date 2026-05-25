@@ -1,4 +1,4 @@
-FROM abi-core-image:latest
+FROM agentbase/abi-image-v2:latest
 
 WORKDIR /app
 

@@ -3,7 +3,7 @@
 import json
 import os
 
-from a2a.types import AgentCard
+from a2a.types import AgentCard, AgentCapabilities, AgentSkill, AgentInterface
 
 
 class ZombieConfig:
@@ -74,25 +74,26 @@ class ZombieConfig:
     @classmethod
     def build_agent_card(cls) -> AgentCard:
         """Build A2A AgentCard from config."""
-        return AgentCard(**{
-            "name": cls.AGENT_NAME,
-            "description": cls.AGENT_DESCRIPTION,
-            "url": f"http://{cls.AGENT_NAME}:{cls.AGENT_PORT}",
-            "version": "1.0.0",
-            "capabilities": {
-                "streaming": "True",
-                "pushNotifications": "False",
-                "stateTransitionHistory": "False",
-            },
-            "defaultInputModes": ["text/plain"],
-            "defaultOutputModes": ["text/plain"],
-            "skills": [{
-                "id": "execute_task",
-                "name": f"Execute ({cls.AGENT_NAME})",
-                "description": cls.SYSTEM_PROMPT[:200],
-                "tags": cls.TOOL_NAMES,
-            }],
-        })
+        return AgentCard(
+            name=cls.AGENT_NAME,
+            description=cls.AGENT_DESCRIPTION,
+            version="1.0.0",
+            capabilities=AgentCapabilities(
+                streaming=True,
+                push_notifications=False,
+            ),
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            supported_interfaces=[
+                AgentInterface(url=f"http://{cls.AGENT_NAME}:{cls.AGENT_PORT}", protocol_binding="JSONRPC")
+            ],
+            skills=[AgentSkill(
+                id="execute_task",
+                name=f"Execute ({cls.AGENT_NAME})",
+                description=cls.SYSTEM_PROMPT[:200],
+                tags=cls.TOOL_NAMES or ["general"],
+            )],
+        )
 
 
 config = ZombieConfig()

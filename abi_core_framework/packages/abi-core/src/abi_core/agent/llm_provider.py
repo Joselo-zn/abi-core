@@ -253,7 +253,15 @@ async def invoke(
         for _node, node_data in chunk.items():
             if "messages" in node_data:
                 for msg in node_data["messages"]:
-                    if hasattr(msg, "content") and msg.content:
-                        final_response = msg.content
+                    msg_type = type(msg).__name__
+                    content = getattr(msg, "content", "")
+                    tool_calls = getattr(msg, "tool_calls", [])
+                    abi_logging(
+                        f"[🔄] Agent msg: type={msg_type}, "
+                        f"content={str(content)[:100] if content else '(empty)'}, "
+                        f"tool_calls={len(tool_calls)}"
+                    )
+                    if content and msg_type != "ToolMessage":
+                        final_response = content
 
     return final_response or ""

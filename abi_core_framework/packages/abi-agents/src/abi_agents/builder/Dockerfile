@@ -1,7 +1,7 @@
 # Builder Agent Dockerfile
 # Part of ABI Swarm
 
-FROM smarbuy/abi-image:latest
+FROM agentbase/abi-image-v2:latest
 
 WORKDIR /app
 

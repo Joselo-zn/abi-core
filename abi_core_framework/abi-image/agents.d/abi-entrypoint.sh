@@ -48,7 +48,7 @@ start_ollama() {
 start_service() {
   if [[ -n "${SERVICE_COMMAND}" ]]; then
     echo "🚀 Starting service: ${SERVICE_COMMAND}"
-    ${SERVICE_COMMAND} &
+    bash -c "${SERVICE_COMMAND}" &
     pids+=($!)
   elif [[ -n "${SERVICE_MODULE}" ]]; then
     echo "🚀 Starting Python module: ${SERVICE_MODULE}"
