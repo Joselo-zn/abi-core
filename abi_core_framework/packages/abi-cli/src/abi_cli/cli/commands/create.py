@@ -583,16 +583,11 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
             # Guardian agent files
             guardian_files = [
                 ('agent/__init__.py', 'service_guardian/agent/__init__.py'),
-                ('agent/guardial_secure.py', 'service_guardian/agent/guardial_secure.py'),
-                ('agent/emergency_response.py', 'service_guardian/agent/emergency_response.py'),
-                ('agent/dashboard.py', 'service_guardian/agent/dashboard.py'),
-                ('agent/alerting_system.py', 'service_guardian/agent/alerting_system.py'),
-                ('agent/metrics_collector.py', 'service_guardian/agent/metrics_collector.py'),
-                ('agent/audit_persistence.py', 'service_guardian/agent/audit_persistence.py'),
-                ('agent/policy_engine_secure.py', 'service_guardian/agent/policy_engine_secure.py'),
-                ('agent/mcp_interface.py', 'service_guardian/agent/mcp_interface.py'),
+                ('agent/app.py', 'service_guardian/agent/app.py'),
+                ('agent/guardian.py', 'service_guardian/agent/guardian.py'),
                 ('agent/main.py', 'service_guardian/agent/main.py'),
-                ('agent/models/agent_models.py', 'service_guardian/agent/models/agent_models.py'),
+                ('agent/policy_engine_secure.py', 'service_guardian/agent/policy_engine_secure.py'),
+                ('agent/Dockerfile', 'service_guardian/agent/Dockerfile'),
                 ('agent/agent_cards/guardian_agent.json', 'service_guardian/agent/agent_cards/guardian_agent.json'),
             ]
             

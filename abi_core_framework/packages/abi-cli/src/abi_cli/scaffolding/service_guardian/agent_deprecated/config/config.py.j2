@@ -14,11 +14,11 @@ class AgentConfig:
     # Service Identity
     AGENT_NAME: str = "guardian"
     AGENT_DESCRIPTION: str = "Security policy enforcement and compliance validation"
-    AGENT_DISPLAY_NAME: str = os.getenv("GUARDIAN_DISPLAY_NAME", "ABI Guardian")
+    AGENT_DISPLAY_NAME: str = os.getenv("GUARDIAN_DISPLAY_NAME", "{{ project_name }} Guardian")
 
     # Server Configuration
     HOST: str = os.getenv("GUARDIAN_HOST", "0.0.0.0")
-    AGENT_PORT: int = int(os.getenv("GUARDIAN_PORT", "11438"))
+    AGENT_PORT: int = int(os.getenv("GUARDIAN_PORT", "{{ guardian_port | default('11438') }}"))
     DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8080"))
 
     # OPA Configuration

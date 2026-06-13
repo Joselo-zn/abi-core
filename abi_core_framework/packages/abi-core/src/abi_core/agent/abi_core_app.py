@@ -72,6 +72,7 @@ class _RegisteredNode:
     max_retries: int = 3
     retry_delay: float = 1.0
     node_type: str = _NodeType.STEP
+    tools: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -149,6 +150,7 @@ class AbiCore:
         output_key: Optional[str] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        tools: Optional[List[str]] = None,
     ) -> Callable:
         """Register a deterministic step in the execution DAG.
 
@@ -164,6 +166,9 @@ class AbiCore:
                         (defaults to *name*).
             max_retries: Retry attempts on failure.
             retry_delay: Base delay between retries (exponential).
+            tools: List of tool names that MUST be called during this step.
+                   If declared, the framework enforces usage and falls back
+                   to deterministic execution if the LLM doesn't call them.
 
         Returns:
             The original function (unmodified).
@@ -180,6 +185,7 @@ class AbiCore:
                     max_retries=max_retries,
                     retry_delay=retry_delay,
                     node_type=_NodeType.STEP,
+                    tools=tools or [],
                 )
             )
             return fn

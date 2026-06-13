@@ -196,24 +196,18 @@ async def invoke(
     tools: list = None,
     thread_id: str = None,
     system_prompt: str = None,
+    required_tools: list = None,
 ) -> str:
-    """Unified LLM invocation for any node in the system.
-
-    Covers 4 use cases:
-    - LLM only, no context:    invoke(config, "classify this")
-    - LLM only, with context:  invoke(config, "summarize", thread_id="abc")
-    - Agent + tools, no ctx:   invoke(config, "verify tool", tools=[search])
-    - Agent + tools, with ctx:  invoke(config, query, tools=[find], thread_id="s1")
+    """Unified LLM invocation with optional tool enforcement.
 
     Args:
         llm_config: Provider config dict for create_llm().
         prompt: The user/system message to send.
-        tools: Optional list of LangChain tools. If provided, creates
-               a full agent that can call tools. If None, uses LLM directly.
+        tools: Optional list of LangChain tools.
         thread_id: Optional session ID for conversation memory.
-               If provided, uses MemorySaver checkpointer so the LLM
-               retains history across calls with the same thread_id.
-        system_prompt: Optional system instructions prepended to the call.
+        system_prompt: Optional system instructions.
+        required_tools: List of tool names that MUST be called.
+            If declared, the framework enforces usage with retry + fallback.
 
     Returns:
         The text content of the LLM response.
@@ -232,6 +226,17 @@ async def invoke(
 
     # ── Path B: Agent with tools ────────────────────────────────
     from langchain.agents import create_agent
+    from abi_core.common.tool_enforcement import ToolTracker, get_enforcement_system_prompt
+
+    # Setup enforcement if required_tools declared
+    tracker = None
+    actual_tools = tools
+    enforced_system_prompt = system_prompt or ""
+
+    if required_tools:
+        tracker = ToolTracker(tools, required_tools)
+        actual_tools = tracker.wrapped_tools
+        enforced_system_prompt += get_enforcement_system_prompt(required_tools)
 
     checkpointer = None
     if thread_id:
@@ -240,13 +245,14 @@ async def invoke(
 
     agent = create_agent(
         model=llm,
-        tools=tools,
-        system_prompt=system_prompt or "",
+        tools=actual_tools,
+        system_prompt=enforced_system_prompt,
         checkpointer=checkpointer,
     )
-    abi_logging(f'CREATE AGENT CALLED WITH TOOLS {tools}')
+    abi_logging(f'CREATE AGENT CALLED WITH TOOLS {[t.name for t in actual_tools]}')
     inputs = {"messages": [{"role": "user", "content": prompt}]}
     config = {"configurable": {"thread_id": thread_id}} if thread_id else {}
+    config["recursion_limit"] = 10  # Prevent infinite tool call loops
 
     final_response = None
     async for chunk in agent.astream(inputs, config=config, stream_mode="updates"):
@@ -263,5 +269,36 @@ async def invoke(
                     )
                     if content and msg_type != "ToolMessage":
                         final_response = content
+
+    # ── Enforcement: check if required tools were used ──────────
+    if tracker:
+        missing = tracker.get_missing()
+        if missing:
+            abi_logging(f"[⚠️] Required tools not used by LLM: {missing}. Retrying with enforcement...")
+
+            # Retry: explicit instruction to use the tools
+            retry_prompt = tracker.get_enforcement_prompt(final_response or "")
+            retry_agent = create_agent(
+                model=llm,
+                tools=actual_tools,
+                system_prompt="You MUST call the required tools. Do not explain. Just call them.",
+                checkpointer=None,
+            )
+            retry_inputs = {"messages": [{"role": "user", "content": retry_prompt}]}
+            retry_config = {"recursion_limit": 10}  # Prevent infinite loops
+            async for chunk in retry_agent.astream(retry_inputs, config=retry_config, stream_mode="updates"):
+                for _node, node_data in chunk.items():
+                    if "messages" in node_data:
+                        for msg in node_data["messages"]:
+                            msg_type = type(msg).__name__
+                            content = getattr(msg, "content", "")
+                            if content and msg_type != "ToolMessage":
+                                final_response = content
+
+            # Check again after retry
+            still_missing = tracker.get_missing()
+            if still_missing:
+                abi_logging(f"[🔧] Fallback: executing {still_missing} programmatically")
+                tracker.execute_fallback(final_response or "")
 
     return final_response or ""

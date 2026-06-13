@@ -53,25 +53,50 @@ class A2AResponse:
     status_message: Optional[str] = None
     raw: Any = None
 
+    # ── State normalization ─────────────────────────────────────
+
+    # Protobuf TaskState enum (a2a-sdk 1.0) uses integer values. The parser
+    # may surface the state as an int ("6"), the protobuf enum name
+    # ("TASK_STATE_INPUT_REQUIRED"), or a legacy string ("input-required").
+    _STATE_BY_INT = {
+        "1": "submitted",
+        "2": "working",
+        "3": "completed",
+        "4": "failed",
+        "5": "cancelled",
+        "6": "input_required",
+        "7": "rejected",
+    }
+
+    def _normalized_state(self) -> str:
+        """Return a canonical lowercase state name regardless of source format."""
+        if self.state is None:
+            return ""
+        s = str(self.state).strip().lower()
+        # Integer form (protobuf) → canonical name
+        if s in self._STATE_BY_INT:
+            return self._STATE_BY_INT[s]
+        # Protobuf enum name form: "task_state_input_required" → "input_required"
+        if s.startswith("task_state_"):
+            s = s[len("task_state_"):]
+        return s
+
     # ── Convenience properties ──────────────────────────────────
 
     @property
     def is_input_required(self) -> bool:
         """True when the remote agent is asking for more information."""
-        if not self.state:
-            return False
-        s = str(self.state).lower()
+        s = self._normalized_state()
         return "input" in s and "required" in s
 
     @property
     def is_completed(self) -> bool:
-        s = str(self.state).lower() if self.state else ""
-        return "completed" in s
+        return "completed" in self._normalized_state()
 
     @property
     def is_failed(self) -> bool:
-        s = str(self.state).lower() if self.state else ""
-        return "failed" in s
+        s = self._normalized_state()
+        return "failed" in s or "rejected" in s
 
     # ── Factory ─────────────────────────────────────────────────
 

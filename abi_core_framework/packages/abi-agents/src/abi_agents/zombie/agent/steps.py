@@ -37,11 +37,33 @@ async def gather_context(query):
     name="analyze_and_execute",
     input_map={"context": "$gather_context", "query": "$input.query"},
     depends_on=["gather_context"],
+    tools=["write_file"],
 )
 async def analyze_and_execute(context, query):
-    """Phase 2: LLM autonomous execution with tools."""
+    """Phase 2: LLM autonomous execution with tools, enriched with memory context."""
     from abi_core.agent.llm_provider import invoke
     from abi_core.common.context_loader import build_execution_prompt
+
+    # Inject memory context if AMS is available
+    memory_context = ""
+    if config.AGENT_MEMORY_URL and config.CONTEXT_ID:
+        try:
+            from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+            mem_client = MemoryAPIClient(MemoryClientConfig(base_url=config.AGENT_MEMORY_URL))
+            prompt_data = await mem_client.memory_prompt(
+                query=query,
+                session_id=config.CONTEXT_ID,
+                long_term_search={"text": query, "limit": 3},
+            )
+            # Extract context from memory messages
+            for msg in prompt_data.get("messages", []):
+                if msg.get("role") == "system" and msg.get("content"):
+                    memory_context = msg["content"]
+                    break
+            if memory_context:
+                abi_logging(f"[🧠] Memory context injected ({len(memory_context)} chars)")
+        except Exception as e:
+            abi_logging(f"[⚠️] Memory context unavailable: {e}")
 
     execution_prompt = build_execution_prompt(
         query=query,
@@ -49,9 +71,16 @@ async def analyze_and_execute(context, query):
         artifacts=context.get("artifacts", []),
         workspace=config.WORKSPACE,
     )
+
+    # Combine system prompt with memory context
+    system_prompt = config.SYSTEM_PROMPT
+    if memory_context:
+        system_prompt = f"{config.SYSTEM_PROMPT}\n\n## Context from previous tasks:\n{memory_context}"
+
     result = await invoke(
         config.LLM_CONFIG, execution_prompt,
-        tools=ZOMBIE_TOOLS, system_prompt=config.SYSTEM_PROMPT,
+        tools=ZOMBIE_TOOLS, system_prompt=system_prompt,
+        required_tools=["write_file"],
     )
     
     abi_logging(f"[✅] Query: {query} Results: {result}")
@@ -80,6 +109,30 @@ async def synthesize_and_report(execution_result, context):
     except Exception as e:
         status = "incompleted"
         abi_logging(f"[❌] Error synthesize_and_report: {e}")
+
+    # Persist result summary to working memory for subsequent tasks
+    if config.AGENT_MEMORY_URL and config.CONTEXT_ID:
+        try:
+            from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+            from agent_memory_client.models import WorkingMemory
+
+            mem_client = MemoryAPIClient(MemoryClientConfig(base_url=config.AGENT_MEMORY_URL))
+            filenames = [a["filename"] for a in uploaded_artifacts] if uploaded_artifacts else []
+            summary = (
+                f"Agent '{config.AGENT_NAME}' completed task. "
+                f"Result: {execution_result.get('result', '')[:200]}. "
+                f"Files created: {filenames}"
+            )
+            await mem_client.put_working_memory(
+                config.CONTEXT_ID,
+                WorkingMemory(
+                    session_id=config.CONTEXT_ID,
+                    messages=[{"role": "assistant", "content": summary}],
+                ),
+            )
+            abi_logging(f"[🧠] Stored result in working memory")
+        except Exception as e:
+            abi_logging(f"[⚠️] Could not store memory: {e}")
 
     return {
         "status": status,

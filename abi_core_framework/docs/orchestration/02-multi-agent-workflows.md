@@ -1,5 +1,10 @@
 # Multi-Agent Workflows
 
+```{warning}
+**Alpha.** ABI Swarm orchestration (Orchestrator + Planner + Builder + ephemeral
+agents) is under active development and may change between releases.
+```
+
 `AgentInteractionFlow` is the engine that runs plans across multiple agents.
 
 ## What it does

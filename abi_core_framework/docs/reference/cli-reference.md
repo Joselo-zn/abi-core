@@ -26,6 +26,12 @@ abi-core create project my-app \
 
 ### `abi-core create swarm`
 
+```{warning}
+**Alpha.** The ABI Swarm (Orchestrator + Planner + Builder + ephemeral agents) is
+under active development. APIs, generated structure, and behavior may change between
+releases. Not recommended for production yet.
+```
+
 Creates a full project + Orchestrator + Planner + Builder in one command.
 
 ```bash

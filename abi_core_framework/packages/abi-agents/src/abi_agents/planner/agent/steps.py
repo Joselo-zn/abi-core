@@ -46,6 +46,7 @@ def parse_plan(raw_response):
         abi_logging(f"[📋] PLAN: objective='{plan.get('objective', '')}' strategy={plan.get('execution_strategy', '')}")
         for t in plan.get("tasks", []):
             abi_logging(f"[📋]   {t.get('task_id')}: {t.get('description', '')[:120]} deps={t.get('dependencies', [])}")
+        plan_dict = _enforce_atomic_tasks(plan_dict)
         return plan_dict
     except Exception as e:
         abi_logging(f"[⚠️] Pydantic validation failed, using raw parsed: {e}")
@@ -54,7 +55,46 @@ def parse_plan(raw_response):
         for task in plan.get("tasks", []):
             if "description" in task:
                 task["description"] = _clean_description(task["description"])
+        parsed = _enforce_atomic_tasks(parsed)
         return parsed
+
+
+def _enforce_atomic_tasks(plan_data: dict) -> dict:
+    """Defensive validation: truncate to 5 tasks, ensure targets exist."""
+    plan = plan_data.get("plan", {})
+    tasks = plan.get("tasks", [])
+
+    # Max 5 tasks
+    if len(tasks) > 5:
+        abi_logging(f"[⚠️] Plan has {len(tasks)} tasks, truncating to 5")
+        plan["tasks"] = tasks[:5]
+        tasks = plan["tasks"]
+
+    # Ensure each task has a target
+    for task in tasks:
+        if not task.get("target") or not task["target"].get("tag"):
+            # Try to infer filename from description
+            desc = task.get("description", "")
+            tag = _infer_filename(desc)
+            task["target"] = {"tag": tag, "type": "file"}
+            abi_logging(f"[🔧] Inferred target for {task.get('task_id', '?')}: {tag}")
+
+    return plan_data
+
+
+def _infer_filename(description: str) -> str:
+    """Try to extract a filename from a task description."""
+    import re
+    # Match patterns like "named X.py" or "file X.sh"
+    match = re.search(r'named\s+(\S+\.\w+)', description, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r'file\s+(\S+\.\w+)', description, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    # Fallback: use task description words
+    words = description.split()[:3]
+    return "_".join(w.lower() for w in words if w.isalnum()) + ".py"
 
 
 @agent.step(

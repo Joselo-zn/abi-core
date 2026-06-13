@@ -40,8 +40,6 @@ RUN mkdir -p {{ emergency_log_dir | default('/app/emergency_logs') }} && \
 RUN mkdir -p /app/data && chmod 755 /app/data
 
 RUN mkdir -p /app/agent/agent_cards && chmod 755 /app/agent/agent_cards
-RUN mv /app/agent_cards/guardian_agent.json /app/agent/agent_cards/guardian_agent.json
-RUN rm -rf /app/agent_cards/
 
 # Environment variables for abi-entrypoint.sh
 ENV PYTHONPATH=/app/agent:/app

@@ -1,5 +1,11 @@
 # Planner & Orchestrator
 
+```{warning}
+**Alpha.** The ABI Swarm (Orchestrator + Planner + Builder + ephemeral agents) is
+under active development. APIs, generated structure, and behavior may change between
+releases. Not recommended for production yet.
+```
+
 The Orchestrator is the entry point for complex requests. The Planner breaks them into smaller tasks and assigns agents. Together they coordinate multi-agent work.
 
 ## How they work together

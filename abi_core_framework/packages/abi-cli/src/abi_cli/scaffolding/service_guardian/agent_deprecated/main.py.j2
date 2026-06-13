@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Guardian Security Service — {{ project_name }}"""
+
+import os
+import asyncio
+import threading
+
+from abi_core.common.utils import abi_logging
+from abi_core.opa.config import get_opa_config
+from abi_core.opa.policy_loader_v2 import get_policy_loader
+from abi_core.common.a2a_server import start_server
+
+from config.config import config, AGENT_CARD
+from agent.guardial_secure import AbiGuardianSecure
+from agent.alerting_system import get_alerting_system
+from agent.dashboard import start_dashboard_server
+
+# ── Pre-startup: ensure core policies ───────────────────────────
+
+abi_logging("🔒 Pre-startup security initialization...")
+
+policy_base_path = os.getenv('ABI_POLICY_PATH', '/app/common/opa')
+from pathlib import Path
+
+policy_dir = Path(policy_base_path)
+policy_dir.mkdir(parents=True, exist_ok=True)
+
+opa_config = get_opa_config()
+opa_config.set('policies.base_path', policy_base_path)
+
+policy_loader = get_policy_loader(policy_base_path)
+
+if not policy_loader.ensure_system_security():
+    abi_logging("🚨 CRITICAL: Core policies could not be generated — BLOCKED", level="error")
+    exit(1)
+
+abi_logging("✅ Core policies validated — proceeding with secure startup")
+
+# ── Startup ─────────────────────────────────────────────────────
+
+
+async def secure_startup():
+    """Secure startup: alerting → dashboard → guardian init → health check → A2A server."""
+
+    # Alerting system
+    alerting_system = get_alerting_system()
+
+    # Dashboard in background
+    dashboard_thread = threading.Thread(
+        target=start_dashboard_server,
+        args=(config.HOST, config.DASHBOARD_PORT),
+        daemon=True,
+    )
+    dashboard_thread.start()
+    abi_logging(f"📊 Dashboard at http://{config.HOST}:{config.DASHBOARD_PORT}")
+
+    # Initialize guardian with security validation
+    abi_logging("🛡️ Initializing Guardian security...")
+    guardian = AbiGuardianSecure()
+
+    security_ok = await guardian.initialize_security()
+    if not security_ok:
+        abi_logging("🚨 Guardian security initialization FAILED", level="error")
+        raise RuntimeError("Security validation failed")
+
+    health = await guardian.health_check()
+    abi_logging(f"🔍 Health: {health.get('overall_status', 'UNKNOWN')}")
+
+    if health.get('overall_status') != 'SECURE_AND_OPERATIONAL':
+        abi_logging(f"🚨 Health check failed: {health}", level="error")
+        raise RuntimeError("Guardian health check failed")
+
+    abi_logging("✅ Security validated — starting A2A server")
+
+    # Return guardian for the A2A server (started outside async context)
+    return guardian
+
+
+# Run async security validation
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+try:
+    guardian = loop.run_until_complete(secure_startup())
+except Exception as e:
+    abi_logging(f"🚨 Startup failed: {e}", level="error")
+    exit(1)
+finally:
+    loop.close()
+
+# A2A server (blocking, runs in main thread — no event loop conflict)
+start_server(
+    host="0.0.0.0",
+    port=config.AGENT_PORT,
+    agent_card=AGENT_CARD,
+    agent=guardian,
+)

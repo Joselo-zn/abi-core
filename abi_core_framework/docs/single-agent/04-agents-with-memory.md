@@ -74,7 +74,37 @@ curl -X POST http://localhost:8002/stream \
 
 ## Memory is in-process
 
-The default memory (LangGraph `MemorySaver`) lives in the agent's process memory. If the container restarts, memory is lost. For persistent memory, store conversations in the Semantic Layer using `MCPToolkit`.
+The default memory (LangGraph `MemorySaver`) lives in the agent's process memory. If the container restarts, memory is lost. For persistent, system-wide memory use the Agent Memory Server (below).
+
+## Persistent memory with the Agent Memory Server (AMS)
+
+```{warning}
+**Alpha.** System memory via the Agent Memory Server is part of the ABI Swarm, which
+is under active development. Configuration and behavior may change between releases.
+```
+
+The two kinds of memory are different:
+
+- **Agent memory** — the conversation thread of a single agent (`thread_id`, in-process). Local and volatile.
+- **System memory** — a global store shared across the swarm, persisted in Redis. It captures events that matter to the whole system (e.g. a pending clarification, results of past tasks), survives restarts, and any agent can query it.
+
+The swarm scaffolding (`abi-core create swarm`) provisions system memory automatically with two services:
+
+- `<project>-redis-stack` — Redis 8 (backing store)
+- `<project>-agent-memory` — Redis Agent Memory Server (working + long-term memory)
+
+Agents and ephemerals receive `AGENT_MEMORY_URL` and `CONTEXT_ID` as environment variables and reach AMS over the Docker network.
+
+### What AMS provides
+
+| Type | Scope | Use |
+|------|-------|-----|
+| Working (short-term) memory | Per session (`context_id`) | Current task state, multi-turn context |
+| Long-term memory | Persistent, semantic | Past results, preferences, episodes — searched by similarity |
+
+AMS runs fully local through Ollama (via LiteLLM) — no cloud API keys required. See [Environment Variables](../reference/environment-variables.md#agent-memory-redis-ams) for the full configuration.
+
+> **Requires Redis 8+.** AMS uses the `HSETEX` command (Redis 8.0). The `redis:8` image bundles RediSearch/RedisJSON in the core, so it works out of the box.
 
 ## Next step
 

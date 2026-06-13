@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Agent Memory Server (AMS) in swarm scaffolding** — `abi-core create swarm` and the
+  CLI generator (`add.py`) now provision two extra services for system-wide memory:
+  - `<project>-redis-stack` — Redis 8 (bundles RediSearch/RedisJSON; required for the
+    `HSETEX` command used by AMS) with `--appendonly yes` persistence.
+  - `<project>-agent-memory` — `redislabs/agent-memory-server` exposing working
+    (short-term) and long-term memory on port 8000.
+  - The Builder injects `AGENT_MEMORY_URL=http://<project>-agent-memory:8000` into
+    ephemeral agents so they can recall/store context.
+  - AMS runs fully local via Ollama (LiteLLM): `GENERATION_MODEL`/`FAST_MODEL`/`SLOW_MODEL`
+    = `ollama/qwen2.5:3b`, `EMBEDDING_MODEL` = `ollama/nomic-embed-text:v1.5` (768 dims).
+
+### Fixed
+- `AgentResponse.input_required(prompt, **kwargs)` — now accepts optional metadata
+  (e.g. `status`, `questions`) preserved under `meta`. Previously raised
+  `TypeError: unexpected keyword argument 'status'` when an agent emitted a
+  clarification request, which broke the Planner → Orchestrator clarification flow.
+- `A2AResponse.is_input_required` / `is_completed` / `is_failed` — now recognize
+  protobuf `TaskState` values in all forms: integer (`"6"`), enum name
+  (`TASK_STATE_INPUT_REQUIRED`), and legacy string (`input-required`). Previously
+  only matched the legacy string, so clarification requests over a2a-sdk 1.0
+  (protobuf, integer states) were never detected by the Orchestrator.
+
 ### Breaking Changes
 - **a2a-sdk upgraded to 1.0+** — `AgentCard` is now protobuf (was pydantic). If you have a custom `config.py` that does `AgentCard(**data)`, replace it with:
   ```python

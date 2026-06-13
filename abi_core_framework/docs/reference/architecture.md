@@ -1,5 +1,11 @@
 # Architecture
 
+```{note}
+The **ABI Swarm** layers (Orchestrator, Planner, Builder, ephemeral agents, and the
+System Memory Layer) are **alpha** — under active development and subject to change.
+The single-agent core, A2A, Semantic Layer, and Security layers are stable.
+```
+
 ## System overview
 
 ```
@@ -40,6 +46,14 @@ User (curl / Postman / Open WebUI)
 │  Guardian (gate) + OPA (policy engine)              │
 │  HMAC auth, risk scoring, audit logs                │
 └─────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│  System Memory Layer                                │
+│  Redis 8 + Agent Memory Server (AMS)                │
+│  Working (short-term) + long-term semantic memory   │
+│  Shared across the swarm via AGENT_MEMORY_URL        │
+└─────────────────────────────────────────────────────┘
 ```
 
 ## Communication protocols
@@ -50,6 +64,7 @@ User (curl / Postman / Open WebUI)
 | MCP | Agent → Semantic Layer | Tool calls, agent discovery |
 | HTTP/SSE | User → Web Interface | Queries, streaming responses |
 | REST | Any → Health endpoints | Health checks, metrics |
+| HTTP (AMS) | Agent → Agent Memory Server | Store/recall short & long-term memory |
 
 ## Inside an agent
 

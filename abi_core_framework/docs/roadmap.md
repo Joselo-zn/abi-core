@@ -10,10 +10,10 @@ What's working today:
 - ✅ Semantic Layer (Weaviate + MCP + embedding mesh)
 - ✅ Guardian + OPA security policies
 - ✅ A2A access validation (strict/permissive/disabled)
-- ✅ Orchestrator + Planner + Builder agents
-- ✅ Ephemeral agent creation (Docker containers on-demand)
+- ✅ Orchestrator + Planner + Builder agents *(alpha)*
+- ✅ Ephemeral agent creation (Docker containers on-demand) *(alpha)*
 - ✅ Artifact Store (MinIO)
-- ✅ CLI scaffolding (create project, add agent, create swarm)
+- ✅ CLI scaffolding (create project, add agent, create swarm *(alpha)*)
 - ✅ Web interface (SSE streaming, Open WebUI compatible)
 - ✅ Task orchestration v2 (parallel, depends_on, routing)
 - ✅ MCPToolkit (dynamic MCP tool access)
@@ -24,7 +24,7 @@ What's working today:
 What's being worked on:
 
 - 🔄 Plan Confirmation — user approves plan before execution
-- 🔄 Context Engine (Redis) — shared context across agents
+- 🔄 Context Engine (Redis / Agent Memory Server) — shared system memory across agents *(alpha: AMS deployed in swarm scaffolding)*
 - 🔄 TUI improvements — interactive terminal dashboard
 - 🔄 Result validation — verify agent outputs against schemas
 - 🔄 Swarm knowledge base — persistent learning across sessions
@@ -48,7 +48,9 @@ Ideas and directions:
 | CLI | ✅ Stable |
 | A2A + Security | ✅ Stable |
 | Semantic Layer | ✅ Stable |
-| Orchestration | ✅ Stable |
+| Orchestration (ABI Swarm) | 🔶 Alpha |
+| Ephemeral agents | 🔶 Alpha |
+| System Memory (AMS) | 🔶 Alpha |
 | Documentation | ✅ Complete |
 | Examples | ✅ Published |
 

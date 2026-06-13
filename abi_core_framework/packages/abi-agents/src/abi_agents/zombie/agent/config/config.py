@@ -59,6 +59,10 @@ class ZombieConfig:
     LOG_AGENT_NAME: str = os.getenv("LOG_AGENT_NAME", AGENT_NAME)
     LOG_BUCKET: str = os.getenv("LOG_BUCKET", "abi-logs")
 
+    # Agent Memory (Redis AMS)
+    CONTEXT_ID: str = os.getenv("CONTEXT_ID", "")
+    AGENT_MEMORY_URL: str = os.getenv("AGENT_MEMORY_URL", "")
+
     # Agent Card — write to disk from AGENT_CARD_JSON env var for MCP auth
     AGENT_CARD: str = "ephemeral"
     _AGENT_CARD_PATH: str = "/tmp/agent_card.json"

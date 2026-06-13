@@ -227,7 +227,7 @@ async def build_container(config):
             "TOOLS": tools_json,
             "LIBRARY_TOOLS": json.dumps(config.get("library_tools_resolved", [])),
             "ARTIFACT_KEYS": artifact_keys_json,
-            "MODEL_NAME": os.getenv("MODEL_NAME", "qwen2.5:3b"),
+            "MODEL_NAME": os.getenv("EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "devstral:24b")),
             "OLLAMA_HOST": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
             "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "ollama"),
             "MCP_HOST": os.getenv("MCP_HOST", "localhost"),
@@ -241,6 +241,8 @@ async def build_container(config):
             "LOG_TO_ARTIFACT_STORE": os.getenv("LOG_TO_ARTIFACT_STORE", "true"),
             "LOG_BUCKET": os.getenv("LOG_BUCKET", "abi-logs"),
             "AGENT_CARD_JSON": config.get("agent_card_json", ""),
+            "CONTEXT_ID": config.get("task_id", ""),
+            "AGENT_MEMORY_URL": os.getenv("AGENT_MEMORY_URL", "http://abi-swarm-agent-memory:8000"),
             "SERVICE_MODULE": "",
             "SERVICE_COMMAND": (
                 f"pip install --quiet --no-cache-dir --upgrade abi-core-ai && "

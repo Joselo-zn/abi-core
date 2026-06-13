@@ -72,7 +72,7 @@ class PlannerResponse(BaseModel):
     # Identidad / estado
     id: Optional[str] = Field(None, description="Correlationable ID (trace_id, job_id, etc.)")
     ok: bool = True
-    status: Literal['input_required', 'completed', 'error'] = 'input_required'
+    status: Literal['input_required', 'needs_clarification', 'completed', 'error'] = 'input_required'
     status_code: Optional[int] = Field(None, description="HTTP/semántico Code if applicable.")
     question: Optional[str] = Field(
         description='Input needed from the user to generate the plan'

@@ -1,5 +1,10 @@
 # Result Synthesis
 
+```{warning}
+**Alpha.** ABI Swarm orchestration (Orchestrator + Planner + Builder + ephemeral
+agents) is under active development and may change between releases.
+```
+
 After a workflow completes, the Orchestrator combines all agent responses into one coherent answer for the user.
 
 ## How it works

@@ -61,11 +61,18 @@ class AgentResponse:
         }
 
     @staticmethod
-    def input_required(prompt: str) -> dict:
-        """Pause execution and ask the user for input."""
+    def input_required(prompt: str, *args, **kwargs) -> dict:
+        """Pause execution and ask the user for input.
+
+        Extra keyword arguments (e.g. ``status``, ``questions``) are preserved
+        under ``meta`` for clients that render structured clarification, but
+        are not required by the executor (which only reads ``content`` and
+        ``require_user_input``).
+        """
         return {
             "response_type": "input_required",
             "content": prompt,
             "is_task_completed": False,
             "require_user_input": True,
+            "meta": kwargs,
         }
