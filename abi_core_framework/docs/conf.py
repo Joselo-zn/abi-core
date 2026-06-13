@@ -4,7 +4,26 @@
 project = 'ABI-Core'
 copyright = '2025, José Luis Martínez'
 author = 'José Luis Martínez'
-release = '1.11.5'
+
+
+def _get_release() -> str:
+    """Read the version from pyproject.toml so docs stay in sync with the package."""
+    import pathlib
+    import re
+
+    pyproject = pathlib.Path(__file__).parent.parent / "pyproject.toml"
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+        match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+    return "0.0.0"
+
+
+release = _get_release()
+version = release
 
 # -- General configuration ---------------------------------------------------
 extensions = [
