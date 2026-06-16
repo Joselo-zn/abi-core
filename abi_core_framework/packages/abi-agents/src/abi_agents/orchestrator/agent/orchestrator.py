@@ -38,6 +38,40 @@ class AbiOrchestratorAgent(AbiAgent):
         self._conversation_history[context_id] = ctx
         abi_logging(f"[📝] Error recorded in session {context_id}: {error_type}")
 
+    async def _record_pending_clarification(
+        self, context_id: str, original_query: str, clarification: str
+    ):
+        """Record a pending clarification as a system-level event in memory.
+
+        This is a *system* event (not agent state): it lives in short-term
+        memory so that the next user message in this session is recognized as
+        the answer to the clarification — regardless of whether the orchestrator
+        process restarts between turns. Best effort: a memory failure does not
+        block emitting the clarification to the user.
+        """
+        if not config.AGENT_MEMORY_URL or not context_id:
+            return
+        try:
+            from abi_core.memory import add_short_term_memory
+
+            # The marker substring "pending_clarification" must appear in the
+            # stored text so the triage step can detect it on the next turn.
+            payload = json.dumps({
+                "_event": "pending_clarification",
+                "original_query": original_query,
+                "clarification": clarification,
+            })
+            await add_short_term_memory(
+                topic="pending_clarification",
+                task=context_id,
+                content=payload,
+                context_id=context_id,
+                memory_url=config.AGENT_MEMORY_URL,
+            )
+            abi_logging(f"[📝] Pending clarification recorded for session {context_id}")
+        except Exception as e:
+            abi_logging(f"[⚠️] Could not record pending clarification: {e}")
+
     async def stream(
         self, query: str, context_id: str, task_id: str
     ) -> AsyncIterable[dict[str, any]]:
@@ -134,6 +168,9 @@ class AbiOrchestratorAgent(AbiAgent):
 
             if "clarification" in build_result:
                 abi_logging("[❓] Forwarding clarification request to user")
+                await self._record_pending_clarification(
+                    context_id, query, build_result["clarification"]
+                )
                 yield AgentResponse.input_required(
                     f"🤔 **Necesito mas informacion para crear el mejor plan:**\n\n{build_result['clarification']}"
                 )

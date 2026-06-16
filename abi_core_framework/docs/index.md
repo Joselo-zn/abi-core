@@ -24,6 +24,7 @@ single-agent/01-first-agent
 single-agent/02-simple-chatbot
 single-agent/03-agents-with-tools
 single-agent/04-agents-with-memory
+single-agent/06-builtin-memory
 single-agent/05-testing-agents
 ```
 

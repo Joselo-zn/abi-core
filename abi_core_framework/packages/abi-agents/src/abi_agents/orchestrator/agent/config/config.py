@@ -78,6 +78,9 @@ class AgentConfig:
     
     # Ephemeral Agent Control
     EPHEMERAL_AUTO_DESTROY: bool = os.getenv('EPHEMERAL_AUTO_DESTROY', 'true').lower() == 'true'
+
+    # Agent Memory (Redis AMS) — system-wide short/long-term memory
+    AGENT_MEMORY_URL: str = os.getenv('AGENT_MEMORY_URL', '')
     
     # Ollama Configuration (for distributed mode)
     START_OLLAMA: bool = os.getenv('START_OLLAMA', 'false').lower() == 'true'

@@ -108,4 +108,4 @@ AMS runs fully local through Ollama (via LiteLLM) — no cloud API keys required
 
 ## Next step
 
-👉 [Testing Agents](05-testing-agents.md)
+👉 [Built-in Memory API](06-builtin-memory.md)

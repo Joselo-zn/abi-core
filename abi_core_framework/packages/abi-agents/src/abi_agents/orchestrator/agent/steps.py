@@ -24,14 +24,35 @@ from config import AGENT_CARD, config
 # Agents that must NEVER be deregistered (infrastructure)
 INFRA_AGENTS = {"builder", "planner", "orchestrator", "guardian", "semantic-layer"}
 
+# Working-memory topic used to mark a session awaiting a planner clarification
+PENDING_CLARIFICATION_TOPIC = "pending_clarification"
+
+
 @agent.step(
     name="classify_query",
-    input_map={"query": "$input.query"},
+    input_map={"query": "$input.query", "context_id": "$input.context_id"},
 )
-async def classify_query(query):
-    """Classify query as simple or complex using the orchestrator's LLM."""
+async def classify_query(query, context_id=""):
+    """Classify query as simple or complex using the orchestrator's LLM.
+
+    If the session has a pending clarification (a system-level event stored in
+    short-term memory), the user's message is the answer to that clarification.
+    In that case we skip the probabilistic LLM triage and deterministically
+    route back to the planner with the original query + the answer.
+    """
     from abi_core.agent.llm_provider import invoke
     from abi_core.common.utils import clean_llm_json
+
+    # ── Deterministic check: is this a pending clarification answer? ──
+    pending = await _load_pending_clarification(context_id)
+    if pending:
+        abi_logging(f"[🔁] Clarification answer detected for session '{context_id}'")
+        return {
+            "classification": "clarification_response",
+            "original_query": pending.get("original_query", ""),
+            "clarification": pending.get("clarification", ""),
+            "user_answer": query,
+        }
 
     try:
         text = await invoke(
@@ -50,6 +71,77 @@ async def classify_query(query):
     except Exception as e:
         abi_logging(f"[⚠️] Triage failed, defaulting to complex: {e}")
         return {"classification": "complex"}
+
+
+async def _load_pending_clarification(context_id: str) -> dict:
+    """Return the pending-clarification event for a session, or {} if none.
+
+    The event is a system-level signal stored in short-term (working) memory by
+    the orchestrator when it emits an ``input_required``. Reading it is best
+    effort: if memory is unavailable, we degrade to normal triage (returns {}).
+
+    On a hit, the event is cleared so the next normal request in the session is
+    not misinterpreted as another clarification answer.
+    """
+    if not config.AGENT_MEMORY_URL or not context_id:
+        return {}
+
+    try:
+        from abi_core.memory import get_short_term_memory
+
+        raw = await get_short_term_memory(
+            context_id=context_id, memory_url=config.AGENT_MEMORY_URL
+        )
+        if not raw:
+            return {}
+
+        # Working memory accumulates; a clarification is ACTIVE only if the most
+        # recent clarification-related marker is a 'pending' one (not 'resolved').
+        last_pending = None
+        for line in raw.splitlines():
+            if "clarification_resolved" in line:
+                last_pending = None  # a later resolution cancels an earlier pending
+            elif PENDING_CLARIFICATION_TOPIC in line:
+                last_pending = line
+        if not last_pending:
+            return {}
+
+        payload = _extract_clarification_payload(last_pending)
+        if payload:
+            await _clear_pending_clarification(context_id)
+        return payload
+    except Exception as e:
+        abi_logging(f"[⚠️] Could not read pending clarification: {e}")
+        return {}
+
+
+def _extract_clarification_payload(text: str) -> dict:
+    """Extract the JSON payload embedded in a pending_clarification memory line."""
+    import json
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return {}
+    try:
+        return json.loads(text[start:end + 1])
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+async def _clear_pending_clarification(context_id: str) -> None:
+    """Mark the pending clarification as resolved in short-term memory."""
+    try:
+        from abi_core.memory import add_short_term_memory
+
+        await add_short_term_memory(
+            topic="clarification_resolved",
+            task=context_id,
+            content="clarification_resolved marker",
+            context_id=context_id,
+            memory_url=config.AGENT_MEMORY_URL,
+        )
+    except Exception as e:
+        abi_logging(f"[⚠️] Could not clear pending clarification: {e}")
 
 
 @agent.step(
@@ -165,6 +257,17 @@ def gate_decision(triage, guardian, query):
     # Guardian approved — proceed based on triage
     classification = triage.get("classification", "complex")
 
+    # Clarification answer — deterministically route to planner with enriched query
+    if classification == "clarification_response":
+        original = triage.get("original_query", "")
+        answer = triage.get("user_answer", query)
+        enriched = (
+            f"{original}\n\nUser clarification: {answer}"
+            if original else answer
+        )
+        abi_logging("[🔁] Gate: clarification answer, re-routing to planner")
+        return {"action": "call_planner", "query": enriched}
+
     if classification == "simple":
         abi_logging(f"[✅] Gate: simple query, responding directly")
         return {"action": "respond_direct", "query": query}
@@ -192,6 +295,10 @@ async def call_planner(gate, query, context_id, task_id):
     """
     if gate.get("action") != "call_planner":
         return {"gate_passthrough": gate}
+
+    # The gate may carry an enriched query (e.g. a clarification answer combined
+    # with the original request). Prefer it over the raw input query.
+    query = gate.get("query") or query
 
     abi_logging(f"[📞] Calling Planner: {query}")
 

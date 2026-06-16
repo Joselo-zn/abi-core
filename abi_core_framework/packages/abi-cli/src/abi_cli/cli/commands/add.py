@@ -2023,6 +2023,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
             'LOG_BUCKET=abi-logs',
             'EPHEMERAL_AUTO_DESTROY=true',
             f'DOCKER_NETWORK={project_dir}_abi-network',
+            f'AGENT_MEMORY_URL=http://{project_dir}-agent-memory:8000',
         ]
         
         orchestrator_volumes = [

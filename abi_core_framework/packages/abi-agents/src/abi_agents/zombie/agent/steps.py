@@ -47,23 +47,15 @@ async def analyze_and_execute(context, query):
     # Inject memory context if AMS is available
     memory_context = ""
     if config.AGENT_MEMORY_URL and config.CONTEXT_ID:
-        try:
-            from agent_memory_client import MemoryAPIClient, MemoryClientConfig
-            mem_client = MemoryAPIClient(MemoryClientConfig(base_url=config.AGENT_MEMORY_URL))
-            prompt_data = await mem_client.memory_prompt(
-                query=query,
-                session_id=config.CONTEXT_ID,
-                long_term_search={"text": query, "limit": 3},
-            )
-            # Extract context from memory messages
-            for msg in prompt_data.get("messages", []):
-                if msg.get("role") == "system" and msg.get("content"):
-                    memory_context = msg["content"]
-                    break
-            if memory_context:
-                abi_logging(f"[🧠] Memory context injected ({len(memory_context)} chars)")
-        except Exception as e:
-            abi_logging(f"[⚠️] Memory context unavailable: {e}")
+        from abi_core.memory import recall_memory_context
+
+        memory_context = await recall_memory_context(
+            query=query,
+            context_id=config.CONTEXT_ID,
+            memory_url=config.AGENT_MEMORY_URL,
+        )
+        if memory_context:
+            abi_logging(f"[🧠] Memory context injected ({len(memory_context)} chars)")
 
     execution_prompt = build_execution_prompt(
         query=query,
@@ -112,27 +104,22 @@ async def synthesize_and_report(execution_result, context):
 
     # Persist result summary to working memory for subsequent tasks
     if config.AGENT_MEMORY_URL and config.CONTEXT_ID:
-        try:
-            from agent_memory_client import MemoryAPIClient, MemoryClientConfig
-            from agent_memory_client.models import WorkingMemory
+        from abi_core.memory import add_short_term_memory
 
-            mem_client = MemoryAPIClient(MemoryClientConfig(base_url=config.AGENT_MEMORY_URL))
-            filenames = [a["filename"] for a in uploaded_artifacts] if uploaded_artifacts else []
-            summary = (
-                f"Agent '{config.AGENT_NAME}' completed task. "
-                f"Result: {execution_result.get('result', '')[:200]}. "
-                f"Files created: {filenames}"
-            )
-            await mem_client.put_working_memory(
-                config.CONTEXT_ID,
-                WorkingMemory(
-                    session_id=config.CONTEXT_ID,
-                    messages=[{"role": "assistant", "content": summary}],
-                ),
-            )
-            abi_logging(f"[🧠] Stored result in working memory")
-        except Exception as e:
-            abi_logging(f"[⚠️] Could not store memory: {e}")
+        filenames = [a["filename"] for a in uploaded_artifacts] if uploaded_artifacts else []
+        summary = (
+            f"Agent '{config.AGENT_NAME}' completed task. "
+            f"Result: {execution_result.get('result', '')[:200]}. "
+            f"Files created: {filenames}"
+        )
+        if await add_short_term_memory(
+            topic="task_result",
+            task=config.AGENT_NAME,
+            content=summary,
+            context_id=config.CONTEXT_ID,
+            memory_url=config.AGENT_MEMORY_URL,
+        ):
+            abi_logging("[🧠] Stored result in working memory")
 
     return {
         "status": status,
