@@ -121,6 +121,29 @@ result = await invoke(config.LLM_CONFIG, "Follow up...", thread_id=session_id)
 result = await invoke(config.LLM_CONFIG, "Find...", tools=[search_tool, write_tool])
 ```
 
+### Memory — short & long-term
+
+Give agents system-wide memory backed by the Agent Memory Server. Store deliberately,
+recall on demand — across steps, tasks, and sessions:
+
+```python
+from abi_core.agent import (
+    add_short_term_memory, add_long_term_memory,
+    get_long_term_memory, recall_memory_context,
+)
+
+# Write (inside a step/task)
+await add_short_term_memory("processing", "pipeline", "processed 42 records", context_id=ctx)
+await add_long_term_memory("user_preference", "format", "prefers CSV over PDF", context_id=ctx)
+
+# Read
+past = await get_long_term_memory("format preferences")
+context = await recall_memory_context(query, context_id=ctx)  # ready to inject into a prompt
+```
+
+Every call degrades gracefully when the memory server is unavailable — memory never
+blocks execution. See the [memory guide](https://abi-core.readthedocs.io/en/latest/single-agent/06-builtin-memory.html).
+
 ### Agents talk to each other
 
 ```python

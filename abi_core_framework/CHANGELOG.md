@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Built-in memory API (`abi_core.memory`)** — first-class short/long-term memory for
+  any ABI agent, backed by the Agent Memory Server:
+  - Write inside steps/tasks: `add_short_term_memory(topic, task, content, ...)`,
+    `add_long_term_memory(...)` (also exported from `abi_core.agent`).
+  - Read: `get_short_term_memory()`, `get_long_term_memory(query)`,
+    `recall_memory_context(query)` (hydrates a system prompt).
+  - LLM tools: `MEMORY_TOOLS` (`get_long_term_memory`, `get_short_term_memory`).
+  - All operations degrade gracefully when the AMS is unavailable (never raise/block).
 - **Agent Memory Server (AMS) in swarm scaffolding** — `abi-core create swarm` and the
   CLI generator (`add.py`) now provision two extra services for system-wide memory:
   - `<project>-redis-stack` — Redis 8 (bundles RediSearch/RedisJSON; required for the
@@ -29,8 +37,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`TASK_STATE_INPUT_REQUIRED`), and legacy string (`input-required`). Previously
   only matched the legacy string, so clarification requests over a2a-sdk 1.0
   (protobuf, integer states) were never detected by the Orchestrator.
+- **Semantic store integrity** — agent cards could be indexed without an embedding
+  vector (e.g. when the Semantic Layer started before Ollama could serve the model).
+  Such vectorless objects exist but are invisible to `near_vector` search, so agent
+  discovery silently failed and never recovered. Fixed with layered guards:
+  - Startup waits until the embedding model can actually embed before indexing.
+  - The store rejects any agent card with an empty/invalid vector (never persists
+    dead state).
+  - Startup idempotency is now by *validity*, not mere existence — a card present but
+    vectorless is re-indexed instead of skipped forever.
+  - `find_agent` self-heals on a miss by reconciling against disk (source of truth):
+    it re-embeds and re-indexes missing cards, then retries. Already-valid cards are
+    not reinserted.
+  - `/health` returns `503 degraded` when the store has no vectorized cards, making
+    the broken state visible.
+  See the Troubleshooting guide → "Semantic Layer not finding agents".
 
 ### Breaking Changes
+- **`init_agent_card_store` parameter renamed** — `get_existing_uris_fn` →
+  `get_valid_uris_fn`. The injected function must now return only URIs of cards stored
+  **with a valid vector** (not mere existence), enforcing idempotency-by-validity. If
+  you have a custom Semantic Layer `main.py`, update the keyword and provide a
+  `get_valid_agent_card_uris()` that filters out vectorless objects.
 - **a2a-sdk upgraded to 1.0+** — `AgentCard` is now protobuf (was pydantic). If you have a custom `config.py` that does `AgentCard(**data)`, replace it with:
   ```python
   from abi_core.common.agent_card_loader import load_agent_card

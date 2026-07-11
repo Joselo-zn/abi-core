@@ -44,16 +44,67 @@ Or check RAM usage: `docker stats`
 
 ## Semantic Layer not finding agents
 
+Symptoms: `find_agent` returns nothing, orchestrator logs "agent not found" or a
+`system_error`, even though the agent container is running and healthy.
+
 ```bash
-# Are agent cards in the right place?
+# Are agent cards in the right place? (disk is the source of truth)
 ls services/semantic_layer/agent_cards/
 
 # Is Weaviate healthy?
 curl http://localhost:8081/v1/.well-known/ready
 
-# Restart to re-index
+# Does the Semantic Layer consider itself healthy? (see below)
+curl -i http://localhost:10100/health
+
+# Restart to re-index / self-heal
 docker compose restart <project>-semantic-layer
 ```
+
+### Root cause: agent cards stored without vectors
+
+The most common cause is **agent cards indexed without an embedding vector**. A
+vectorless object exists in the store (so a plain fetch finds it) but is invisible to
+vector search (`near_vector`), so discovery silently returns nothing.
+
+This happens when the Semantic Layer indexes cards **before Ollama can serve the
+embedding model** at startup — the embedding call returns empty and, in older
+versions, the empty object was persisted and never repaired.
+
+Inspect the stored vectors directly:
+
+```bash
+curl -s http://localhost:8081/v1/graphql \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ Get { AgentCard(limit:10){ uri _additional{ id vector } } } }"}'
+```
+
+If `vector` is `[]` for your cards, that is the problem.
+
+### Self-healing (current versions)
+
+ABI-Core now guards store integrity in several layers, so this repairs itself:
+
+- **Startup** waits until Ollama can actually embed before indexing, and never
+  persists a card without a valid vector.
+- **On a search miss**, the Semantic Layer reconciles against disk (the source of
+  truth): it re-embeds and re-indexes any card that is on disk but not yet vectorized,
+  then retries the search. Cards already valid are left untouched.
+- **`/health`** returns `503 degraded` when the store has no vectorized cards, so the
+  broken state is visible instead of silent.
+
+A `docker compose restart <project>-semantic-layer` triggers re-indexing. If a card
+still isn't found afterward, check the logs — they now distinguish the cases:
+
+```bash
+docker compose logs --tail=50 <project>-semantic-layer
+```
+
+- `re-indexed N card(s) from disk` → it self-repaired.
+- `could not be embedded (Ollama unavailable?)` → the embedding model isn't ready;
+  pull it / wait and retry (see "Model not found").
+- `card is not present on disk (legitimate absence)` → the card simply doesn't exist;
+  add its JSON to `services/semantic_layer/agent_cards/`.
 
 ## "Port already in use"
 

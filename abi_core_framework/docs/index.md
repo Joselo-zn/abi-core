@@ -161,6 +161,7 @@ Go from zero to a running agent that talks to an AI model and responds in real-t
 4. [Your First Project](getting-started/04-first-project.md)
 5. [Your First Agent](single-agent/01-first-agent.md)
 6. [Adding Tools](single-agent/03-agents-with-tools.md)
+7. [Built-in Memory](single-agent/06-builtin-memory.md)
 
 ### Connect multiple agents
 

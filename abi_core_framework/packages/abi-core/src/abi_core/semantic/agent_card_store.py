@@ -11,7 +11,7 @@ Usage in server.py:
         build_embeddings_fn=build_agent_card_embeddings,
         ensure_collections_fn=ensure_collections,
         upsert_fn=upsert_agent_cards,
-        get_existing_uris_fn=get_existing_agent_card_uris,
+        get_valid_uris_fn=get_valid_agent_card_uris,
     )
 """
 
@@ -27,16 +27,29 @@ def init_agent_card_store(
     build_embeddings_fn: Callable,
     ensure_collections_fn: Callable,
     upsert_fn: Callable,
-    get_existing_uris_fn: Callable,
+    get_valid_uris_fn: Callable,
 ):
     """Initialize vector store and sync agent card embeddings.
+
+    Idempotency contract (important):
+        A card is skipped ONLY if it already exists in the store **and is valid**
+        (i.e. has a usable, non-empty vector). ``get_valid_uris_fn`` MUST return
+        only the URIs of objects that are usable for vector search — objects that
+        exist but lack a vector must NOT be reported here, so that this function
+        re-upserts them (self-healing) instead of leaving them broken forever.
+
+        Reporting existence alone (regardless of validity) reintroduces the
+        integrity bug documented in ``.abi/specs/semantic-store-integrity.md``,
+        where objects inserted without a vector are skipped on every startup and
+        never repaired.
 
     Args:
         build_embeddings_fn: Returns a DataFrame with columns
             ``card_uri``, ``agent_card`` (dict), ``card_embeddings`` (vector).
         ensure_collections_fn: Creates vector store collections if missing.
         upsert_fn: Upserts a list of item dicts to the vector store.
-        get_existing_uris_fn: Returns a set/list of already-stored card URIs.
+        get_valid_uris_fn: Returns a set/list of URIs for cards already stored
+            **with a valid vector**. Objects without a vector must be excluded.
 
     Returns:
         The DataFrame returned by *build_embeddings_fn* (or None).
@@ -51,8 +64,8 @@ def init_agent_card_store(
         abi_logging("[⚠️] No agent cards found")
         return df
 
-    existing_uris = set(get_existing_uris_fn())
-    abi_logging(f"[📊] Found {len(existing_uris)} existing agent cards in store")
+    valid_uris = set(get_valid_uris_fn())
+    abi_logging(f"[📊] Found {len(valid_uris)} valid agent cards in store")
 
     items = []
     skipped = 0
@@ -60,7 +73,9 @@ def init_agent_card_store(
     for _idx, row in df.iterrows():
         card_uri = row["card_uri"]
 
-        if card_uri in existing_uris:
+        # Skip only if already stored AND valid (has a vector). Invalid/missing
+        # objects fall through and get re-upserted below (self-healing).
+        if card_uri in valid_uris:
             skipped += 1
             continue
 

@@ -2137,7 +2137,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
         compose_data['services'][f'{project_dir}-agent-memory'] = {
             'image': 'redislabs/agent-memory-server:latest',
             'container_name': f'{project_dir}-agent-memory',
-            'ports': ['8000:8000'],
+            'ports': ['8100:8000'],
             'command': 'agent-memory api --host 0.0.0.0 --port 8000 --task-backend=asyncio',
             'environment': [
                 f'REDIS_URL=redis://{project_dir}-redis-stack:6379',

@@ -105,6 +105,13 @@ services:
       {{ project_dir }}-weaviate:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      # Layer 5: report unhealthy if the AgentCard store has no vectorized cards.
+      test: ["CMD", "python3", "-c", "import urllib.request,sys\ntry:\n r=urllib.request.urlopen('http://localhost:10100/health',timeout=8)\n sys.exit(0 if r.status==200 else 1)\nexcept Exception:\n sys.exit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
 
   # MinIO Object Storage (artifact store for builder/zombie)
   {{ project_dir }}-minio:

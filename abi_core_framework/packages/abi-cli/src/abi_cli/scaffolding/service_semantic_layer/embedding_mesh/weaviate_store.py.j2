@@ -7,6 +7,8 @@ from weaviate.exceptions import WeaviateConnectionError
 from weaviate.classes.config import Property, DataType
 from . import weaviate_client
 
+from abi_core.common.utils import abi_logging
+
 
 def get_client_with_retry(retries: int = 10, delay: float = 1.0):
     """Get a NEW Weaviate client connection with retry logic.
@@ -82,8 +84,21 @@ def upsert_agent_cards(
         client = get_client_with_retry()
         col = client.collections.get("AgentCard")
         count = 0
+        rejected = 0
         with col.batch.dynamic() as batch:
             for it in items:
+                # Invariant: an AgentCard without a usable vector must NOT be
+                # persisted. A near_vector search can never return a vectorless
+                # object, so storing one creates silent, permanent dead state.
+                # See .abi/specs/semantic-store-integrity.md
+                vector = it.get("vector")
+                if not vector or not isinstance(vector, (list, tuple)) or len(vector) == 0:
+                    rejected += 1
+                    abi_logging(
+                        f"[❌] Rejected agent card with empty/invalid vector: "
+                        f"uri={it.get('uri', '?')} — not persisted"
+                    )
+                    continue
                 batch.add_object(
                     properties={
                         "text": it["text"],
@@ -91,10 +106,15 @@ def upsert_agent_cards(
                         "origin": it["origin"],
                         "metadata_json": json.dumps(it.get("metadata", {})),
                     },
-                    vector=it["vector"],
+                    vector=vector,
                     uuid=it.get("id")
                 )
                 count += 1
+        if rejected:
+            abi_logging(
+                f"[⚠️] upsert_agent_cards: rejected {rejected} card(s) with invalid "
+                f"vectors, upserted {count}"
+            )
         return count
     finally:
         client.close()
@@ -168,26 +188,45 @@ def upsert_mesh_items(
     finally:
         client.close()
 
-def get_existing_agent_card_uris() -> set:
-    """Get set of URIs for all agent cards currently in Weaviate.
-    
+def _has_valid_vector(obj) -> bool:
+    """True if a fetched Weaviate object carries a non-empty vector.
+
+    weaviate-client v4 returns vectors as a dict keyed by vector name
+    (``{"default": [...]}``) when ``include_vector=True``. An object without a
+    usable vector (empty list / missing) is not searchable via near_vector and
+    must be treated as invalid.
+    """
+    vec = getattr(obj, "vector", None)
+    if isinstance(vec, dict):
+        vec = vec.get("default") or next(iter(vec.values()), None)
+    return bool(vec)
+
+
+def get_valid_agent_card_uris() -> set:
+    """Get URIs for agent cards stored in Weaviate **with a valid vector**.
+
+    Objects that exist but have no vector are excluded, so the caller
+    (init_agent_card_store) re-upserts them instead of skipping them forever.
+    This is the idempotency-by-validity contract — see
+    ``.abi/specs/semantic-store-integrity.md``.
+
     Returns:
-        set: Set of card URIs (file paths)
+        set: Set of card URIs (file paths) that are usable for vector search.
     """
     try:
         client = get_client_with_retry()
         col = client.collections.get("AgentCard")
-        
-        # Fetch all objects (no vector search, just get all)
-        res = col.query.fetch_objects(limit=1000)
-        
+
+        # Include vectors so we can filter out objects without a usable one.
+        res = col.query.fetch_objects(limit=1000, include_vector=True)
+
         uris = set()
         for o in res.objects:
             props = o.properties or {}
             uri = props.get("uri")
-            if uri:
+            if uri and _has_valid_vector(o):
                 uris.add(uri)
-        
+
         return uris
     except Exception as e:
         # If collection doesn't exist or error, return empty set

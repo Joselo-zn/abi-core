@@ -160,8 +160,27 @@ def build_agent_card_embeddings(force_reload: bool = False) -> Optional[pd.DataF
         df['combined_text'] = df['agent_card'].apply(create_combined_text)
         df['card_embeddings'] = df['combined_text'].apply(embed_one)
 
-        _agent_cards_df_cache = df
-        abi_logging(f"✅ Generated embeddings for {len(df)} agent cards using multi-field strategy")
+        # Layer 2: do not propagate failed embeddings. A row whose embedding is
+        # empty (e.g. Ollama not ready) must be excluded so it is never upserted
+        # as a vectorless (unsearchable) object. See
+        # .abi/specs/semantic-store-integrity.md
+        total = len(df)
+        valid_mask = df['card_embeddings'].apply(lambda v: bool(v) and len(v) > 0)
+        failed = df.loc[~valid_mask, 'card_uri'].tolist()
+        df = df[valid_mask].reset_index(drop=True)
+
+        if failed:
+            abi_logging(
+                f"⚠️ Embedding failed for {len(failed)}/{total} cards (excluded, will "
+                f"retry on next build): {failed}"
+            )
+            # Do NOT cache a partial result — force a fresh attempt next time so a
+            # transient Ollama outage does not get frozen into the cache.
+            _agent_cards_df_cache = None
+        else:
+            _agent_cards_df_cache = df
+
+        abi_logging(f"✅ Generated embeddings for {len(df)}/{total} agent cards using multi-field strategy")
         return df
 
     except Exception as e:
@@ -203,6 +222,45 @@ def ping() -> bool:
         return True
     except requests.RequestException:
         return False
+
+
+def wait_for_embeddings_ready(timeout_s: float = 120.0, interval_s: float = 3.0) -> bool:
+    """Block until the embedding model can actually produce a vector.
+
+    Layer 4 (dependency ordering). ``/api/tags`` answers before the embedding
+    model is servable, so a bare ping is not enough — we must confirm a real
+    embedding round-trip succeeds before indexing at startup. This prevents the
+    store from being populated with empty (unsearchable) vectors when Ollama is
+    up but the model has not finished loading.
+    See .abi/specs/semantic-store-integrity.md
+
+    Args:
+        timeout_s: Max time to wait before giving up.
+        interval_s: Delay between probes.
+
+    Returns:
+        True if embeddings became ready within the timeout, else False. On False
+        the caller may proceed in degraded mode — Layers 2/3 will repair later.
+    """
+    deadline = time.time() + timeout_s
+    attempt = 0
+    while time.time() < deadline:
+        attempt += 1
+        try:
+            data = _post_json(_EMBED_URL, {"model": EMBED_MODEL, "prompt": "healthcheck"}, timeout=min(HTTP_TIMEOUT, 15))
+            vec = data.get("embedding")
+            if vec:
+                abi_logging(f"[✅] Embedding model '{EMBED_MODEL}' ready after {attempt} probe(s)")
+                return True
+        except Exception as e:  # noqa: BLE001 — probing; keep trying until timeout
+            abi_logging(f"[⏳] Waiting for embedding model '{EMBED_MODEL}' (probe {attempt}): {e}")
+        time.sleep(interval_s)
+
+    abi_logging(
+        f"[⚠️] Embedding model '{EMBED_MODEL}' not ready after {timeout_s:.0f}s — "
+        f"starting in degraded mode (Layers 2/3 will repair on read/next start)"
+    )
+    return False
 
 # ----------------------------
 # Public: embeddings (cached)

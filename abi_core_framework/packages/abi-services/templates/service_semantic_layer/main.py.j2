@@ -13,12 +13,12 @@ from abi_core.common.utils import abi_logging
 from abi_core.semantic.semantic_access_validator import validate_semantic_access
 from abi_core.semantic.agent_card_store import init_agent_card_store
 from abi_core.semantic.tool_card_store import init_tool_card_store
-from embedding_mesh.embeddings_abi import embed_one, build_agent_card_embeddings
+from embedding_mesh.embeddings_abi import embed_one, build_agent_card_embeddings, load_agent_cards, wait_for_embeddings_ready
 from embedding_mesh.weaviate_store import (
     search_agent_cards,
     ensure_collections,
     upsert_agent_cards,
-    get_existing_agent_card_uris,
+    get_valid_agent_card_uris,
     upsert_tool,
     get_tool as weaviate_get_tool,
     delete_tool as weaviate_delete_tool,
@@ -36,11 +36,15 @@ for key, value in config.display_config().items():
 
 mcp = FastMCP(config.SERVICE_NAME)
 
+# Layer 4: wait until Ollama can actually embed before indexing, so we never
+# populate the store with empty vectors at startup.
+wait_for_embeddings_ready()
+
 df = init_agent_card_store(
     build_embeddings_fn=build_agent_card_embeddings,
     ensure_collections_fn=ensure_collections,
     upsert_fn=upsert_agent_cards,
-    get_existing_uris_fn=get_existing_agent_card_uris,
+    get_valid_uris_fn=get_valid_agent_card_uris,
 )
 
 tool_cards = init_tool_card_store(
@@ -53,16 +57,95 @@ tool_cards = init_tool_card_store(
 # ── Tools ───────────────────────────────────────────────────────
 
 
+def repair_agent_cards_from_disk() -> int:
+    """Reconcile the vector store against the source of truth (card files on disk).
+
+    Layer 2 (read-time self-healing). Disk is the source of truth; Weaviate is a
+    derived index. On a search miss the index may be stale (e.g. startup embedded
+    before Ollama was ready). This reindexes ONLY the cards that are on disk but
+    NOT already valid (vectorized) in the store — cards already valid are left
+    untouched (no reinsert). See .abi/specs/semantic-store-integrity.md
+
+    Returns:
+        Number of cards re-embedded and upserted.
+    """
+    import uuid as _uuid
+
+    card_uris, agent_cards = load_agent_cards()
+    if not agent_cards:
+        return 0
+
+    valid_uris = get_valid_agent_card_uris()
+    missing = [
+        (uri, card) for uri, card in zip(card_uris, agent_cards)
+        if uri not in valid_uris
+    ]
+    if not missing:
+        return 0
+
+    items = []
+    embed_failed = []
+    for uri, card in missing:
+        parts = [
+            card.get("name", ""),
+            card.get("description", ""),
+            " ".join(card.get("supportedTasks", [])),
+            " ".join(s.get("description", "") for s in card.get("skills", [])),
+        ]
+        combined = " ".join(p for p in parts if p)
+        vector = embed_one(combined)
+        if not vector:
+            embed_failed.append(uri)
+            continue
+        items.append({
+            "id": str(_uuid.uuid5(_uuid.NAMESPACE_URL, uri)),
+            "text": json.dumps(card),
+            "uri": uri,
+            "metadata": {
+                "name": card.get("name", ""),
+                "description": card.get("description", ""),
+                "supportedTasks": card.get("supportedTasks", []),
+            },
+            "vector": vector,
+            "origin": "agent_card",
+        })
+
+    if embed_failed:
+        abi_logging(
+            f"[⚠️] Repair: {len(embed_failed)} card(s) on disk could not be embedded "
+            f"(Ollama unavailable?), not indexed: {embed_failed}"
+        )
+    if items:
+        upsert_agent_cards(items)
+        abi_logging(f"[🔧] Repair: re-indexed {len(items)} card(s) from disk: "
+                    f"{[it['uri'] for it in items]}")
+    return len(items)
+
+
 @mcp.tool(name='find_agent', description='Find the best agent for a task via semantic search')
 @validate_semantic_access
 async def find_agent(query: str, _request_context: dict = None) -> Optional[dict]:
-    """Find the most relevant Agent Card for a natural language query."""
-    if df is None or df.empty:
-        return None
+    """Find the most relevant Agent Card for a natural language query.
 
+    On a miss, attempts a one-shot self-repair from disk (the source of truth)
+    before giving up, and logs the distinct outcome so the cause is diagnosable.
+    """
     results = search_agent_cards(query_vector=embed_one(query), top_k=1)
+
     if not results:
-        return None
+        # Miss: the index may be stale. Reconcile from disk and retry once.
+        repaired = repair_agent_cards_from_disk()
+        if repaired:
+            results = search_agent_cards(query_vector=embed_one(query), top_k=1)
+
+        if not results:
+            if repaired:
+                abi_logging(f"[🔍] find_agent '{query}': not found after repair "
+                            f"(no matching card among {repaired} re-indexed)")
+            else:
+                abi_logging(f"[🔍] find_agent '{query}': not found and nothing to "
+                            f"repair — card is not present on disk (legitimate absence)")
+            return None
 
     try:
         best = json.loads(results[0]["text"])
@@ -436,7 +519,29 @@ async def echo_tool(message: str, uppercase: bool = False) -> dict:
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request):
-    return JSONResponse({"status": "ok"})
+    """Health check that reflects real store integrity (Layer 5).
+
+    Reports 'degraded' (503) when the AgentCard collection has no vectorized
+    cards — the invalid state that used to fail silently. This makes the broken
+    condition visible to orchestration/monitoring instead of hidden behind a
+    static 'ok'. See .abi/specs/semantic-store-integrity.md
+    """
+    try:
+        valid = get_valid_agent_card_uris()
+        if not valid:
+            return JSONResponse(
+                {
+                    "status": "degraded",
+                    "reason": "no agent cards with vectors indexed",
+                    "valid_agent_cards": 0,
+                },
+                status_code=503,
+            )
+        return JSONResponse({"status": "ok", "valid_agent_cards": len(valid)})
+    except Exception as e:  # noqa: BLE001 — health must not raise
+        return JSONResponse(
+            {"status": "error", "reason": str(e)}, status_code=503
+        )
 
 
 # ── Start ───────────────────────────────────────────────────────
