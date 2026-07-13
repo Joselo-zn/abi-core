@@ -25,6 +25,7 @@ single-agent/02-simple-chatbot
 single-agent/03-agents-with-tools
 single-agent/04-agents-with-memory
 single-agent/06-builtin-memory
+single-agent/07-sessions-multi-turn
 single-agent/05-testing-agents
 ```
 
@@ -162,6 +163,7 @@ Go from zero to a running agent that talks to an AI model and responds in real-t
 5. [Your First Agent](single-agent/01-first-agent.md)
 6. [Adding Tools](single-agent/03-agents-with-tools.md)
 7. [Built-in Memory](single-agent/06-builtin-memory.md)
+8. [Sessions & Multi-turn](single-agent/07-sessions-multi-turn.md)
 
 ### Connect multiple agents
 

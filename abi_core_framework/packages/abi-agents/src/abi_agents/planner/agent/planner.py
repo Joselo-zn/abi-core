@@ -61,7 +61,7 @@ class AbiPlannerAgent(AbiAgent):
 
         try:
             # Session context managed by AbiAgent base
-            context, _ = self.process_answer(session_id, query)
+            context, _ = await self.process_answer(session_id, query)
 
             # ── Phase 1: LLM decomposition (with heartbeat) ─────
             yield AgentResponse.status(

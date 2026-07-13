@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Framework-managed sessions (`abi_core.session`)** — opt-in, LB/multi-pod safe
+  session management for any ABI agent:
+  - `SessionStore` with a **pluggable backend**: `InMemorySessionBackend` (default;
+    per-pod, dev) and `RedisSessionBackend` (shared state via `redis.asyncio`, safe
+    behind a load balancer). Select with `SESSION_BACKEND=memory|redis` — agent code
+    doesn't change. Exported from `abi_core.agent`.
+  - Opaque, **backend-generated** tokens (`abi_sess_<hex>`): the `context_id` is
+    created server-side, never trusted from the client — fixes id spoofing and the
+    shared `web-session` collision. `create_session` / `resolve` / `rotate` /
+    `destroy`.
+  - Conversation context (`get_context` / `update_context` / `clear_context`) is keyed
+    by `context_id` and lives in the backend, not per-process RAM (survives pod hops
+    with Redis).
+  - Orchestrator web interface gains `/session/start`, `/session/rotate`,
+    `/session/end`; `/stream` resolves an `Authorization: Bearer <token>` to its
+    `context_id`. Without a token, an anonymous session is used
+    (`ABI_SESSION_REQUIRED=true` to require one).
+  - New env vars: `SESSION_BACKEND`, `SESSION_TTL`, `SESSION_REDIS_URL`
+    (falls back to `REDIS_URL`), `ABI_SESSION_REQUIRED`.
+  - All operations degrade gracefully when the backend is unavailable (never
+    raise/block). See the "Sessions & Multi-turn" guide.
 - **Built-in memory API (`abi_core.memory`)** — first-class short/long-term memory for
   any ABI agent, backed by the Agent Memory Server:
   - Write inside steps/tasks: `add_short_term_memory(topic, task, content, ...)`,
@@ -37,6 +58,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`TASK_STATE_INPUT_REQUIRED`), and legacy string (`input-required`). Previously
   only matched the legacy string, so clarification requests over a2a-sdk 1.0
   (protobuf, integer states) were never detected by the Orchestrator.
+- **Semantic Layer agent discovery returned nothing (root cause)** — the `AgentCard`,
+  `MeshItem` and `ToolRegistry` collections were created without a vector index config,
+  so `near_vector` searches returned zero results even though objects carried valid
+  vectors. Fixed by creating collections with
+  `vector_config=Configure.Vectors.self_provided()` (bring-your-own-vector + HNSW index).
+  Note: existing collections must be dropped once so they are recreated with the index.
 - **Semantic store integrity** — agent cards could be indexed without an embedding
   vector (e.g. when the Semantic Layer started before Ollama could serve the model).
   Such vectorless objects exist but are invisible to `near_vector` search, so agent
@@ -54,6 +81,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   See the Troubleshooting guide → "Semantic Layer not finding agents".
 
 ### Breaking Changes
+- **`AbiAgent` session methods are now `async`** — `get_session_context`,
+  `process_answer`, and `clear_session` (plus the new `update_session_context`) are
+  coroutines, because conversation context now lives in a pluggable session backend
+  (in-memory or Redis) instead of a per-process `_conversation_history` dict. If you
+  call them in a custom `stream()` override, add `await`:
+  ```python
+  # before
+  context, was_answer = self.process_answer(context_id, query)
+  # after
+  context, was_answer = await self.process_answer(context_id, query)
+  ```
+  All are called from `async def stream(...)`, so this is a mechanical change. The
+  `_conversation_history` attribute is gone.
 - **`init_agent_card_store` parameter renamed** — `get_existing_uris_fn` →
   `get_valid_uris_fn`. The injected function must now return only URIs of cards stored
   **with a valid vector** (not mere existence), enforcing idempotency-by-validity. If

@@ -4,9 +4,12 @@ Core agent functionality for ABI Framework
 """
 
 import asyncio
-from typing import Any, Dict, List, AsyncIterable, Optional
+from typing import Any, Dict, List, AsyncIterable, Optional, TYPE_CHECKING
 
 from abi_core.common.utils import abi_logging
+
+if TYPE_CHECKING:
+    from abi_core.session import SessionBackend
 from abi_core.agent.llm_provider import create_llm
 from abi_core.agent.agent_response import AgentResponse
 
@@ -43,11 +46,21 @@ class AbiAgent:
         tools: List = None,
         system_prompt: str = "",
         content_types: List[str] = None,
+        session_backend: Optional["SessionBackend"] = None,
     ):
         self.agent_name = agent_name
         self.description = description
         self.llm_config = llm_config
         self.content_types = content_types or ["text", "text/plain"]
+
+        # Session backend — where conversation context lives.
+        # Default: in-memory (per-pod). Inject a RedisSessionBackend (or set
+        # SESSION_BACKEND=redis and pass session_backend_from_env()) for
+        # multi-pod / load-balanced deployments. See abi_core.session.
+        if session_backend is None:
+            from abi_core.session import session_backend_from_env
+            session_backend = session_backend_from_env()
+        self.session_backend = session_backend
 
         # Injected by AbiCore when @app.task()/@app.tool() are used
         self.tool_graph = None  # Optional[ToolExecutionGraph]
@@ -77,48 +90,48 @@ class AbiAgent:
         abi_logging(f"[🚀] {agent_name} agent ready")
 
     # ── Session management ──────────────────────────────────────
+    #
+    # Conversation context lives in ``self.session_backend`` (a
+    # ``SessionBackend``), NOT in per-process RAM. Default backend is
+    # in-memory; inject a Redis backend for multi-pod / LB-safe state.
+    # These methods are ``async`` so the Redis backend can await I/O without
+    # blocking the event loop; the in-memory backend is a near-free async.
 
-    def get_session_context(self, session_id: str) -> Dict[str, Any]:
-        """Return accumulated context for a session."""
-        if not hasattr(self, '_conversation_history'):
-            self._conversation_history = {}
-        return self._conversation_history.get(session_id, {})
+    async def get_session_context(self, session_id: str) -> Dict[str, Any]:
+        """Return accumulated conversation context for a session."""
+        return await self.session_backend.get_context(session_id)
 
-    def process_answer(self, session_id: str, query: str) -> tuple:
+    async def update_session_context(
+        self, session_id: str, patch: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Merge ``patch`` into the session's conversation context."""
+        return await self.session_backend.update_context(session_id, patch)
+
+    async def process_answer(self, session_id: str, query: str) -> tuple:
         """Detect if query is an answer (``id: text``), update context.
 
         Returns:
             ``(context, was_answer)`` — the session context dict and
             whether the query was parsed as an answer.
         """
-        if not hasattr(self, '_conversation_history'):
-            self._conversation_history = {}
+        context = await self.session_backend.get_context(session_id)
 
-        context = self._conversation_history.get(session_id, {})
-
-        if session_id in self._conversation_history and ':' in query:
+        if context and ':' in query:
             parts = query.split(':', 1)
             answer_id = parts[0].strip()
             answer_text = parts[1].strip()
-            context[answer_id] = answer_text
-            self._conversation_history[session_id] = context
+            context = await self.session_backend.update_context(
+                session_id, {answer_id: answer_text}
+            )
             abi_logging(f'[💬] Received answer for {answer_id}')
             return context, True
 
-        # Ensure session exists even if not an answer
-        if session_id not in self._conversation_history:
-            self._conversation_history[session_id] = context
-
         return context, False
 
-    def clear_session(self, session_id: str) -> None:
-        """Clear conversation history for a session."""
-        if not hasattr(self, '_conversation_history'):
-            self._conversation_history = {}
-            return
-        if session_id in self._conversation_history:
-            del self._conversation_history[session_id]
-            abi_logging(f"[🗑️] Cleared session {session_id}")
+    async def clear_session(self, session_id: str) -> None:
+        """Clear conversation context for a session."""
+        await self.session_backend.clear_context(session_id)
+        abi_logging(f"[🗑️] Cleared session {session_id}")
 
     async def _yield_clarification(self, plan_data):
         """Format and yield clarification questions from a plan response.
@@ -226,7 +239,7 @@ class AbiAgent:
         abi_logging(f'[📝] {self.agent_name} processing: {query}.')
 
         # Auto-manage session context
-        context, was_answer = self.process_answer(context_id, query)
+        context, was_answer = await self.process_answer(context_id, query)
 
         yield AgentResponse.status(
             "Processing...",

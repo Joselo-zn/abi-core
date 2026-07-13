@@ -29,13 +29,13 @@ class AbiOrchestratorAgent(AbiAgent):
             content_types=['text', 'text/plain'],
         )
 
-    def _record_error(self, context_id: str, error_type: str, message: str):
-        """Record an error in session context for next request awareness."""
-        ctx = self.get_session_context(context_id)
-        ctx[f"last_error_{error_type}"] = message
-        if not hasattr(self, '_conversation_history'):
-            self._conversation_history = {}
-        self._conversation_history[context_id] = ctx
+    async def _record_error(self, context_id: str, error_type: str, message: str):
+        """Record an error in session context for next request awareness.
+
+        State goes to the session backend (LB/multi-pod safe), never to
+        per-process RAM. See WORKING_RULES → "Perspectiva Local vs Global".
+        """
+        await self.update_session_context(context_id, {f"last_error_{error_type}": message})
         abi_logging(f"[📝] Error recorded in session {context_id}: {error_type}")
 
     async def _record_pending_clarification(
@@ -110,7 +110,7 @@ class AbiOrchestratorAgent(AbiAgent):
             if dag_result.get("failed_node"):
                 error = dag_result.get("error", "Pipeline failed")
                 abi_logging(f"[❌] DAG failed at {dag_result['failed_node']}: {error}")
-                self._record_error(context_id, "dag_failed", error)
+                await self._record_error(context_id, "dag_failed", error)
                 yield AgentResponse.error(error)
                 return
 
@@ -122,12 +122,12 @@ class AbiOrchestratorAgent(AbiAgent):
             abi_logging(f"[🚦] Gate decision: action={action}, outputs_keys={list(outputs.keys())}")
 
             if action == "system_error":
-                self._record_error(context_id, "guardian_failed", gate.get("message", ""))
+                await self._record_error(context_id, "guardian_failed", gate.get("message", ""))
                 yield AgentResponse.error(gate.get("message", "System error"))
                 return
 
             if action == "blocked":
-                self._record_error(context_id, "blocked", gate.get("message", ""))
+                await self._record_error(context_id, "blocked", gate.get("message", ""))
                 yield AgentResponse.error(gate.get("message", "Request blocked"))
                 return
 
@@ -177,7 +177,7 @@ class AbiOrchestratorAgent(AbiAgent):
                 return
 
             if "error" in build_result:
-                self._record_error(context_id, "plan_error", build_result["error"])
+                await self._record_error(context_id, "plan_error", build_result["error"])
                 yield AgentResponse.error(build_result["error"])
                 return
 
@@ -187,7 +187,7 @@ class AbiOrchestratorAgent(AbiAgent):
 
             if not workflow or workflow.is_empty():
                 msg = "No agents could be assigned to execute the plan."
-                self._record_error(context_id, "empty_workflow", msg)
+                await self._record_error(context_id, "empty_workflow", msg)
                 yield AgentResponse.error(msg)
                 return
 
@@ -267,5 +267,5 @@ class AbiOrchestratorAgent(AbiAgent):
 
         except Exception as e:
             abi_logging(f"[❌] Error in orchestration: {e}")
-            self._record_error(context_id, "exception", str(e))
+            await self._record_error(context_id, "exception", str(e))
             yield AgentResponse.error(str(e))

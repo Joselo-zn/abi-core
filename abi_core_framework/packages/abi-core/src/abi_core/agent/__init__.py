@@ -18,6 +18,13 @@ from abi_core.memory import (
     get_short_term_memory,
     recall_memory_context,
 )
+from abi_core.session import (
+    SessionStore,
+    SessionBackend,
+    InMemorySessionBackend,
+    RedisSessionBackend,
+    session_backend_from_env,
+)
 
 __all__ = [
     "AbiCore",
@@ -31,4 +38,9 @@ __all__ = [
     "get_short_term_memory",
     "get_long_term_memory",
     "recall_memory_context",
+    "SessionStore",
+    "SessionBackend",
+    "InMemorySessionBackend",
+    "RedisSessionBackend",
+    "session_backend_from_env",
 ]

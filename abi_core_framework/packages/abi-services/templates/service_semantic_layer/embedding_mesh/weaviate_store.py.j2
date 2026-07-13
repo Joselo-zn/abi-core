@@ -4,7 +4,7 @@ import time
 
 from typing import Any, Dict, Iterable, List
 from weaviate.exceptions import WeaviateConnectionError
-from weaviate.classes.config import Property, DataType
+from weaviate.classes.config import Property, DataType, Configure
 from . import weaviate_client
 
 from abi_core.common.utils import abi_logging
@@ -35,6 +35,11 @@ def ensure_collections()-> None:
             client.collections.create(
                 name="AgentCard",
                 description="Agent card vectors",
+                # Bring-your-own-vector: we supply embeddings from Ollama, so the
+                # collection must be configured for self-provided vectors to build
+                # the HNSW index. Without this, near_vector returns nothing even
+                # though objects carry vectors. See .abi/specs/semantic-store-integrity.md
+                vector_config=Configure.Vectors.self_provided(),
                 properties=[
                     Property(name="text", data_type=DataType.TEXT),
                     Property(name="uri", data_type=DataType.TEXT),
@@ -47,6 +52,7 @@ def ensure_collections()-> None:
             client.collections.create(
                 name="MeshItem",
                 description="Ad-hoc upserted texts",
+                vector_config=Configure.Vectors.self_provided(),
                 properties=[
                     Property(name="text", data_type=DataType.TEXT),
                     Property(name="origin", data_type=DataType.TEXT),
@@ -58,6 +64,7 @@ def ensure_collections()-> None:
             client.collections.create(
                 name="ToolRegistry",
                 description="Registered MCP tools for agent discovery",
+                vector_config=Configure.Vectors.self_provided(),
                 properties=[
                     Property(name="tool_name", data_type=DataType.TEXT),
                     Property(name="description", data_type=DataType.TEXT),

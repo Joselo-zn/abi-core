@@ -84,6 +84,28 @@ AMS service configuration (set on the `<project>-agent-memory` service in `compo
 > in Redis 8.0). Redis 8 also bundles RediSearch/RedisJSON in the core, so the
 > `redis:8` image is sufficient — no separate `redis-stack` modules needed.
 
+## Session Management
+
+```{note}
+**Alpha.** Framework-managed sessions are under active development. These
+variables may change between releases.
+```
+
+Sessions tie an opaque token to an internal `context_id` and its conversation
+context. The backend is pluggable: `memory` (per-pod, dev) or `redis` (shared
+state, LB/multi-pod safe). See [Sessions & Multi-turn](../single-agent/07-sessions-multi-turn.md).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SESSION_BACKEND` | `memory` | `memory` (per-pod, in-process) or `redis` (shared, multi-pod safe) |
+| `SESSION_TTL` | `3600` | Session/context lifetime in seconds |
+| `SESSION_REDIS_URL` | falls back to `REDIS_URL`, then `redis://localhost:6379/0` | Redis URL for the `redis` backend |
+| `ABI_SESSION_REQUIRED` | `false` | If `true`, the orchestrator rejects `/stream` requests without a valid token |
+
+> **Multi-pod?** Use `SESSION_BACKEND=redis`. With `memory`, each replica keeps
+> its own sessions in RAM, so a request that lands on another pod loses the
+> conversation. Redis shares the state across pods.
+
 ## Ollama control
 
 | Variable | Default | Description |

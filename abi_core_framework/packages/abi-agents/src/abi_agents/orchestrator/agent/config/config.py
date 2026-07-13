@@ -81,7 +81,14 @@ class AgentConfig:
 
     # Agent Memory (Redis AMS) — system-wide short/long-term memory
     AGENT_MEMORY_URL: str = os.getenv('AGENT_MEMORY_URL', '')
-    
+
+    # Session Management (framework-managed, LB/multi-pod safe)
+    # SESSION_BACKEND: "memory" (per-pod, dev) | "redis" (shared, multi-pod).
+    SESSION_BACKEND: str = os.getenv('SESSION_BACKEND', 'memory')
+    SESSION_TTL: int = int(os.getenv('SESSION_TTL', '3600'))
+    SESSION_REDIS_URL: str = os.getenv('SESSION_REDIS_URL', os.getenv('REDIS_URL', ''))
+    ABI_SESSION_REQUIRED: bool = os.getenv('ABI_SESSION_REQUIRED', 'false').lower() == 'true'
+
     # Ollama Configuration (for distributed mode)
     START_OLLAMA: bool = os.getenv('START_OLLAMA', 'false').lower() == 'true'
     LOAD_MODELS: bool = os.getenv('LOAD_MODELS', 'false').lower() == 'true'

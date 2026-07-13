@@ -144,6 +144,24 @@ context = await recall_memory_context(query, context_id=ctx)  # ready to inject 
 Every call degrades gracefully when the memory server is unavailable — memory never
 blocks execution. See the [memory guide](https://abi-core.readthedocs.io/en/latest/single-agent/06-builtin-memory.html).
 
+### Sessions — reliable multi-turn
+
+Opt-in sessions tie an opaque, backend-generated token to an internal `context_id`
+and its conversation context. Pick the backend with one env var — your agent code
+doesn't change:
+
+```python
+from abi_core.agent import SessionStore
+
+store = SessionStore.from_env()              # SESSION_BACKEND=memory | redis
+session = await store.create_session()        # opaque token + backend context_id
+ctx = await store.get_context(session.context_id)
+```
+
+Use `SESSION_BACKEND=redis` for multi-pod / load-balanced deployments: state lives in
+shared Redis, not per-process RAM, so a follow-up request survives a pod hop. See the
+[sessions guide](https://abi-core.readthedocs.io/en/latest/single-agent/07-sessions-multi-turn.html).
+
 ### Agents talk to each other
 
 ```python

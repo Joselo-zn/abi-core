@@ -137,6 +137,32 @@ The Semantic Layer connection dropped. `MCPToolkit.call_with_retry()` handles th
 result = await toolkit.call_with_retry("my_tool", max_retries=3, param="value")
 ```
 
+## Session is lost between requests
+
+Symptoms: multi-turn breaks — a clarification answer isn't recognized, context
+from a previous turn is gone, or every request behaves like a brand-new session.
+
+**Most common cause:** the in-memory session backend behind multiple replicas.
+With `SESSION_BACKEND=memory`, each pod keeps its sessions in its own RAM. Behind
+a load balancer, turn 2 can land on a different pod that never saw turn 1.
+
+**Fix:** use the shared Redis backend so any pod resolves the same session:
+
+```bash
+SESSION_BACKEND=redis
+SESSION_REDIS_URL=redis://<project>-redis:6379/0   # falls back to REDIS_URL
+```
+
+Other things to check:
+- **No token sent.** Without `Authorization: Bearer <token>`, each request gets a
+  fresh anonymous session. Call `/session/start` once and reuse the token.
+- **Token expired.** Sessions expire after `SESSION_TTL` (default 3600s). Rotate
+  or start a new session.
+- **Restarted pod with `memory` backend.** In-memory sessions don't survive a
+  restart. Use Redis for durability.
+
+See [Sessions & Multi-turn](../single-agent/07-sessions-multi-turn.md).
+
 ## Container keeps restarting
 
 Check logs for the crash reason:

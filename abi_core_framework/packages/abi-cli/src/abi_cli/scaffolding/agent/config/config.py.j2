@@ -81,7 +81,16 @@ class AgentConfig:
     
     # Ephemeral Agent Control (orchestrator only)
     EPHEMERAL_AUTO_DESTROY: bool = os.getenv('EPHEMERAL_AUTO_DESTROY', 'true').lower() == 'true'
-    
+
+    # Session Management (framework-managed, LB/multi-pod safe)
+    # SESSION_BACKEND: "memory" (per-pod, dev) | "redis" (shared, multi-pod).
+    # The framework reads these directly via abi_core.session; exposed here for
+    # visibility. Use redis behind a load balancer so sessions survive pod hops.
+    SESSION_BACKEND: str = os.getenv('SESSION_BACKEND', 'memory')
+    SESSION_TTL: int = int(os.getenv('SESSION_TTL', '3600'))
+    SESSION_REDIS_URL: str = os.getenv('SESSION_REDIS_URL', os.getenv('REDIS_URL', ''))
+    ABI_SESSION_REQUIRED: bool = os.getenv('ABI_SESSION_REQUIRED', 'false').lower() == 'true'
+
     # Ollama Configuration (for distributed mode)
     START_OLLAMA: bool = os.getenv('START_OLLAMA', 'false').lower() == 'true'
     LOAD_MODELS: bool = os.getenv('LOAD_MODELS', 'false').lower() == 'true'

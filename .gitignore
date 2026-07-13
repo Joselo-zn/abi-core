@@ -383,3 +383,5 @@ local.env
 # Test project
 task/
 tasks/
+
+.kiro/
