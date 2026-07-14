@@ -8,7 +8,7 @@ import io
 from rich.console import Console
 
 from .banner import ABI_BANNER
-from .commands import create, add, remove, run, status, info, provision_models
+from .commands import create, add, remove, run, status, info, provision_models, capabilities
 
 console = Console()
 
@@ -49,6 +49,7 @@ cli.add_command(run)
 cli.add_command(status)
 cli.add_command(info)
 cli.add_command(provision_models)
+cli.add_command(capabilities)
 
 if __name__ == "__main__":
     cli()

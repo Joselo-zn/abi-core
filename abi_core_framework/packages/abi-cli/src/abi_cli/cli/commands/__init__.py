@@ -9,5 +9,6 @@ from .run import run
 from .status import status
 from .info import info
 from .provision import provision_models
+from .capabilities import capabilities
 
-__all__ = ['create', 'add', 'remove', 'run', 'status', 'info', 'provision_models']
+__all__ = ['create', 'add', 'remove', 'run', 'status', 'info', 'provision_models', 'capabilities']

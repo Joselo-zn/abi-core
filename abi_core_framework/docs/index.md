@@ -107,6 +107,7 @@ production/05-artifact-store
 reference/cli-reference
 reference/api-reference
 reference/environment-variables
+reference/capability-matching
 reference/architecture
 ```
 

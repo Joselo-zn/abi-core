@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Capability matching foundations (`abi_core.capabilities`)** — task-centric model
+  selection (Phase 0; not yet wired into agents):
+  - `CapabilityProfile` — a 7-dimension vector (`code_generation`, `tool_usage`,
+    `reasoning`, `planning`, `structured_output`, `context_span`,
+    `instruction_following`) shared by tasks and models. The 7th dimension captures
+    that higher raw capability tends to reduce strict instruction compliance.
+  - `TaskProfile` (what a task requires, with optional per-dimension weights) and
+    `ModelProfile` (what a model provides, with provenance: `seed` vs `measured`,
+    plus `with_observation()` to refine scores from executions).
+  - `capability_gaps()`, `match_score()` (scalar ranking; penalizes deficit only —
+    surplus capability doesn't reward), `select_model()` / `rank_models()`.
+  - `seed_catalog()` — initial qualitative model profiles (`devstral:24b`,
+    `dolphin:70b`, `qwen2.5:3b/1.5b`) to bootstrap matching before measurement.
+  - JSON load/save (`load_profiles`, `save_profiles`, `load_catalog`) — model
+    profiling is a dev-time step: profile candidates, export JSON, load into the
+    system, refine at runtime.
+  - Visualization (`render_bars` for terminal, `render_radar_png` for a radar chart
+    PNG via the optional `viz` extra / matplotlib).
+  - Dev-time model profiler: a deterministic probe battery (`probe_suite`,
+    versioned), an adaptive runner with **Wilson confidence intervals**
+    (`stats`, `profiler`), scored on an absolute 0–1 scale per dimension (no LLM
+    judge). `abi-core capabilities profile <model> --output x.json` measures a
+    model via Ollama and exports its profile.
+  - CLI: `abi-core capabilities list|show [--radar out.png]|profile` to inspect
+    and measure profiles.
+  - Pure and testable; no agent integration yet. See
+    `.abi/specs/capability-matching.md` and
+    `.abi/specs/capability-profiling-methodology.md`.
 - **Framework-managed sessions (`abi_core.session`)** — opt-in, LB/multi-pod safe
   session management for any ABI agent:
   - `SessionStore` with a **pluggable backend**: `InMemorySessionBackend` (default;

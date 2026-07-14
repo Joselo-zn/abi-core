@@ -162,6 +162,31 @@ Use `SESSION_BACKEND=redis` for multi-pod / load-balanced deployments: state liv
 shared Redis, not per-process RAM, so a follow-up request survives a pod hop. See the
 [sessions guide](https://abi-core.readthedocs.io/en/latest/single-agent/07-sessions-multi-turn.html).
 
+### Capability matching — pick models by what the task needs
+
+Instead of "which model should we use?", ask "what capabilities does the task
+require?". Profile a task by what it needs and a model by what it provides, over 7
+dimensions (including `instruction_following` — why a small model can be the better
+orchestrator), and match them:
+
+```python
+from abi_core.capabilities import TaskProfile, CapabilityProfile, select_model, seed_catalog
+
+task = TaskProfile(capabilities=CapabilityProfile(code_generation=0.9, tool_usage=0.95))
+result = select_model(task, seed_catalog())
+result.model_name   # best match; result.gaps → deficits to reinforce
+```
+
+Measure your own models with a deterministic probe battery (Wilson confidence
+intervals, no LLM judge) and export to JSON:
+
+```bash
+abi-core capabilities profile qwen2.5:3b --output profiles.json
+abi-core capabilities show qwen2.5:3b --source profiles.json   # radar in the terminal
+```
+
+See the [capability matching guide](https://abi-core.readthedocs.io/en/latest/reference/capability-matching.html).
+
 ### Agents talk to each other
 
 ```python
