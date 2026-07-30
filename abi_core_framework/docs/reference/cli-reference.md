@@ -72,6 +72,35 @@ abi-core add service <type>
 
 Types: `semantic-layer`, `guardian-native`
 
+### `abi-core add chainlit`
+
+```bash
+abi-core add chainlit [--url http://<project>-<agent>:<port>] [--title "My Chat"] [--dir ui]
+```
+
+Adds a [Chainlit](https://docs.chainlit.io) chat UI **as a Docker service**, wired into
+the project's `compose.yaml` and network. It's a thin SSE client over an agent's
+`/stream` endpoint that opens a framework-managed session (so multi-turn stays coherent)
+and streams status/result updates.
+
+If `--url` is omitted, the target agent is **auto-detected** from `.abi/runtime.yaml`
+(the agent with a web interface, preferring the orchestrator). The UI gets a dynamic
+host port; started by `abi-core run` alongside the rest of the stack.
+
+| Option | Description |
+|--------|-------------|
+| `--url` | Target agent `/stream` URL as a Docker **service name** (auto-detected if omitted) |
+| `--title` | UI title (default `<project> Chat`) |
+| `--dir` | Output directory (default `ui`) |
+
+```bash
+abi-core add chainlit     # auto-detects the web agent, adds the service
+abi-core run              # builds + starts everything, including the UI
+```
+
+The command prints the host URL (e.g. `http://localhost:8500`). Override the target at
+runtime with the `ABI_AGENT_URL` environment variable on the `chatui` service.
+
 ---
 
 ## Run

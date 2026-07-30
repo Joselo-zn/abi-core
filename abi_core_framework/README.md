@@ -207,6 +207,7 @@ abi-core create project <name>               # Project only
 abi-core add agent <name> --description "…"  # Add agent to existing project
 abi-core add semantic-layer                  # Add agent discovery service
 abi-core add service guardian-native         # Add security gate
+abi-core add chainlit                        # Add a Chainlit chat UI as a Docker service (SSE + sessions)
 
 # Run
 abi-core run                # Start everything

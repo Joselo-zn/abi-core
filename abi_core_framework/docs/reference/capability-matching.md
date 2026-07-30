@@ -144,34 +144,42 @@ abi-core capabilities show devstral:24b --radar devstral.png
 The radar chart requires matplotlib (`pip install "abi-core-ai[viz]"`); the
 terminal bars work without it.
 
-## Measuring a model (dev-time)
+## Measuring a model (dev-time) — operational envelopes
 
-`abi-core capabilities profile` runs a **deterministic probe battery** against a
-model and writes a measured profile to JSON:
+`abi-core capabilities profile` measures a model's **operational envelope** per
+dimension: the highest complexity level it sustains reliably before breaking. It's
+not "how good is the model?" but "up to which level is this capability reliable?".
 
 ```bash
 abi-core capabilities profile qwen2.5:3b \
   --host http://localhost:11434 \
   --output qwen_profile.json \
-  --n-min 10 --n-max 40
+  --reps 10
 ```
 
 How it works:
 
-- Each of the 7 dimensions has several code-verifiable probes of varying
-  difficulty (e.g. `structured_output` → is the reply valid JSON?; `tool_usage` →
-  did it name the right tool?; `reasoning` → is the single answer correct?). No LLM
-  judge — the verifier is deterministic, so the measurement isn't itself noisy.
-- Each probe is repeated N times (the model is non-deterministic) and scored as a
-  success ratio with a **Wilson 95% confidence interval**. Sampling stops early
-  once the interval is narrow enough, between `--n-min` and `--n-max`.
-- Dimension scores are a difficulty-weighted mean of their probes, on an absolute
-  0–1 scale (not relative to other models).
-- The JSON records provenance (`probe_suite_version`, host, temperature, per-probe
-  results) for reproducibility.
+- Each dimension has a **ladder of levels** of increasing complexity, each with a
+  deterministic code verifier (e.g. `structured_output` climbs flat → nested → tree
+  → cross-field constraints). No LLM judge — the verifier is deterministic, so the
+  measurement isn't itself noisy. The ladder starts at mid-complexity, so scores are
+  discriminating (small models land around 0.3–0.4, large ones 0.6–0.7; 1.0 would
+  mean the ladder is too short).
+- The profiler climbs levels with a **staircase**: each level is run `--reps` times
+  and judged with a **Wilson confidence interval** (a level passes only if the
+  success ratio and the interval's lower bound clear the thresholds). On a failure it
+  **retries once to confirm** before declaring the break — avoiding a false negative
+  from a flaky model. The envelope is the highest confirmed level, normalized to
+  `[0,1]`.
+- Envelopes are **monotonic by construction**: covering level N implies covering all
+  lower levels.
+- Some dimensions (`tool_usage`, `planning`, `context_span`) aren't leveled yet —
+  their high levels (failure recovery, replanning, long-running coherence) need an
+  execution sandbox to verify deterministically. They're reported as unmeasured
+  rather than guessed.
 
 Load the result back with `--source qwen_profile.json` on `list`/`show`, or with
-`load_profiles()` in code. Runtime executions can then refine it further via
+`load_profiles()` in code. Runtime executions can refine it via
 `ModelProfile.with_observation()`.
 
 ## What comes next

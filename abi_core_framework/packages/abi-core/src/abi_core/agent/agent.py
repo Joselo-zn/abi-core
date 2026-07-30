@@ -17,6 +17,24 @@ from abi_core.agent.agent_response import AgentResponse
 _HEARTBEAT_INTERVAL = 15
 
 
+def _supported_kwargs(fn, **candidates):
+    """Return only the kwargs that ``fn``'s signature accepts.
+
+    Lets the framework offer session context (``context_id``/``task_id``) to a
+    task/step without breaking functions that only declare ``(query)``. If the
+    function has ``**kwargs``, all candidates pass through.
+    """
+    import inspect
+
+    try:
+        params = inspect.signature(fn).parameters
+    except (ValueError, TypeError):
+        return dict(candidates)
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return dict(candidates)
+    return {k: v for k, v in candidates.items() if k in params}
+
+
 class AbiAgent:
     """Base class for all ABI agents.
 
@@ -258,11 +276,20 @@ class AbiAgent:
                 import inspect
 
                 task_fn = task_entry.fn
+                # Propagate session context to the task, but only the kwargs its
+                # signature accepts — so existing tasks with `(query)` keep
+                # working while new ones can take `(query, context_id, task_id)`.
+                # This carries the system context (context_id) across the hop so
+                # steps can read/write session memory. See WORKING_RULES →
+                # "Perspectiva Local vs Global".
+                call_kwargs = _supported_kwargs(
+                    task_fn, query=query, context_id=context_id, task_id=task_id
+                )
                 if inspect.isasyncgenfunction(task_fn):
-                    async for chunk in task_fn(query=query):
+                    async for chunk in task_fn(**call_kwargs):
                         yield chunk
                 elif inspect.iscoroutinefunction(task_fn):
-                    result = await task_fn(query=query)
+                    result = await task_fn(**call_kwargs)
                     if isinstance(result, dict):
                         yield AgentResponse.result(result)
                     else:

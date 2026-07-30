@@ -66,3 +66,44 @@ class ProbeResult:
             "ci_low": ci.low,
             "ci_high": ci.high,
         }
+
+
+# ── v2: leveled probes (operational envelope) ──────────────────────
+
+# Number of levels per dimension in the v2 staircase. The score of a dimension
+# is (highest reliable level) / MAX_LEVEL, so it lands in [0, 1] and 1.0 means
+# the model saturated the whole ladder (a signal the ladder is too short).
+MAX_LEVEL = 6
+
+
+@dataclass(frozen=True)
+class LeveledProbe:
+    """A probe positioned at a complexity ``level`` within its dimension.
+
+    Same deterministic-verifier contract as ``Probe``, plus a ``level`` (1..N).
+    The profiler climbs levels until the model breaks; the envelope is the
+    highest level reliably passed.
+    """
+
+    id: str
+    dimension: str
+    level: int
+    prompt: str
+    verify: Callable[[str], bool]
+    tools: List = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.dimension not in CAPABILITY_DIMENSIONS:
+            raise ValueError(f"Unknown dimension: {self.dimension!r}")
+        if self.level < 1:
+            raise ValueError(f"level must be >= 1, got {self.level}")
+
+
+def envelope_score(highest_reliable_level: int, max_level: int = MAX_LEVEL) -> float:
+    """Normalize an envelope (highest reliable level) to a [0,1] score.
+
+    Level 0 (breaks immediately) → 0.0. Saturating the ladder → 1.0.
+    """
+    if max_level <= 0:
+        return 0.0
+    return max(0.0, min(1.0, highest_reliable_level / max_level))

@@ -11,12 +11,28 @@ from app import agent
 {% if tasks %}
 {% for task in tasks %}
 
-@agent.step(name="{{ task }}_step", input_map={"query": "$input.query"})
-async def {{ task }}_step(query):
+@agent.step(name="{{ task }}_step", input_map={"query": "$input.query", "context_id": "$input.context_id"})
+async def {{ task }}_step(query, context_id=None):
     """TODO: Implement the {{ task }} step logic.
+
+    A step RETURNS a dict — it does not `yield`. Do NOT mix `yield` and
+    `return <value>` in the same function (that's a Python SyntaxError and the
+    step won't register). Streaming status to the client goes in the TASK
+    (`yield AgentResponse.status(...)` in tasks.py), not here.
+
+    Call the LLM with `await`: `result = await invoke(config.LLM_CONFIG, prompt)`.
+
+    ``context_id`` is the session id. Use it to remember the conversation across
+    turns via system memory, e.g.:
+
+        from abi_core.memory import add_short_term_memory, get_short_term_memory
+        history = await get_short_term_memory(context_id=context_id)
+        # ... build prompt with `history` ...
+        await add_short_term_memory("chat", context_id, query, context_id=context_id)
 
     Args:
         query: Input query from the request.
+        context_id: Session id (forwarded from the task) for session memory.
 
     Returns:
         dict with the step output.

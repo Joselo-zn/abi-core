@@ -1,0 +1,16 @@
+# {{ ui_title | default('ABI') }} 🐝
+
+Chat interface for your ABI agent, powered by [Chainlit](https://docs.chainlit.io).
+
+This UI is a thin client over your agent's `/stream` (SSE) endpoint. It opens a
+framework-managed session so multi-turn conversations stay coherent.
+
+## Run it
+
+```bash
+pip install -r requirements.txt
+chainlit run app.py
+```
+
+Point it at your agent with the `ABI_AGENT_URL` environment variable
+(defaults to `{{ agent_url | default('http://localhost:8083') }}`).

@@ -1,0 +1,8 @@
+"""{{ ui_title | default('ABI') }} UI — Configuration."""
+
+import os
+
+# URL of the target agent's web interface (/stream + /session endpoints).
+# Inside the Docker network this is the agent's SERVICE NAME, not localhost —
+# containers reach each other by service name. Overridable at runtime.
+AGENT_URL = os.getenv("ABI_AGENT_URL", "{{ agent_url }}")

@@ -276,6 +276,13 @@ class AbiCore:
             raise TypeError(f"Step '{step_name}' has no callable function (MCP tool?)")
 
         import inspect
+
+        # Drop system-context kwargs (context_id/task_id) if the step doesn't
+        # declare them, so a task can forward session context uniformly without
+        # breaking steps that only take (query). Other kwargs pass through
+        # unchanged, so a genuine typo still raises.
+        kwargs = self._filter_system_kwargs(node.fn, kwargs)
+
         if inspect.isasyncgenfunction(node.fn):
             # Async generator step — collect all yielded values
             result = {}
@@ -287,6 +294,29 @@ class AbiCore:
             return await node.fn(**kwargs)
         else:
             return node.fn(**kwargs)
+
+    @staticmethod
+    def _filter_system_kwargs(fn, kwargs: dict) -> dict:
+        """Drop framework-injected system kwargs the function doesn't accept.
+
+        Only ``context_id`` and ``task_id`` are filtered (they're offered by the
+        framework/tasks for session propagation). Any other kwarg is left as-is
+        so a real typo still surfaces as a TypeError. If ``fn`` has ``**kwargs``,
+        nothing is dropped.
+        """
+        import inspect
+
+        _SYSTEM = ("context_id", "task_id")
+        try:
+            params = inspect.signature(fn).parameters
+        except (ValueError, TypeError):
+            return kwargs
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            return kwargs
+        return {
+            k: v for k, v in kwargs.items()
+            if k not in _SYSTEM or k in params
+        }
 
     def get_task_metadata(self) -> list:
         """Return metadata for all registered tasks.
@@ -342,6 +372,10 @@ class AbiCore:
         task_fn = task_entry.fn
         if task_fn is None:
             raise TypeError(f"Task '{task_name}' has no callable function")
+
+        # Forward session context uniformly; drop context_id/task_id if the
+        # target task doesn't declare them (see _filter_system_kwargs).
+        kwargs = self._filter_system_kwargs(task_fn, kwargs)
 
         # Tasks are async generators that yield AgentResponse
         if inspect.isasyncgenfunction(task_fn):
@@ -566,18 +600,28 @@ class AbiCore:
         Returns:
             Exit code (0 = clean shutdown, 1 = error).
         """
-        # Auto-discover sibling modules (tools.py, steps.py, tasks.py)
+        # Auto-discover sibling modules (tools.py, steps.py, tasks.py).
+        # Distinguish "module doesn't exist" (fine to skip) from "module exists
+        # but fails to import" (a real error). Swallowing the latter leaves the
+        # DAG empty and the agent fails cryptically at runtime with
+        # "Registered steps: []" — a silent failure. Surface it loudly instead.
         import importlib
+        import importlib.util
+        import traceback
         for module_name in ("tools", "steps", "tasks"):
+            if importlib.util.find_spec(module_name) is None:
+                continue  # module genuinely not present — skip
             try:
                 importlib.import_module(module_name)
-            except ImportError:
-                pass
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — module exists but broke on import
+                tb = traceback.format_exc()
                 abi_logging(
-                    f"[⚠️] Failed to auto-import '{module_name}': {e}",
-                    level="warning",
+                    f"[❌] Failed to import '{module_name}.py' — its decorators "
+                    f"(@agent.step/@agent.task/@agent.tool) will NOT be registered, "
+                    f"so the agent will fail at runtime. Fix the import error:\n{e}\n{tb}",
+                    level="error",
                 )
+                raise
 
         from abi_core.agent.agent_factory import agent_factory
 

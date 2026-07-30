@@ -29,14 +29,14 @@ class AgentConfig:
     
     # Model Configuration
     MODEL_NAME: str = os.getenv('MODEL_NAME', '{{ model_name }}')
-    OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://{{ project_dir }}-ollama:11434')
+    OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
     
     # LLM Configuration (unified dict for create_llm)
     LLM_CONFIG: dict = {
         "provider": os.getenv("LLM_PROVIDER", "ollama"),
         "model": os.getenv("MODEL_NAME", "{{ model_name }}"),
         "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
-        "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://{{ project_dir }}-ollama:11434")),
+        "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://ollama:11434")),
         "api_key": os.getenv("LLM_API_KEY", ""),
         # Cloud-specific (only used when provider requires them)
         "aws_region": os.getenv("AWS_REGION", "us-east-1"),

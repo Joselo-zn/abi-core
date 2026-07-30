@@ -388,3 +388,98 @@ class TestProbeSuite:
         mp = profile_model("perfect", probes, run_fn, n_min=10, n_max=10)
         assert mp.capability("reasoning") == pytest.approx(1.0)
         assert mp.capability("instruction_following") == pytest.approx(1.0)
+
+
+class TestEnvelopeV2:
+    def test_envelope_score_normalizes(self):
+        from abi_core.capabilities.probes import envelope_score
+        assert envelope_score(0, 6) == 0.0
+        assert envelope_score(3, 6) == pytest.approx(0.5)
+        assert envelope_score(6, 6) == 1.0
+
+    def test_leveled_probe_validates(self):
+        from abi_core.capabilities.probes import LeveledProbe
+        with pytest.raises(ValueError):
+            LeveledProbe("x", "reasoning", 0, "p", lambda o: True)
+
+    def test_level_passed_requires_ratio_and_ci(self):
+        from abi_core.capabilities.profiler import level_passed
+        # 9/10 = 0.9 ratio, but Wilson low bound may dip below floor at small n
+        assert level_passed(20, 20, pass_ratio=0.8, ci_floor=0.6) is True
+        assert level_passed(5, 10, pass_ratio=0.8, ci_floor=0.6) is False  # ratio too low
+
+    def test_staircase_stops_at_confirmed_break(self):
+        from abi_core.capabilities.probes import LeveledProbe
+        from abi_core.capabilities.profiler import profile_dimension_envelope
+        # Model passes levels 1-2, always fails level 3.
+        levels = {
+            1: [LeveledProbe("l1", "reasoning", 1, "one", lambda o: o == "ok")],
+            2: [LeveledProbe("l2", "reasoning", 2, "two", lambda o: o == "ok")],
+            3: [LeveledProbe("l3", "reasoning", 3, "three", lambda o: o == "ok")],
+        }
+        def run_fn(prompt, tools):
+            return "ok" if prompt in ("one", "two") else "no"
+        result = profile_dimension_envelope(levels, run_fn, reps=10, max_level=6)
+        assert result["highest_reliable_level"] == 2
+        assert result["score"] == pytest.approx(2 / 6)
+
+    def test_staircase_confirmation_recovers_false_negative(self):
+        from abi_core.capabilities.probes import LeveledProbe
+        from abi_core.capabilities.profiler import profile_dimension_envelope
+        # Level 1 flakes on the FIRST batch, passes on confirmation retry.
+        state = {"batch": 0}
+        def flaky_verify(o):
+            return o == "ok"
+        def run_fn(prompt, tools):
+            # first 10 calls (batch 1) return "no", after that "ok"
+            state["batch"] += 1
+            return "no" if state["batch"] <= 10 else "ok"
+        levels = {1: [LeveledProbe("l1", "reasoning", 1, "p", flaky_verify)]}
+        result = profile_dimension_envelope(levels, run_fn, reps=10, max_level=6)
+        # confirmation retry passes → level 1 counts
+        assert result["highest_reliable_level"] == 1
+
+    def test_leveled_suite_structured_output_present(self):
+        from abi_core.capabilities.probe_suite import leveled_probes
+        levels = leveled_probes("structured_output")
+        assert set(levels.keys()) == {1, 2, 3, 4}
+        # verifier sanity: L4 cross-field
+        l4 = levels[4][0]
+        assert l4.verify('{"a": 7, "b": 5, "sum": 12}') is True
+        assert l4.verify('{"a": 7, "b": 5, "sum": 99}') is False
+
+
+class TestEnvelopeSuiteC:
+    def test_leveled_dimensions_present(self):
+        from abi_core.capabilities.probe_suite import leveled_dimensions
+        dims = leveled_dimensions()
+        assert set(dims) == {"structured_output", "reasoning", "instruction_following", "code_generation"}
+
+    def test_reasoning_verifiers(self):
+        from abi_core.capabilities.probe_suite import leveled_probes
+        levels = leveled_probes("reasoning")
+        assert levels[1][0].verify("40 km/h") is True
+        assert levels[1][0].verify("The answer is 50") is False
+
+    def test_code_generation_class_level(self):
+        from abi_core.capabilities.probe_suite import leveled_probes
+        l3 = leveled_probes("code_generation")[3][0]
+        good = "class Stack:\n def push(self,x): pass\n def pop(self): pass\n def is_empty(self): pass"
+        assert l3.verify(good) is True
+        assert l3.verify("def push(): pass") is False
+
+    def test_profile_model_envelope_scores_and_unmeasured(self):
+        from abi_core.capabilities.probe_suite import LEVELED_PROBES
+        from abi_core.capabilities.profiler import profile_model_envelope
+        # Model that only nails instruction_following L1 then breaks everything.
+        def run_fn(prompt, tools):
+            if "three words, all lowercase" in prompt:
+                return "the deep sea"
+            return "garbage"
+        mp = profile_model_envelope("weak", LEVELED_PROBES, run_fn, reps=10)
+        assert mp.source.startswith("measured")
+        # instruction_following envelope = level 1 → 1/6
+        assert mp.capability("instruction_following") == pytest.approx(1 / 6)
+        # tool_usage never measured → stays 0 and flagged
+        assert mp.capability("tool_usage") == 0.0
+        assert "tool_usage" in mp.metadata["unmeasured_dimensions"]

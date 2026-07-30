@@ -114,3 +114,160 @@ def profile_model(
         samples=total_samples,
         metadata=meta,
     )
+
+
+# ── v2: operational-envelope profiling (staircase with confirmation) ──
+
+from typing import Dict as _Dict, List as _List  # noqa: E402
+
+from abi_core.capabilities.probes import LeveledProbe, MAX_LEVEL, envelope_score  # noqa: E402
+from abi_core.capabilities.stats import wilson_interval  # noqa: E402
+
+# A level is "passed" when the success ratio clears PASS_RATIO *and* the Wilson
+# lower bound clears CI_FLOOR — so passing is statistically backed, not luck.
+DEFAULT_PASS_RATIO = 0.8
+DEFAULT_CI_FLOOR = 0.6
+
+
+def run_level(
+    probes: _List[LeveledProbe],
+    run_fn: RunFn,
+    *,
+    reps: int,
+) -> tuple:
+    """Run all probes of a level ``reps`` times each; return (successes, n)."""
+    successes = 0
+    n = 0
+    for probe in probes:
+        for _ in range(reps):
+            n += 1
+            try:
+                if probe.verify(run_fn(probe.prompt, probe.tools)):
+                    successes += 1
+            except Exception:
+                pass
+    return successes, n
+
+
+def level_passed(
+    successes: int,
+    n: int,
+    *,
+    pass_ratio: float = DEFAULT_PASS_RATIO,
+    ci_floor: float = DEFAULT_CI_FLOOR,
+) -> bool:
+    """A level is passed if ratio >= pass_ratio and Wilson lower bound >= ci_floor."""
+    if n == 0:
+        return False
+    ratio = successes / n
+    if ratio < pass_ratio:
+        return False
+    return wilson_interval(successes, n).low >= ci_floor
+
+
+def profile_dimension_envelope(
+    levels: _Dict[int, _List[LeveledProbe]],
+    run_fn: RunFn,
+    *,
+    reps: int = 10,
+    max_level: int = MAX_LEVEL,
+    pass_ratio: float = DEFAULT_PASS_RATIO,
+    ci_floor: float = DEFAULT_CI_FLOOR,
+) -> _Dict:
+    """Climb complexity levels until a confirmed break; return the envelope.
+
+    Staircase with confirmation (spec §3): on a level failure, retry once before
+    declaring the break, to avoid a false negative from a noisy model.
+
+    Args:
+        levels: ``{level_number: [LeveledProbe, ...]}`` for one dimension.
+        run_fn: ``(prompt, tools) -> output`` driving the model.
+        reps: repetitions per probe at each level.
+
+    Returns:
+        Dict with ``highest_reliable_level``, ``score`` (envelope, [0,1]), and
+        ``per_level`` diagnostics.
+    """
+    highest = 0
+    per_level = []
+    ordered = sorted(l for l in levels if levels[l])
+
+    for level in ordered:
+        if level > max_level:
+            break
+        probes = levels[level]
+        succ, n = run_level(probes, run_fn, reps=reps)
+        passed = level_passed(succ, n, pass_ratio=pass_ratio, ci_floor=ci_floor)
+
+        if not passed:
+            # Confirm the break: retry once before giving up (avoid false negative).
+            succ2, n2 = run_level(probes, run_fn, reps=reps)
+            if level_passed(succ2, n2, pass_ratio=pass_ratio, ci_floor=ci_floor):
+                succ, n, passed = succ + succ2, n + n2, True
+            else:
+                per_level.append({"level": level, "successes": succ, "n": n, "passed": False})
+                break
+
+        highest = level
+        per_level.append({"level": level, "successes": succ, "n": n, "passed": True})
+
+    return {
+        "highest_reliable_level": highest,
+        "score": envelope_score(highest, max_level),
+        "per_level": per_level,
+    }
+
+
+def profile_model_envelope(
+    model: str,
+    leveled_by_dim: _Dict[str, _Dict[int, _List[LeveledProbe]]],
+    run_fn: RunFn,
+    *,
+    reps: int = 10,
+    max_level: int = MAX_LEVEL,
+    pass_ratio: float = DEFAULT_PASS_RATIO,
+    ci_floor: float = DEFAULT_CI_FLOOR,
+    metadata: _Dict | None = None,
+) -> ModelProfile:
+    """Profile a model as operational envelopes across leveled dimensions (v2).
+
+    Runs the staircase per dimension; each dimension's score is its envelope
+    (highest reliable level / max_level). Dimensions without a leveled battery
+    are left at 0.0 and noted in metadata as unmeasured.
+
+    Args:
+        model: Model name/tag.
+        leveled_by_dim: ``{dimension: {level: [LeveledProbe]}}``.
+        run_fn: ``(prompt, tools) -> output`` driving the model.
+
+    Returns:
+        A measured ``ModelProfile`` (envelope semantics) with per-dimension
+        diagnostics in ``metadata``.
+    """
+    scores: _Dict[str, float] = {}
+    envelopes: _Dict[str, dict] = {}
+    total_runs = 0
+
+    for dim, levels in leveled_by_dim.items():
+        result = profile_dimension_envelope(
+            levels, run_fn, reps=reps, max_level=max_level,
+            pass_ratio=pass_ratio, ci_floor=ci_floor,
+        )
+        scores[dim] = result["score"]
+        envelopes[dim] = result
+        total_runs += sum(pl["n"] for pl in result["per_level"])
+
+    meta = dict(metadata or {})
+    meta["envelopes"] = envelopes
+    meta["scoring"] = "operational_envelope_v2"
+    meta["unmeasured_dimensions"] = [
+        d for d in CAPABILITY_DIMENSIONS if d not in leveled_by_dim
+    ]
+
+    return ModelProfile(
+        model=model,
+        capabilities=CapabilityProfile.from_dict(scores),
+        source=SOURCE_MEASURED,
+        samples=total_runs,
+        metadata=meta,
+    )

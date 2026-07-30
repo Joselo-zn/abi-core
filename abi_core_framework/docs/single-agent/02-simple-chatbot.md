@@ -99,6 +99,20 @@ event: result → {"intent": "question", "response": "Machine learning is..."}
 - **Status updates** — the user sees progress in real-time
 - **Structured output** — the result includes both intent and response
 
+## Give it a chat UI
+
+Instead of `curl`, add a [Chainlit](https://docs.chainlit.io) chat interface. It's added
+as a Docker service and started with the rest of the stack — no separate process:
+
+```bash
+abi-core add chainlit     # auto-detects your web agent from .abi
+abi-core run              # starts the UI too; it prints the URL (e.g. http://localhost:8500)
+```
+
+The UI opens a framework-managed session, so follow-up messages keep their context
+(multi-turn). See the [CLI reference](../reference/cli-reference.md#abi-core-add-chainlit)
+for options.
+
 ## Next step
 
 👉 [Agents with Tools](03-agents-with-tools.md)

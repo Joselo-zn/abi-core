@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`abi-core add chainlit`** — add a Chainlit chat UI **as a Docker service** for any
+  agent with a web interface (not just the swarm). Wired into `compose.yaml` + the
+  project network and started by `abi-core run` (no manual `chainlit run`); the target
+  agent is auto-detected from `.abi/runtime.yaml` (Docker service name, not localhost),
+  with a dynamic host port. It's a thin SSE client over `/stream` that opens a
+  framework-managed session (token cached in `cl.user_session`, sent as
+  `Authorization: Bearer`) so multi-turn stays coherent, and parses the stream safely
+  (`json.loads` → `ast.literal_eval` fallback, never `eval`). Options: `--url`,
+  `--title`, `--dir`.
 - **Capability matching foundations (`abi_core.capabilities`)** — task-centric model
   selection (Phase 0; not yet wired into agents):
   - `CapabilityProfile` — a 7-dimension vector (`code_generation`, `tool_usage`,
@@ -26,11 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     system, refine at runtime.
   - Visualization (`render_bars` for terminal, `render_radar_png` for a radar chart
     PNG via the optional `viz` extra / matplotlib).
-  - Dev-time model profiler: a deterministic probe battery (`probe_suite`,
-    versioned), an adaptive runner with **Wilson confidence intervals**
-    (`stats`, `profiler`), scored on an absolute 0–1 scale per dimension (no LLM
-    judge). `abi-core capabilities profile <model> --output x.json` measures a
-    model via Ollama and exports its profile.
+  - Dev-time model profiler measuring **operational envelopes** (v2): per
+    dimension, the highest complexity level a model sustains reliably (a
+    staircase of code-verifiable leveled probes with **Wilson confidence
+    intervals** and confirm-on-break; no LLM judge). Scores are absolute `[0,1]`
+    envelopes (level/max), monotonic by construction. Leveled dimensions:
+    `structured_output`, `reasoning`, `instruction_following`, `code_generation`;
+    `tool_usage`/`planning`/`context_span` reported as unmeasured (need an
+    execution sandbox). `abi-core capabilities profile <model> --output x.json`
+    measures via Ollama and exports the profile.
   - CLI: `abi-core capabilities list|show [--radar out.png]|profile` to inspect
     and measure profiles.
   - Pure and testable; no agent integration yet. See

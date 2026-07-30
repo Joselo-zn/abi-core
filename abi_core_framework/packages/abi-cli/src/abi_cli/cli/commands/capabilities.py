@@ -99,7 +99,35 @@ def show_model(model, source, radar_path):
     return 0
 
 
-def _ollama_run_fn(model: str, host: str):
+class ProfilingError(click.ClickException):
+    """Fatal profiling error that should stop the run immediately."""
+
+
+def _check_ollama_model(model: str, host: str) -> None:
+    """Verify Ollama is reachable and the model is pulled; fail fast otherwise."""
+    import httpx
+
+    try:
+        resp = httpx.get(f"{host}/api/tags", timeout=10.0)
+        resp.raise_for_status()
+    except Exception as e:
+        raise ProfilingError(
+            f"Cannot reach Ollama at {host}: {e}\n"
+            f"   Is Ollama running? Try: curl {host}/api/tags"
+        )
+
+    available = [m.get("name", "") for m in resp.json().get("models", [])]
+    # Ollama tags are like "qwen2.5:3b"; accept an exact match or a bare name.
+    if model not in available and f"{model}:latest" not in available:
+        listing = "\n     ".join(available) if available else "(none pulled)"
+        raise ProfilingError(
+            f"Model '{model}' is not available on {host}.\n"
+            f"   Pulled models:\n     {listing}\n"
+            f"   Pull it with: ollama pull {model}"
+        )
+
+
+def _ollama_run_fn(model: str, host: str, timeout: float = 120.0):
     """Build a (prompt, tools) -> output function backed by Ollama's HTTP API."""
     import httpx
 
@@ -108,10 +136,17 @@ def _ollama_run_fn(model: str, host: str):
             resp = httpx.post(
                 f"{host}/api/generate",
                 json={"model": model, "prompt": prompt, "stream": False, "options": {"temperature": 0}},
-                timeout=120.0,
+                timeout=timeout,
             )
             resp.raise_for_status()
             return resp.json().get("response", "")
+        except httpx.HTTPStatusError as e:
+            # 404 mid-run means the model vanished (unloaded/removed) — abort,
+            # don't keep hammering N times against a dead model.
+            if e.response.status_code == 404:
+                raise ProfilingError(f"Model '{model}' not found at {host} (404). Aborting.")
+            click.echo(f"⚠️  generation failed: {e}")
+            return ""
         except Exception as e:
             click.echo(f"⚠️  generation failed: {e}")
             return ""
@@ -123,29 +158,41 @@ def _ollama_run_fn(model: str, host: str):
 @click.argument("model")
 @click.option("--host", default="http://localhost:11434", help="Ollama host URL.")
 @click.option("--output", type=click.Path(), default=None, help="Write the measured profile JSON here.")
-@click.option("--n-min", default=10, help="Minimum probe repetitions.")
-@click.option("--n-max", default=40, help="Maximum probe repetitions.")
-def profile_model(model, host, output, n_min, n_max):
-    """Run the deterministic probe battery to measure MODEL and export its profile."""
-    from abi_core.capabilities.probe_suite import builtin_probes, PROBE_SUITE_VERSION
-    from abi_core.capabilities.profiler import profile_model as run_profiler
+@click.option("--reps", "n_min", default=10, help="Repetitions per probe at each level.")
+@click.option("--timeout", default=300.0, help="Per-generation timeout in seconds (raise for big models on modest hardware).")
+def profile_model(model, host, output, n_min, timeout):
+    """Measure MODEL's operational envelopes (v2) and export its profile."""
+    from abi_core.capabilities.probe_suite import (
+        LEVELED_PROBES, LEVELED_SUITE_VERSION, leveled_dimensions,
+    )
+    from abi_core.capabilities.profiler import profile_model_envelope
     from abi_core.capabilities import save_profiles, render_bars
 
-    click.echo(f"🔬 Profiling '{model}' via {host} (probe suite v{PROBE_SUITE_VERSION})...")
-    run_fn = _ollama_run_fn(model, host)
-    probes = builtin_probes()
+    click.echo(f"🔬 Profiling '{model}' via {host} (envelope suite v{LEVELED_SUITE_VERSION})...")
+    click.echo(f"   Measuring dimensions: {', '.join(leveled_dimensions())}")
+    _check_ollama_model(model, host)  # fail fast if unreachable / not pulled
 
-    mp = run_profiler(
-        model, probes, run_fn, n_min=n_min, n_max=n_max,
-        metadata={"probe_suite_version": PROBE_SUITE_VERSION, "host": host, "temperature": 0},
+    run_fn = _ollama_run_fn(model, host, timeout=timeout)
+
+    # Warm up: the first call loads the model into memory (slow for big models).
+    # Do it once, outside the timed probes, so model load doesn't trip a timeout.
+    click.echo("⏳ Warming up (loading model into memory)...")
+    run_fn("Reply with: ok", [])
+
+    mp = profile_model_envelope(
+        model, LEVELED_PROBES, run_fn, reps=n_min,
+        metadata={"suite_version": LEVELED_SUITE_VERSION, "host": host, "temperature": 0},
     )
 
     click.echo("")
     click.echo(render_bars(mp.capabilities, primary_label=model))
-    click.echo(f"\n  [measured over {mp.samples} probe runs]")
+    click.echo(f"\n  [envelope score = highest reliable level / max; measured over {mp.samples} runs]")
+    unmeasured = mp.metadata.get("unmeasured_dimensions", [])
+    if unmeasured:
+        click.echo(f"  [not measured (needs execution sandbox): {', '.join(unmeasured)}]")
 
     if output:
-        save_profiles([mp], output, generator=f"abi-core capabilities profile (suite v{PROBE_SUITE_VERSION})")
+        save_profiles([mp], output, generator=f"abi-core capabilities profile (envelope suite v{LEVELED_SUITE_VERSION})")
         click.echo(f"💾 Profile written to {output}")
     else:
         click.echo("💡 Pass --output profiles.json to save this profile.")

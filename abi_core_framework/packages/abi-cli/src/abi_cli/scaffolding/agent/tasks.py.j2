@@ -16,8 +16,12 @@ from abi_core.agent.agent_response import AgentResponse
 {% for task in tasks %}
 
 @agent.task(name="{{ task }}", task_id="task-{{ task | replace('_', '-') }}")
-async def {{ task }}(query):
+async def {{ task }}(query, context_id=None, task_id=None):
     """{{ task | replace('_', ' ') | title }} — orchestrates the {{ task }}_step.
+
+    ``context_id`` identifies the session (generated in the backend). Forward it
+    to steps so they can read/write session memory (add_short_term_memory, etc.)
+    and keep multi-turn context. It flows: web interface → stream → task → step.
 
     Extend this task to:
     - Call multiple steps in sequence or parallel
@@ -27,7 +31,7 @@ async def {{ task }}(query):
     """
     yield AgentResponse.status("Processing {{ task | replace('_', ' ') }}...")
 
-    result = await agent.execute_step("{{ task }}_step", query=query)
+    result = await agent.execute_step("{{ task }}_step", query=query, context_id=context_id)
 
     yield AgentResponse.result(result)
 {% endfor %}

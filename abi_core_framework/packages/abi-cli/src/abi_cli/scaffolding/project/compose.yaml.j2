@@ -28,7 +28,7 @@ services:
       - ABI_ROLE={{ project_name }}
       - ABI_NODE=ABI Node
       - MODEL_NAME={{ model_name | default('qwen2.5:3b') }}
-      - OLLAMA_HOST=http://localhost:11434
+      - OLLAMA_HOST=http://ollama:11434
       - LOG_LEVEL={{ log_level | default('INFO') }}
       {% if with_semantic_layer %}
       - SEMANTIC_LAYER_HOST=http://{{ project_dir }}-semantic-layer:10100
