@@ -98,8 +98,8 @@ def _ensure_shared_resources() -> None:
         console.print("✅ ollama_data volume created", style="dim")
 
 
-def _start_compose(build: bool, detach: bool, logs: bool) -> subprocess.Popen | None:
-    """Start docker compose and return the process (detached) or None."""
+def _start_compose(build: bool, detach: bool, logs: bool) -> bool:
+    """Start docker compose. Returns True on success, False on failure."""
     # Ensure shared resources exist before starting
     _ensure_shared_resources()
 
@@ -118,20 +118,15 @@ def _start_compose(build: bool, detach: bool, logs: bool) -> subprocess.Popen | 
     console.print("🐳 Starting Docker Compose...")
 
     try:
-        if "-d" in cmd_parts:
-            result = subprocess.run(cmd_parts, check=True)
-            return None
-        else:
-            # Attached mode — blocking
-            result = subprocess.run(cmd_parts, check=True)
-            return None
+        subprocess.run(cmd_parts, check=True)
+        return True
     except subprocess.CalledProcessError as e:
         console.print(f"❌ Error starting project: {e}", style="red")
-        return None
+        return False
     except KeyboardInterrupt:
         console.print("\n🛑 Stopping project...", style="yellow")
         subprocess.run(["docker", "compose", "down"], check=False)
-        return None
+        return False
 
 
 def _launch_tui(runtime: dict, entry: str):
@@ -226,7 +221,9 @@ def run(mode, detach, build, logs, no_tui):
     if has_tui and not no_tui and not logs:
         # TUI mode: start compose detached, then launch TUI
         console.print(f"🚀 Starting {project_name} in {mode} mode...")
-        _start_compose(build=build, detach=True, logs=False)
+        if not _start_compose(build=build, detach=True, logs=False):
+            console.print("💡 Fix the error above, then run 'abi-core run' again.", style="yellow")
+            return
         _launch_tui(runtime, entry)
     else:
         # Classic mode: banner + docker compose
@@ -285,7 +282,7 @@ def _run_classic(runtime: dict, mode: str, detach: bool, build: bool, logs: bool
     console.print()
 
     console.print(f"🚀 Starting {project_name} in {mode} mode...")
-    _start_compose(build=build, detach=detach, logs=logs)
+    started = _start_compose(build=build, detach=detach, logs=logs)
 
-    if not logs and not detach:
+    if started and not logs and not detach:
         console.print("✅ Project started successfully!", style="green")

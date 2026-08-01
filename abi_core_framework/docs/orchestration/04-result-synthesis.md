@@ -5,7 +5,7 @@
 agents) is under active development and may change between releases.
 ```
 
-After a workflow completes, the Orchestrator combines all agent responses into one coherent answer for the user.
+After a workflow completes — which only happens once the user has approved the plan (see [Planner & Orchestrator](01-planner-orchestrator.md#plan-confirmation)) — the Orchestrator combines all agent responses into one coherent answer for the user.
 
 ## How it works
 
@@ -49,7 +49,7 @@ if workflow.state == Status.COMPLETED:
     if artifacts and "download" not in final_response.lower():
         final_response += format_artifact_links(artifacts)
 
-    yield AgentResponse.success(final_response)
+    yield AgentResponse.text(final_response)
 ```
 
 ## What the user sees

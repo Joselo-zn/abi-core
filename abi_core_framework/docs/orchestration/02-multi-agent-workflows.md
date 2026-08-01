@@ -7,6 +7,11 @@ agents) is under active development and may change between releases.
 
 `AgentInteractionFlow` is the engine that runs plans across multiple agents.
 
+In the Orchestrator, this is what `build_workflow` constructs from the Planner's
+plan — and it only runs *after* the user approves the plan (see
+[Plan Confirmation](01-planner-orchestrator.md#plan-confirmation)), since building
+the workflow is also what invokes the Builder to create ephemeral agents.
+
 ## What it does
 
 Takes a plan (list of tasks with assigned agents) and runs them in the right order. Each task calls an agent and collects its response.

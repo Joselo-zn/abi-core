@@ -44,6 +44,7 @@ services:
       {% endif %}
     volumes:
       - ./logs:/app/logs
+    {% if with_semantic_layer or with_guardian %}
     depends_on:
       {% if with_semantic_layer %}
       - {{ project_dir }}-semantic-layer
@@ -52,6 +53,7 @@ services:
       - {{ project_dir }}-guardian
       - {{ project_dir }}-opa
       {% endif %}
+    {% endif %}
     networks:
       - abi-network
 

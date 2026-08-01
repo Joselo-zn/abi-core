@@ -48,6 +48,9 @@ myst_enable_extensions = [
     "colon_fence",
     "deflist",
 ]
+# Auto-generate #slugified-heading anchors (up to h3) so in-page and cross-file
+# links like `page.md#some-heading` resolve instead of warning as broken refs.
+myst_heading_anchors = 3
 
 # -- Internationalization ----------------------------------------------------
 language = 'en'  # Default language
