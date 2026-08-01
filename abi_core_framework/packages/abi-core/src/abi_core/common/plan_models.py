@@ -76,6 +76,12 @@ class Plan(BaseModel):
     objective: str = Field(..., max_length=300, description="What the plan accomplishes")
     tasks: List[PlanTask] = Field(..., min_length=1)
     execution_strategy: Literal["sequential", "parallel", "mixed"] = "sequential"
+    methodology: Optional[str] = Field(
+        None, description="Decomposition methodology applied (see abi_core.common.methodology_tools)"
+    )
+    methodology_rationale: Optional[str] = Field(
+        None, max_length=300, description="Why this methodology was chosen for this objective"
+    )
 
 
 class PlannerOutput(BaseModel):

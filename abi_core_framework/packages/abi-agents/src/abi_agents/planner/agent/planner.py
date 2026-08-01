@@ -35,15 +35,50 @@ class AbiPlannerAgent(AbiAgent):
             content_types=['text', 'text/plain'],
         )
 
-    async def _call_llm(self, query, context, session_id):
+    async def _select_methodology(self, query: str, session_id: str) -> dict:
+        """Phase 0 — pick a decomposition methodology (WBS/SMART/GTD/Polya).
+
+        A dedicated LLM call, run BEFORE _call_llm so its guidance can shape
+        the actual decomposition prompt (a step inside self.tool_graph would
+        run too late — the DAG only executes after _call_llm already
+        produced the plan). Best-effort: any failure (LLM error, unparseable
+        response, name outside the registry) falls back to the framework
+        default (WBS — closest match to the atomic-tasks constraint already
+        enforced by _enforce_atomic_tasks).
+        """
+        from abi_core.agent.llm_provider import invoke
+        from abi_core.common.methodology_tools import list_methodologies, DEFAULT_METHODOLOGY
+
+        try:
+            text = await invoke(
+                config.LLM_CONFIG,
+                prompts.build_methodology_selection_prompt(query),
+                thread_id=session_id,
+            )
+            parsed = clean_llm_json(text)
+            methodology = parsed.get("methodology", DEFAULT_METHODOLOGY)
+            if methodology not in list_methodologies():
+                abi_logging(f"[⚠️] Unknown methodology '{methodology}', defaulting to {DEFAULT_METHODOLOGY}")
+                methodology = DEFAULT_METHODOLOGY
+            rationale = parsed.get("rationale", "")
+            abi_logging(f"[🧭] Methodology selected: {methodology} — {rationale}")
+            return {"methodology": methodology, "rationale": rationale}
+        except Exception as e:
+            abi_logging(f"[⚠️] Methodology selection failed, defaulting to {DEFAULT_METHODOLOGY}: {e}")
+            return {"methodology": DEFAULT_METHODOLOGY, "rationale": "Default: safest for atomic task constraints."}
+
+    async def _call_llm(self, query, context, session_id, methodology_block: str = ""):
         """Call the LLM to decompose the query. Returns raw text.
-        
+
         No tools — the planner only reasons and produces structured JSON.
         Tool resolution is handled by assign_agents (find_agent) and the builder.
         """
         from abi_core.agent.llm_provider import invoke
 
-        planning_query = f"User request: {query}\nContext: {json.dumps(context, indent=2)}"
+        planning_query = (
+            f"User request: {query}\nContext: {json.dumps(context, indent=2)}"
+            f"{methodology_block}"
+        )
         return await invoke(
             config.LLM_CONFIG,
             planning_query,
@@ -63,6 +98,15 @@ class AbiPlannerAgent(AbiAgent):
             # Session context managed by AbiAgent base
             context, _ = await self.process_answer(session_id, query)
 
+            # ── Phase 0: Methodology selection (before decomposition) ──
+            from abi_core.common.methodology_tools import list_methodologies
+
+            methodology_result = await self._select_methodology(query, session_id)
+            methodology_block = (
+                f"\n\nMethodology to apply: {methodology_result['methodology']} — "
+                f"{list_methodologies()[methodology_result['methodology']]}"
+            )
+
             # ── Phase 1: LLM decomposition (with heartbeat) ─────
             yield AgentResponse.status(
                 "Analyzing query...",
@@ -72,7 +116,7 @@ class AbiPlannerAgent(AbiAgent):
             )
 
             llm_response, heartbeats = await self._run_with_heartbeat(
-                self._call_llm(query, context, session_id),
+                self._call_llm(query, context, session_id, methodology_block),
                 session_id, task_id, "Analyzing query..."
             )
             for hb in heartbeats:
@@ -120,6 +164,8 @@ class AbiPlannerAgent(AbiAgent):
 
             elif status == "ready":
                 plan = plan_data.get("plan", {})
+                plan["methodology"] = methodology_result["methodology"]
+                plan["methodology_rationale"] = methodology_result["rationale"]
                 abi_logging(f"[✅] Plan ready with {len(plan.get('tasks', []))} tasks")
 
                 yield AgentResponse.status(format_plan_summary(plan))

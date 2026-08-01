@@ -286,11 +286,15 @@ def _clean_description(text: str) -> str:
     return cleaned
 
 
-def format_plan_summary(plan: dict) -> str:
+def format_plan_summary(plan: dict, model_status: dict = None) -> str:
     """Format a plan dict into a human-readable markdown summary.
 
     Args:
-        plan: Dict with ``objective``, ``tasks``, ``execution_strategy``.
+        plan: Dict with ``objective``, ``tasks``, ``execution_strategy``,
+            and optionally ``methodology``/``methodology_rationale``.
+        model_status: Optional {task_id: {"model": ..., "location": str|None}}
+            from the orchestrator's check_model_availability tool — shown per
+            task when present.
 
     Returns:
         Formatted string.
@@ -298,13 +302,20 @@ def format_plan_summary(plan: dict) -> str:
     objective = plan.get("objective", "Complete user request")
     tasks = plan.get("tasks", [])
     strategy = plan.get("execution_strategy", "sequential")
+    model_status = model_status or {}
 
     lines = [
         "📋 **Plan Created**\n",
         f"🎯 **Objective:** {objective}\n",
-        f"📊 **Strategy:** {strategy.capitalize()}\n",
-        f"**Tasks ({len(tasks)}):**\n",
     ]
+
+    methodology = plan.get("methodology")
+    if methodology:
+        rationale = plan.get("methodology_rationale", "")
+        lines.append(f"🧭 **Methodology:** {methodology} — {rationale}\n")
+
+    lines.append(f"📊 **Strategy:** {strategy.capitalize()}\n")
+    lines.append(f"**Tasks ({len(tasks)}):**\n")
 
     for i, t in enumerate(tasks, 1):
         tid = t.get("task_id", f"task_{i}")
@@ -321,7 +332,14 @@ def format_plan_summary(plan: dict) -> str:
         if deps:
             lines.append(f"   🔗 Depends on: {', '.join(deps)}")
 
-    lines.append("\n✅ Plan ready for execution by Orchestrator")
+        ms = model_status.get(tid)
+        if ms:
+            if ms.get("location"):
+                lines.append(f"   ✅ Model: {ms['model']} ({ms['location']})")
+            else:
+                lines.append(f"   ⬇️ Model: {ms['model']} (will be downloaded)")
+
+    lines.append("\n**Reply to approve, reject, or request changes.**")
     return "\n".join(lines)
 
 

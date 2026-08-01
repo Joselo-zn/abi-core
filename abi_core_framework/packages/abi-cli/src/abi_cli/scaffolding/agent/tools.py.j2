@@ -16,3 +16,17 @@ from app import agent
 #     """Search the database for relevant information."""
 #     # Your implementation here
 #     return {"results": []}
+
+
+# The framework ships some ready-to-wrap capabilities in abi_core.common —
+# no need to reimplement them per agent. For example, model availability:
+#
+# from abi_core.common.model_tools import find_model, pull_model
+#
+# @agent.tool(name="check_model_availability")
+# async def check_model_availability(model: str):
+#     """Is `model` available, and where?"""
+#     return {"location": await find_model(model)}
+#
+# See abi_core.common.methodology_tools for the task-decomposition
+# methodology registry (WBS/SMART/GTD/Polya) used by the Planner.

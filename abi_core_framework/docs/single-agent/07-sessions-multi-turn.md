@@ -164,4 +164,4 @@ class MyAgent(AbiAgent):
 
 ## Next step
 
-👉 [Testing Agents](05-testing-agents.md)
+👉 [Plan and Execute — One Agent, Many Actions](08-plan-and-execute.md)

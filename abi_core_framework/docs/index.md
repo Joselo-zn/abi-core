@@ -26,6 +26,7 @@ single-agent/03-agents-with-tools
 single-agent/04-agents-with-memory
 single-agent/06-builtin-memory
 single-agent/07-sessions-multi-turn
+single-agent/08-plan-and-execute
 single-agent/05-testing-agents
 ```
 
@@ -38,6 +39,7 @@ multi-agent-basics/01-why-multiple-agents
 multi-agent-basics/02-agent-cards
 multi-agent-basics/03-agent-communication
 multi-agent-basics/04-first-multi-agent-system
+multi-agent-basics/05-plan-then-execute
 ```
 
 ```{toctree}

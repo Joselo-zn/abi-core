@@ -189,4 +189,4 @@ event: result → {"delegated_to": "researcher", "response": "Quantum computing 
 
 ## Next step
 
-👉 [Semantic Layer — How Discovery Works](../semantic-layer/01-what-is-semantic-layer.md)
+👉 [Plan, Then Execute — Two Agents](05-plan-then-execute.md)

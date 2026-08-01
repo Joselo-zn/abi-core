@@ -5,7 +5,12 @@ DAG:
     -> gate_decision
       -> call_planner
         -> extract_plan
-          -> build_workflow
+          -> check_model_availability  (tools.py, @agent.tool, read-only)
+
+`build_workflow` (below) is NOT part of this DAG — it actually calls the
+Builder and creates Docker containers for build_and_execute tasks, so it must
+only run after the user approves the plan (Plan Confirmation). It's a plain
+function, called directly by orchestrator.py::stream() once approved.
 """
 
 import json
@@ -27,21 +32,61 @@ INFRA_AGENTS = {"builder", "planner", "orchestrator", "guardian", "semantic-laye
 # Working-memory topic used to mark a session awaiting a planner clarification
 PENDING_CLARIFICATION_TOPIC = "pending_clarification"
 
+# Sentinel queries the Chainlit UI sends when the user clicks a plan-confirmation
+# action button (see abi-cli/scaffolding/ui/app.py.j2's @cl.action_callback).
+PLAN_CONFIRM_APPROVE = "__plan_confirm_approve__"
+PLAN_CONFIRM_REJECT = "__plan_confirm_reject__"
+PLAN_CONFIRM_MODIFY = "__plan_confirm_modify__"
+
 
 @agent.step(
     name="classify_query",
-    input_map={"query": "$input.query", "context_id": "$input.context_id"},
+    input_map={
+        "query": "$input.query",
+        "context_id": "$input.context_id",
+        "session_context": "$input.session_context",
+    },
 )
-async def classify_query(query, context_id=""):
+async def classify_query(query, context_id="", session_context=None):
     """Classify query as simple or complex using the orchestrator's LLM.
 
-    If the session has a pending clarification (a system-level event stored in
-    short-term memory), the user's message is the answer to that clarification.
-    In that case we skip the probabilistic LLM triage and deterministically
-    route back to the planner with the original query + the answer.
+    Two deterministic short-circuits run before the LLM triage:
+
+    1. A pending plan awaiting the user's approve/reject/modify decision.
+       This is *session* context (not a system-level memory event) — passed
+       in via $input.session_context because this function has no `self`/
+       session_backend access; orchestrator.py::stream() reads/writes it.
+    2. A pending clarification answer (system-level event in short-term
+       memory — see _load_pending_clarification).
     """
     from abi_core.agent.llm_provider import invoke
     from abi_core.common.utils import clean_llm_json
+
+    # ── Deterministic check: is this a plan-confirmation reply? ──
+    session_context = session_context or {}
+    pending_plan = session_context.get("pending_plan")
+    if pending_plan:
+        normalized = query.strip().lower()
+        if query == PLAN_CONFIRM_APPROVE or normalized in ("sí", "si", "yes", "aprobar", "aprobado", "confirmo"):
+            abi_logging(f"[✅] Plan confirmation: approved for session '{context_id}'")
+            return {"classification": "plan_confirmed", "pending_plan": pending_plan}
+        if query == PLAN_CONFIRM_REJECT or normalized in ("no", "rechazar", "cancelar"):
+            abi_logging(f"[❌] Plan confirmation: rejected for session '{context_id}'")
+            return {"classification": "plan_rejected"}
+        if query == PLAN_CONFIRM_MODIFY:
+            abi_logging(f"[✏️] Plan confirmation: modification requested for session '{context_id}'")
+            return {"classification": "plan_modify_requested", "pending_plan": pending_plan}
+        if session_context.get("awaiting_plan_modification"):
+            abi_logging(f"[✏️] Plan modification feedback received for session '{context_id}'")
+            return {
+                "classification": "plan_modify_feedback",
+                "original_query": session_context.get("pending_plan_query", ""),
+                "feedback": query,
+            }
+        abi_logging(
+            "[⚠️] Pending plan exists but query doesn't match confirm/reject/modify — "
+            "falling through to normal triage"
+        )
 
     # ── Deterministic check: is this a pending clarification answer? ──
     pending = await _load_pending_clarification(context_id)
@@ -268,6 +313,27 @@ def gate_decision(triage, guardian, query):
         abi_logging("[🔁] Gate: clarification answer, re-routing to planner")
         return {"action": "call_planner", "query": enriched}
 
+    # Plan confirmation replies — deterministic, no planner/builder involved
+    # except for "call_planner" via plan_modify_feedback below.
+    if classification == "plan_confirmed":
+        abi_logging("[✅] Gate: plan confirmed by user")
+        return {"action": "execute_confirmed_plan", "plan": triage.get("pending_plan")}
+
+    if classification == "plan_rejected":
+        abi_logging("[❌] Gate: plan rejected by user")
+        return {"action": "plan_rejected"}
+
+    if classification == "plan_modify_requested":
+        abi_logging("[✏️] Gate: user wants to modify the plan")
+        return {"action": "plan_modify_requested"}
+
+    if classification == "plan_modify_feedback":
+        original = triage.get("original_query", "")
+        feedback = triage.get("feedback", query)
+        enriched = f"{original}\n\nCambios solicitados: {feedback}" if original else feedback
+        abi_logging("[🔁] Gate: plan modification feedback, re-routing to planner")
+        return {"action": "call_planner", "query": enriched}
+
     if classification == "simple":
         abi_logging(f"[✅] Gate: simple query, responding directly")
         return {"action": "respond_direct", "query": query}
@@ -354,17 +420,15 @@ def extract_plan(planner_results):
     return {"plan": plan}
 
 
-@agent.step(
-    name="build_workflow",
-    depends_on=["extract_plan"],
-    input_map={
-        "plan_result": "$extract_plan",
-        "context_id": "$input.context_id",
-        "task_id": "$input.task_id",
-    },
-)
 async def build_workflow(plan_result, context_id, task_id):
     """Build AgentInteractionFlow from the extracted plan.
+
+    NOT a DAG step (no @agent.step) — this function calls the Builder for
+    real (build_flow.run_workflow() below actually creates Docker containers
+    for build_and_execute/create_tools_and_execute tasks), so it must only
+    run *after* the user has approved the plan. orchestrator.py::stream()
+    calls it directly once a plan is confirmed; check_model_availability
+    (tools.py, @agent.tool, read-only) is the DAG's terminal node instead.
 
     Handles three task types:
     - "execute": agent exists → add directly to workflow
@@ -376,6 +440,15 @@ async def build_workflow(plan_result, context_id, task_id):
         return plan_result
 
     plan = plan_result["plan"]
+    methodology = plan.get("methodology")
+    rationale = plan.get("methodology_rationale", "")
+    # Local context: prepended to what each executing agent receives so it
+    # knows which decomposition methodology this plan follows — regardless
+    # of whether it's an existing agent ("execute") or an ephemeral one
+    # ("build_and_execute"/"create_tools_and_execute"). System-wide (global)
+    # visibility is handled separately by orchestrator.py, which persists the
+    # methodology to short-term memory when the plan is first confirmed.
+    methodology_block = f"[Metodología del plan: {methodology}] {rationale}\n\n" if methodology else ""
     workflow = AgentInteractionFlow()
     nodes = {}
     tasks = plan.get("tasks", [])
@@ -458,6 +531,8 @@ async def build_workflow(plan_result, context_id, task_id):
                 builder_spec["artifact_keys"] = dep_artifact_keys
             if target and target.get("tag"):
                 builder_spec["target_tag"] = target["tag"]
+            if methodology_block:
+                builder_spec["system_prompt"] = methodology_block + builder_spec.get("system_prompt", "")
             abi_logging(f"[🏗️] Task {tid}: {task_type} → calling builder (artifacts={dep_artifact_keys})")
 
             build_query = json.dumps({
@@ -529,8 +604,9 @@ async def build_workflow(plan_result, context_id, task_id):
             continue
 
         abi_logging(f"[✅] Task {tid}: assigned to agent '{target.name}' at {get_agent_url(target)} with prompt {desc}")
+        node_desc = methodology_block + desc if methodology_block else desc
         node = InteractionFlowNode(
-            task=desc,
+            task=node_desc,
             source_agent_card=AGENT_CARD,
             target_agent_card=target,
             node_key=tid,
@@ -540,7 +616,7 @@ async def build_workflow(plan_result, context_id, task_id):
         nodes[tid] = node
         workflow.set_node_attributes(
             node.id,
-            {"task_id": task_id, "context_id": context_id, "query": desc},
+            {"task_id": task_id, "context_id": context_id, "query": node_desc},
         )
 
     for task in tasks:

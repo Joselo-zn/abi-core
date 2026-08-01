@@ -3,7 +3,7 @@ import json
 from collections.abc import AsyncIterable
 
 from abi_core.common import prompts
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, format_plan_summary
 from abi_core.common.workflow import Status
 from abi_core.common.semantic_tools import tool_find_agent
 from abi_core.agent.agent import AbiAgent
@@ -72,6 +72,51 @@ class AbiOrchestratorAgent(AbiAgent):
         except Exception as e:
             abi_logging(f"[⚠️] Could not record pending clarification: {e}")
 
+    async def _record_pending_plan(self, context_id: str, plan: dict, original_query: str):
+        """Record a plan awaiting the user's approve/reject/modify decision.
+
+        Uses SessionStore (session_backend), not short-term/AMS memory — this
+        is genuinely per-session state (only this conversation cares about
+        it), and the framework already has a generic KV store built for
+        exactly this (Session Management Rev.2).
+        """
+        await self.update_session_context(context_id, {
+            "pending_plan": plan,
+            "pending_plan_query": original_query,
+            "awaiting_plan_modification": False,
+        })
+        abi_logging(f"[📝] Pending plan recorded for session {context_id}")
+
+        # The methodology, though, is *system* context: it should be visible
+        # to any agent that inspects this conversation, not just whichever
+        # agent happens to receive the prompt directly (Local vs Global —
+        # avoids the plan's methodology getting lost to context degradation
+        # as it crosses agents). Best-effort, same as _record_pending_clarification.
+        methodology = plan.get("methodology")
+        if methodology and config.AGENT_MEMORY_URL:
+            try:
+                from abi_core.memory import add_short_term_memory
+
+                await add_short_term_memory(
+                    topic="plan_methodology",
+                    task=context_id,
+                    content=json.dumps({
+                        "methodology": methodology,
+                        "rationale": plan.get("methodology_rationale", ""),
+                    }),
+                    context_id=context_id,
+                    memory_url=config.AGENT_MEMORY_URL,
+                )
+            except Exception as e:
+                abi_logging(f"[⚠️] Could not record plan methodology in system memory: {e}")
+
+    async def _clear_pending_plan(self, context_id: str):
+        await self.update_session_context(context_id, {
+            "pending_plan": None,
+            "pending_plan_query": None,
+            "awaiting_plan_modification": False,
+        })
+
     async def stream(
         self, query: str, context_id: str, task_id: str
     ) -> AsyncIterable[dict[str, any]]:
@@ -96,10 +141,12 @@ class AbiOrchestratorAgent(AbiAgent):
                 task_id=task_id,
             )
 
+            session_ctx = await self.get_session_context(context_id)
             dag_coro = self.tool_graph.execute({
                 "query": query,
                 "context_id": context_id,
                 "task_id": task_id,
+                "session_context": session_ctx,
             })
             dag_result, heartbeats = await self._run_with_heartbeat(
                 dag_coro, context_id, task_id, "Processing..."
@@ -159,26 +206,65 @@ class AbiOrchestratorAgent(AbiAgent):
                 yield AgentResponse.text(result_holder.get('response') or "No response generated")
                 return
 
-            # ── action == "call_planner" — check planning results ──
-            build_result = outputs.get("build_workflow", {})
-
-            if "gate_passthrough" in build_result:
-                yield AgentResponse.error(build_result["gate_passthrough"].get("message", "Unexpected gate passthrough"))
+            # ── Plan confirmation replies (approve/reject/modify) ──
+            if action == "plan_rejected":
+                await self._clear_pending_plan(context_id)
+                yield AgentResponse.text("Plan cancelado. Decime si querés que arme uno nuevo.")
                 return
 
-            if "clarification" in build_result:
-                abi_logging("[❓] Forwarding clarification request to user")
-                await self._record_pending_clarification(
-                    context_id, query, build_result["clarification"]
-                )
-                yield AgentResponse.input_required(
-                    f"🤔 **Necesito mas informacion para crear el mejor plan:**\n\n{build_result['clarification']}"
-                )
+            if action == "plan_modify_requested":
+                await self.update_session_context(context_id, {"awaiting_plan_modification": True})
+                yield AgentResponse.input_required("¿Qué te gustaría cambiar del plan?")
                 return
 
-            if "error" in build_result:
-                await self._record_error(context_id, "plan_error", build_result["error"])
-                yield AgentResponse.error(build_result["error"])
+            if action == "execute_confirmed_plan":
+                stored_plan = gate.get("plan")
+                if not stored_plan:
+                    yield AgentResponse.error(
+                        "El plan pendiente ya no está disponible (la sesión pudo haber expirado). "
+                        "Por favor volvé a describir tu solicitud."
+                    )
+                    return
+                await self._clear_pending_plan(context_id)
+                from steps import build_workflow
+                build_result = await build_workflow({"plan": stored_plan}, context_id, task_id)
+
+                if "gate_passthrough" in build_result:
+                    yield AgentResponse.error(build_result["gate_passthrough"].get("message", "Unexpected gate passthrough"))
+                    return
+                if "error" in build_result:
+                    await self._record_error(context_id, "plan_error", build_result["error"])
+                    yield AgentResponse.error(build_result["error"])
+                    return
+
+            else:
+                # ── action == "call_planner" — first time this plan appears ──
+                plan_result = outputs.get("extract_plan", {})
+
+                if "gate_passthrough" in plan_result:
+                    yield AgentResponse.error(plan_result["gate_passthrough"].get("message", "Unexpected gate passthrough"))
+                    return
+
+                if "clarification" in plan_result:
+                    abi_logging("[❓] Forwarding clarification request to user")
+                    await self._record_pending_clarification(
+                        context_id, query, plan_result["clarification"]
+                    )
+                    yield AgentResponse.input_required(
+                        f"🤔 **Necesito mas informacion para crear el mejor plan:**\n\n{plan_result['clarification']}"
+                    )
+                    return
+
+                if "error" in plan_result:
+                    await self._record_error(context_id, "plan_error", plan_result["error"])
+                    yield AgentResponse.error(plan_result["error"])
+                    return
+
+                plan = plan_result["plan"]
+                model_status = outputs.get("check_model_availability", {}).get("model_status", {})
+                summary = format_plan_summary(plan, model_status)
+                await self._record_pending_plan(context_id, plan, query)
+                yield AgentResponse.input_required(summary, action_type="plan_confirmation")
                 return
 
             # ── Phase 2: Execute agent workflow ──────────────────

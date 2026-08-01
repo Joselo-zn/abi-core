@@ -1,6 +1,7 @@
 """Builder Agent — Steps.
 
-DAG: parse_spec -> verify_tools -> generate_config -> build_container -> register_card
+DAG: parse_spec -> verify_tools -> generate_config -> ensure_model_available
+     (tools.py, @agent.tool) -> build_container -> register_card
 """
 
 import json
@@ -191,8 +192,8 @@ def generate_config(verification):
 
 @agent.step(
     name="build_container",
-    depends_on=["generate_config"],
-    input_map={"config": "$generate_config"},
+    depends_on=["ensure_model_available"],
+    input_map={"config": "$ensure_model_available"},
 )
 async def build_container(config):
     """Clone the zombie container with custom env vars via container_runtime."""
