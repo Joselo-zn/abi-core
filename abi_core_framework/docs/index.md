@@ -27,6 +27,7 @@ single-agent/04-agents-with-memory
 single-agent/06-builtin-memory
 single-agent/07-sessions-multi-turn
 single-agent/08-plan-and-execute
+single-agent/09-plan-confirmation
 single-agent/05-testing-agents
 ```
 
@@ -99,6 +100,7 @@ production/02-monitoring-logs
 production/03-troubleshooting
 production/04-deployment
 production/05-artifact-store
+production/06-background-and-scheduled-tasks
 ```
 
 ```{toctree}

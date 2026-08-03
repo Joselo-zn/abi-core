@@ -84,6 +84,26 @@ AMS service configuration (set on the `<project>-agent-memory` service in `compo
 > in Redis 8.0). Redis 8 also bundles RediSearch/RedisJSON in the core, so the
 > `redis:8` image is sufficient — no separate `redis-stack` modules needed.
 
+## Async Task Backend
+
+```{note}
+**Alpha.** `@agent.task_async`/`@agent.task_schedule` are under active
+development. These variables may change between releases.
+```
+
+Where `agent.get_async_task_status(...)` looks up a background/scheduled task's
+status, and where `overlap_policy="skip"` checks "is the previous firing still
+running?" — see [Background & Scheduled Tasks](../production/06-background-and-scheduled-tasks.md).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ASYNC_TASK_BACKEND` | `memory` | `memory` (per-pod, in-process) or `redis` (shared, multi-pod safe) |
+
+> **Multi-pod?** Same story as sessions: with `memory`, each replica only sees its
+> own background tasks, so an overlap check can miss a firing on another pod.
+> Use `ASYNC_TASK_BACKEND=redis` — it reuses `REDIS_URL`, no new infra to stand up
+> if you've already got `abi-core add service agent-memory` running.
+
 ## Session Management
 
 ```{note}

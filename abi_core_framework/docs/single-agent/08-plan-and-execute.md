@@ -141,4 +141,4 @@ Without memory, each `execute_action` call is stateless — step 2 has no way to
 
 ## Next step
 
-👉 [Testing Agents](05-testing-agents.md)
+👉 [Plan Confirmation](09-plan-confirmation.md) — let the user approve the plan before this agent runs it.
