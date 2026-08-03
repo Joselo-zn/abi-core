@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "abi-core-ai"
-version = "1.13.10"
+version = "1.13.11"
 description = "Agent-Based Infrastructure Core - Runtime and CLI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -79,6 +79,13 @@ security = [
 # renderer works without this; only PNG radar charts require matplotlib.
 viz = [
     "matplotlib>=3.7.0",
+]
+
+# Recurring jobs via @agent.task_schedule. Only needed if an agent registers
+# at least one — imported lazily (AbiCore.run() presence check + the
+# Starlette on_startup hook), so agents that don't use it never require this.
+scheduler = [
+    "apscheduler>=3.10,<4",
 ]
 
 [project.urls]

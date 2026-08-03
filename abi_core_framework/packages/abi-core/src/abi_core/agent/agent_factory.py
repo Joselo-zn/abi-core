@@ -19,7 +19,7 @@ With web interface:
 """
 
 import threading
-from typing import Optional, Type
+from typing import List, Optional, Type
 
 from abi_core.common.utils import abi_logging
 
@@ -33,6 +33,7 @@ def agent_factory(
     web_interface_cls: Optional[Type] = None,
     interface_name: Optional[str] = None,
     log_level: Optional[str] = None,
+    scheduler_jobs: Optional[List[dict]] = None,
 ) -> int:
     """
     Bootstrap and run an ABI agent with A2A server.
@@ -53,6 +54,11 @@ def agent_factory(
         interface_name: Display name for the web interface.
                         Defaults to config.AGENT_DISPLAY_NAME + " Web Interface".
         log_level: Uvicorn log level for web interface (default from config.LOG_LEVEL).
+        scheduler_jobs: Job specs built by AbiCore._build_scheduler_jobs() for
+                        any registered @agent.task_schedule — forwarded to
+                        start_server(), which starts AsyncIOScheduler inside
+                        a Starlette lifespan context manager (needs a running
+                        event loop, which doesn't exist yet at this point).
 
     Returns:
         int: Exit code (0 = clean shutdown, 1 = error).
@@ -117,6 +123,7 @@ def agent_factory(
             port=config.AGENT_PORT,
             agent_card=agent_card,
             agent=agent_instance,
+            scheduler_jobs=scheduler_jobs,
         )
         return 0
 

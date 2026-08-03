@@ -67,7 +67,15 @@ class AgentConfig:
     A2A_ENABLE_AUDIT_LOG: bool = os.getenv('A2A_ENABLE_AUDIT_LOG', 'true').lower() == 'true'
     GUARDIAN_URL: str = os.getenv('GUARDIAN_URL', 'http://{{ project_dir }}-guardian:11438')
     OPA_URL: str = os.getenv('OPA_URL', 'http://{{ project_dir }}-opa:8181')
-    
+
+    # Agent Memory (short/long-term memory via abi_core.memory). Empty means
+    # no Agent Memory Server is provisioned for this agent — add one with
+    # `abi-core add service agent-memory`. CONTEXT_ID is per-session, not a
+    # static setting; abi_core.memory reads both directly via os.getenv, these
+    # are exposed here only for discoverability.
+    AGENT_MEMORY_URL: str = os.getenv('AGENT_MEMORY_URL', '')
+    CONTEXT_ID: str = os.getenv('CONTEXT_ID', '')
+
     # Logging & Observability
     LOG_TO_ARTIFACT_STORE: bool = os.getenv('LOG_TO_ARTIFACT_STORE', 'true').lower() == 'true'
     LOG_AGENT_NAME: str = os.getenv('LOG_AGENT_NAME', '{{ agent_name }}')

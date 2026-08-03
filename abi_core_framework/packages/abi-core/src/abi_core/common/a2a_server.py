@@ -1,6 +1,8 @@
 import json
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 import httpx
 import uvicorn
@@ -91,7 +93,58 @@ def _attach_audit_route(app: Starlette) -> None:
         abi_logging(f"[!] Could not attach /audit/log route: {e}", level="warning")
 
 
-def start_server(host: str, port: int, agent_card, agent: AbiAgent):
+def _make_scheduler_lifespan(scheduler_jobs: list):
+    """Build a Starlette ``lifespan`` context manager that constructs and
+    starts AsyncIOScheduler once the app's event loop is running, and shuts
+    it down cleanly on app shutdown.
+
+    Must run here, not before uvicorn.run(): APScheduler needs a running
+    asyncio event loop to attach to, and none exists until uvicorn starts
+    one — agent_factory()/AbiCore.run() execute synchronously, before that
+    loop is created. (Not ``on_startup=[...]`` — Starlette >=1.0 removed the
+    separate on_startup/on_shutdown constructor kwargs in favor of a single
+    ``lifespan`` async context manager.)
+    """
+
+    @asynccontextmanager
+    async def lifespan(app):
+        scheduler = None
+        try:
+            from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        except ImportError:
+            abi_logging(
+                "[⚠️] apscheduler not installed — scheduled jobs will NOT run.",
+                level="warning",
+            )
+        else:
+            scheduler = AsyncIOScheduler()
+            for job in scheduler_jobs:
+                scheduler.add_job(
+                    job["func"],
+                    trigger=job["trigger"],
+                    id=job["id"],
+                    max_instances=job["max_instances"],
+                    replace_existing=True,
+                    **job["trigger_args"],
+                )
+            scheduler.start()
+            abi_logging(f"[⏰] AsyncIOScheduler started with {len(scheduler_jobs)} job(s)")
+
+        yield
+
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
+
+    return lifespan
+
+
+def start_server(
+    host: str,
+    port: int,
+    agent_card,
+    agent: AbiAgent,
+    scheduler_jobs: Optional[list] = None,
+):
     """
     Starts A2A server agent.
 
@@ -100,6 +153,10 @@ def start_server(host: str, port: int, agent_card, agent: AbiAgent):
         port: Port to bind to
         agent_card: Either AgentCard object or path to agent card JSON file (str)
         agent: AbiAgent instance
+        scheduler_jobs: Job specs for any registered @agent.task_schedule —
+                        started via Starlette's on_startup, inside the real
+                        event loop uvicorn creates (see
+                        _make_scheduler_startup_hook).
     """
     try:
         if not agent_card:
@@ -132,7 +189,8 @@ def start_server(host: str, port: int, agent_card, agent: AbiAgent):
         card_routes = create_agent_card_routes(agent_card_obj)
         all_routes = a2a_routes + card_routes
 
-        asgi_app = Starlette(routes=all_routes)
+        lifespan = _make_scheduler_lifespan(scheduler_jobs) if scheduler_jobs else None
+        asgi_app = Starlette(routes=all_routes, lifespan=lifespan)
         _attach_health_route(asgi_app)
         _attach_root_head(asgi_app)
         _attach_card_route(asgi_app, card_dict)

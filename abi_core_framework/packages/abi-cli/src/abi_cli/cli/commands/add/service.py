@@ -8,12 +8,12 @@ from pathlib import Path
 from rich.prompt import Prompt
 
 from ..utils import console, update_runtime_config, render_template_content
-from .compose import _update_compose_with_service, _update_compose_with_semantic_layer
+from .compose import _update_compose_with_service, _update_compose_with_semantic_layer, _update_compose_with_agent_memory
 
 
 @click.command("service")
-@click.argument('service_type', type=click.Choice(['semantic-layer', 'guardian', 'guardian-native', 'mcp-api']))
-@click.option('--name', '-n', help='Service name (optional, not used for semantic-layer)')
+@click.argument('service_type', type=click.Choice(['semantic-layer', 'guardian', 'guardian-native', 'mcp-api', 'agent-memory']))
+@click.option('--name', '-n', help='Service name (optional, not used for semantic-layer/agent-memory)')
 @click.option('--domain', help='Domain specialization')
 def add_service(service_type, name, domain):
     """Add a service to the project
@@ -25,6 +25,9 @@ def add_service(service_type, name, domain):
     guardian          Add security policy enforcement service (placeholder)
     guardian-native   Add native guardian service based on abi-core guardial
     mcp-api          Add FastMCP/API central connection point service
+    agent-memory     Add short/long-term memory (Agent Memory Server + Redis) for
+                     abi_core.memory.add_short_term_memory/get_short_term_memory —
+                     works for any agent, not just abi-swarm projects
 
     Note: You can also use 'abi-core add semantic-layer' as a shortcut.
     """
@@ -32,6 +35,13 @@ def add_service(service_type, name, domain):
     # Check if we're in an ABI project
     if not Path('.abi').exists():
         console.print("❌ Not in an ABI project directory. Run 'abi-core create project' first.", style="red")
+        return
+
+    # agent-memory is pure infrastructure (two prebuilt images, no build
+    # context of its own) — it doesn't fit the services/<name>/ directory
+    # pattern the rest of this command assumes, so it's handled separately.
+    if service_type == 'agent-memory':
+        _add_agent_memory_service()
         return
 
     # Handle semantic-layer special case - always use 'semantic_layer' as name
@@ -141,6 +151,63 @@ def add_service(service_type, name, domain):
     console.print("\n📋 Next steps:", style="yellow")
     console.print("  1. Run 'abi-core run' to start all services", style="dim")
     console.print(f"  2. The service will be available at http://localhost:{default_port}", style="dim")
+
+
+def _add_agent_memory_service():
+    """Add the Agent Memory Server + Redis — short/long-term memory for any
+    agent (not just abi-swarm), plus retroactive wiring into agents already
+    in the project. See _update_compose_with_agent_memory for the details.
+    """
+    import yaml
+
+    runtime_file = Path('.abi/runtime.yaml')
+    runtime_config = {}
+    if runtime_file.exists():
+        try:
+            with open(runtime_file, 'r') as f:
+                runtime_config = yaml.safe_load(f) or {}
+        except Exception as e:
+            console.print(f"⚠️  Could not read runtime.yaml: {e}", style="yellow")
+
+    compose_file = Path('compose.yaml')
+    if not compose_file.exists():
+        compose_file = Path('docker-compose.yml')
+    if not compose_file.exists():
+        console.print("❌ No compose.yaml found. Run 'abi-core create project' first.", style="red")
+        return
+
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        task = progress.add_task("Adding Agent Memory Server (AMS) + Redis...", total=None)
+        added = _update_compose_with_agent_memory(compose_file, runtime_config)
+
+        if added:
+            update_runtime_config('services', {
+                'agent_memory': {
+                    'name': 'Agent Memory',
+                    'type': 'agent-memory',
+                    'port': 8100,
+                }
+            })
+        progress.update(task, description="Done", completed=True)
+
+    if not added:
+        return
+
+    console.print("\n✅ Agent Memory Server added successfully!", style="green")
+    console.print("🌐 Port: 8100 (Redis: 6379)", style="blue")
+    console.print("\n📋 Next steps:", style="yellow")
+    console.print("  1. Run 'abi-core run' (or docker compose up -d --build) to start it", style="dim")
+    console.print(
+        "  2. Any agent with AGENT_MEMORY_URL set can now use "
+        "abi_core.memory.add_short_term_memory / get_short_term_memory",
+        style="dim",
+    )
 
 
 @click.command("semantic-layer")

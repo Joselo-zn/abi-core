@@ -32,11 +32,15 @@ INFRA_AGENTS = {"builder", "planner", "orchestrator", "guardian", "semantic-laye
 # Working-memory topic used to mark a session awaiting a planner clarification
 PENDING_CLARIFICATION_TOPIC = "pending_clarification"
 
-# Sentinel queries the Chainlit UI sends when the user clicks a plan-confirmation
-# action button (see abi-cli/scaffolding/ui/app.py.j2's @cl.action_callback).
-PLAN_CONFIRM_APPROVE = "__plan_confirm_approve__"
-PLAN_CONFIRM_REJECT = "__plan_confirm_reject__"
-PLAN_CONFIRM_MODIFY = "__plan_confirm_modify__"
+# Sentinels + pending-plan classification: framework-level since 2026-08-03,
+# see abi_core.agent.plan_confirmation (extracted so a standalone agent can
+# use the same confirm/reject/modify state machine, not just the swarm).
+from abi_core.agent.plan_confirmation import (
+    PLAN_CONFIRM_APPROVE,
+    PLAN_CONFIRM_REJECT,
+    PLAN_CONFIRM_MODIFY,
+    classify_plan_confirmation_reply,
+)
 
 
 @agent.step(
@@ -64,29 +68,10 @@ async def classify_query(query, context_id="", session_context=None):
 
     # ── Deterministic check: is this a plan-confirmation reply? ──
     session_context = session_context or {}
-    pending_plan = session_context.get("pending_plan")
-    if pending_plan:
-        normalized = query.strip().lower()
-        if query == PLAN_CONFIRM_APPROVE or normalized in ("sí", "si", "yes", "aprobar", "aprobado", "confirmo"):
-            abi_logging(f"[✅] Plan confirmation: approved for session '{context_id}'")
-            return {"classification": "plan_confirmed", "pending_plan": pending_plan}
-        if query == PLAN_CONFIRM_REJECT or normalized in ("no", "rechazar", "cancelar"):
-            abi_logging(f"[❌] Plan confirmation: rejected for session '{context_id}'")
-            return {"classification": "plan_rejected"}
-        if query == PLAN_CONFIRM_MODIFY:
-            abi_logging(f"[✏️] Plan confirmation: modification requested for session '{context_id}'")
-            return {"classification": "plan_modify_requested", "pending_plan": pending_plan}
-        if session_context.get("awaiting_plan_modification"):
-            abi_logging(f"[✏️] Plan modification feedback received for session '{context_id}'")
-            return {
-                "classification": "plan_modify_feedback",
-                "original_query": session_context.get("pending_plan_query", ""),
-                "feedback": query,
-            }
-        abi_logging(
-            "[⚠️] Pending plan exists but query doesn't match confirm/reject/modify — "
-            "falling through to normal triage"
-        )
+    plan_reply = classify_plan_confirmation_reply(query, session_context)
+    if plan_reply is not None:
+        abi_logging(f"[🔁] Plan confirmation: {plan_reply['classification']} for session '{context_id}'")
+        return plan_reply
 
     # ── Deterministic check: is this a pending clarification answer? ──
     pending = await _load_pending_clarification(context_id)

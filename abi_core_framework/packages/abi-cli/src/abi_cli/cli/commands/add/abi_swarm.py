@@ -8,6 +8,7 @@ from pathlib import Path
 from ..utils import console, update_runtime_config
 from .shared import _generate_agent_card
 from .service import add_semantic_layer, add_service
+from .compose import _build_agent_memory_services
 
 
 @click.command("abi-swarm")
@@ -364,6 +365,14 @@ def add_abi_swarm():
             }
         })
 
+        update_runtime_config('services', {
+            'agent_memory': {
+                'name': 'Agent Memory',
+                'type': 'agent-memory',
+                'port': 8100,
+            }
+        })
+
         # Register agent cards
         update_runtime_config('agent_cards', {
             'planner': {
@@ -545,7 +554,8 @@ def _update_compose_with_orchestration(runtime_config: dict):
             'MCP_TRANSPORT=streamable-http',
             f'SEMANTIC_LAYER_HOST=http://{project_dir}-semantic-layer:10100',
             f'GUARDIAN_URL=http://{project_dir}-guardian:11438',
-            f'OPA_URL=http://{project_dir}-opa:8181'
+            f'OPA_URL=http://{project_dir}-opa:8181',
+            f'AGENT_MEMORY_URL=http://{project_dir}-agent-memory:8000',
         ]
 
         planner_volumes = [
@@ -630,7 +640,7 @@ def _update_compose_with_orchestration(runtime_config: dict):
             'environment': orchestrator_env,
             'volumes': orchestrator_volumes,
             'networks': [network_name],
-            'depends_on': [f'{project_dir}-semantic-layer', f'{project_dir}-planner']
+            'depends_on': [f'{project_dir}-semantic-layer', f'{project_dir}-planner', f'{project_dir}-agent-memory']
         }
 
         # Configure Builder
@@ -691,51 +701,12 @@ def _update_compose_with_orchestration(runtime_config: dict):
             'depends_on': [f'{project_dir}-semantic-layer']
         }
 
-        # Add Redis Stack (backing store for Agent Memory Server)
-        compose_data['services'][f'{project_dir}-redis-stack'] = {
-            'image': 'redis:8',
-            'container_name': f'{project_dir}-redis-stack',
-            'ports': ['6379:6379'],
-            'command': 'redis-server --appendonly yes',
-            'volumes': ['redis_data:/data'],
-            'networks': [network_name],
-            'restart': 'unless-stopped',
-            'healthcheck': {
-                'test': ['CMD', 'redis-cli', 'ping'],
-                'interval': '10s',
-                'timeout': '5s',
-                'retries': 5,
-            },
-        }
-
-        # Add Agent Memory Server (working + long-term memory, shared by the swarm)
-        compose_data['services'][f'{project_dir}-agent-memory'] = {
-            'image': 'redislabs/agent-memory-server:latest',
-            'container_name': f'{project_dir}-agent-memory',
-            'ports': ['8100:8000'],
-            'command': 'agent-memory api --host 0.0.0.0 --port 8000 --task-backend=asyncio',
-            'environment': [
-                f'REDIS_URL=redis://{project_dir}-redis-stack:6379',
-                'PORT=8000',
-                'DISABLE_AUTH=true',
-                'LONG_TERM_MEMORY=true',
-                'GENERATION_MODEL=ollama/qwen2.5:3b',
-                'FAST_MODEL=ollama/qwen2.5:3b',
-                'SLOW_MODEL=ollama/qwen2.5:3b',
-                'EMBEDDING_MODEL=ollama/nomic-embed-text:v1.5',
-                'OLLAMA_API_BASE=http://ollama:11434',
-                'REDISVL_VECTOR_DIMENSIONS=768',
-            ],
-            'depends_on': [f'{project_dir}-redis-stack'],
-            'networks': [network_name],
-            'restart': 'unless-stopped',
-            'healthcheck': {
-                'test': ['CMD', 'curl', '-f', 'http://localhost:8000/v1/health'],
-                'interval': '30s',
-                'timeout': '10s',
-                'retries': 3,
-            },
-        }
+        # Add Redis Stack + Agent Memory Server (working + long-term memory,
+        # shared by the swarm) — single source of truth also reused by the
+        # standalone `add service agent-memory` command.
+        compose_data['services'].update(
+            _build_agent_memory_services(project_dir, network_name)
+        )
         # Builder depends on agent memory so the swarm can store/recall context
         compose_data['services'][f'{project_dir}-builder']['depends_on'].append(
             f'{project_dir}-agent-memory'

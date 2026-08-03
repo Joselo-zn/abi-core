@@ -8,6 +8,10 @@ from abi_core.common.workflow import Status
 from abi_core.common.semantic_tools import tool_find_agent
 from abi_core.agent.agent import AbiAgent
 from abi_core.agent.agent_response import AgentResponse
+from abi_core.agent.plan_confirmation import (
+    record_pending_plan as _shared_record_pending_plan,
+    clear_pending_plan as _shared_clear_pending_plan,
+)
 
 from config import config
 
@@ -75,17 +79,13 @@ class AbiOrchestratorAgent(AbiAgent):
     async def _record_pending_plan(self, context_id: str, plan: dict, original_query: str):
         """Record a plan awaiting the user's approve/reject/modify decision.
 
-        Uses SessionStore (session_backend), not short-term/AMS memory — this
-        is genuinely per-session state (only this conversation cares about
-        it), and the framework already has a generic KV store built for
-        exactly this (Session Management Rev.2).
+        The session-context bookkeeping is now shared (see
+        abi_core.agent.plan_confirmation, extracted 2026-08-03 so a
+        standalone agent can use the same primitive) — uses SessionStore
+        (session_backend), not short-term/AMS memory, since this is
+        genuinely per-session state (only this conversation cares about it).
         """
-        await self.update_session_context(context_id, {
-            "pending_plan": plan,
-            "pending_plan_query": original_query,
-            "awaiting_plan_modification": False,
-        })
-        abi_logging(f"[📝] Pending plan recorded for session {context_id}")
+        await _shared_record_pending_plan(self.update_session_context, context_id, plan, original_query)
 
         # The methodology, though, is *system* context: it should be visible
         # to any agent that inspects this conversation, not just whichever
@@ -111,11 +111,7 @@ class AbiOrchestratorAgent(AbiAgent):
                 abi_logging(f"[⚠️] Could not record plan methodology in system memory: {e}")
 
     async def _clear_pending_plan(self, context_id: str):
-        await self.update_session_context(context_id, {
-            "pending_plan": None,
-            "pending_plan_query": None,
-            "awaiting_plan_modification": False,
-        })
+        await _shared_clear_pending_plan(self.update_session_context, context_id)
 
     async def stream(
         self, query: str, context_id: str, task_id: str

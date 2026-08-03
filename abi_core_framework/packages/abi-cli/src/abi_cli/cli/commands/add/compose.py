@@ -92,6 +92,10 @@ def _update_compose_with_agent(context: dict):
                 f'OPA_URL=http://{project_name}-opa:8181'
             ])
 
+        # Add Agent Memory (short/long-term memory API) if that service exists
+        if any('agent-memory' in svc for svc in compose_data['services'].keys()):
+            agent_env.append(f'AGENT_MEMORY_URL=http://{project_name}-agent-memory:8000')
+
         agent_volumes = [
             './logs:/app/logs',
             f'./agents/{agent_name}/agent_cards:/app/agent_cards:ro'
@@ -109,7 +113,7 @@ def _update_compose_with_agent(context: dict):
             agent_env.extend([
                 'START_OLLAMA=false',
                 'LOAD_MODELS=false',
-                f'OLLAMA_HOST=http://{project_name}-ollama:11434'
+                'OLLAMA_HOST=http://ollama:11434'
             ])
 
         # Use consistent naming: {project_name}-{agent_name}
@@ -128,14 +132,18 @@ def _update_compose_with_agent(context: dict):
 
         # Add dependencies
         if provision_mode == 'centralized':
-            ollama_service = f'{project_name}-ollama'
-            if ollama_service in compose_data['services']:
-                agent_service['depends_on'].append(ollama_service)
+            if 'ollama' in compose_data['services']:
+                agent_service['depends_on'].append('ollama')
 
         if any('semantic' in svc for svc in compose_data['services'].keys()):
             semantic_service = f'{project_name}-semantic-layer'
             if semantic_service in compose_data['services']:
                 agent_service['depends_on'].append(semantic_service)
+
+        if any('agent-memory' in svc for svc in compose_data['services'].keys()):
+            memory_service = f'{project_name}-agent-memory'
+            if memory_service in compose_data['services']:
+                agent_service['depends_on'].append(memory_service)
 
         # Remove depends_on if empty
         if not agent_service['depends_on']:
@@ -169,6 +177,14 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
             compose_data = yaml.safe_load(f) or {}
 
         services = compose_data.get('services', {})
+
+        # Reuse whatever network the project's existing services are already
+        # on (e.g. 'abi-network') instead of inventing a new one, so this
+        # service can actually reach — and be reached by — the rest of them.
+        existing_networks = []
+        for svc_config in services.values():
+            existing_networks.extend(svc_config.get('networks', []) or [])
+        network_name = existing_networks[0] if existing_networks else 'abi-network'
 
         # Check if service already exists (try different naming patterns)
         service_key = service_name.replace('_', '-')
@@ -213,7 +229,7 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
                     f'SEMANTIC_LAYER_PORT={available_port}'
                 ],
                 'volumes': [f'./services/{service_name}/agent_cards:/app/agent_cards:ro', f'./services/{service_name}/tool_cards:/app/tool_cards:ro', './logs:/app/logs'],
-                'networks': [f'{project_name}-network'],
+                'networks': [network_name],
                 'depends_on': []
             }
         elif service_type == 'guardian':
@@ -233,7 +249,7 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
                     f'SERVICE_PORT={available_port}'
                 ],
                 'volumes': ['./logs:/app/logs'],
-                'networks': [f'{project_name}-network'],
+                'networks': [network_name],
                 'depends_on': []
             }
         elif service_type == 'guardian-native':
@@ -245,14 +261,14 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
                     f'OPA_URL=http://{project_name}-opa:8181',
                     'GUARDIAN_PORT=' + str(available_port),
                     'AGENT_CARDS_BASE=/app/agent_cards',
-                    f'OLLAMA_HOST=http://{project_name}-ollama:11434'
+                    'OLLAMA_HOST=http://ollama:11434'
                 ],
                 'volumes': [
                     './agent_cards:/app/agent_cards:ro',
                     './logs:/app/logs'
                 ],
-                'networks': [f'{project_name}-network'],
-                'depends_on': [f'{project_name}-ollama']
+                'networks': [network_name],
+                'depends_on': ['ollama'] if 'ollama' in services else []
             }
         elif service_type == 'mcp-api':
             service_definition = {
@@ -265,7 +281,7 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
                     f'SEMANTIC_LAYER_HOST=http://{project_name}-semantic-layer:10100'
                 ],
                 'volumes': ['./logs:/app/logs'],
-                'networks': [f'{project_name}-network'],
+                'networks': [network_name],
                 'depends_on': []
             }
         else:
@@ -275,16 +291,17 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
                 'container_name': f'{project_name}-{service_key}',
                 'ports': [f'{available_port}:{available_port}'],
                 'volumes': ['./logs:/app/logs'],
-                'networks': [f'{project_name}-network']
+                'networks': [network_name]
             }
 
         # Add service to compose data
         services[final_service_key] = service_definition
         compose_data['services'] = services
 
-        # Ensure networks section exists
+        # Ensure the (reused, not invented) network is declared
         if 'networks' not in compose_data:
-            compose_data['networks'] = {f'{project_name}-network': {'driver': 'bridge'}}
+            compose_data['networks'] = {}
+        compose_data['networks'].setdefault(network_name, {'driver': 'bridge'})
 
         # Write updated compose file
         with open(compose_file, 'w') as f:
@@ -370,3 +387,155 @@ def _update_compose_with_agent_card(agent_name: str, agent_card_filename: str):
 
     except Exception as e:
         console.print(f"⚠️  Could not update compose with agent card: {e}", style="yellow")
+
+
+def _build_agent_memory_services(project_dir: str, network_name: str) -> dict:
+    """Return the {redis-stack, agent-memory} compose service definitions.
+
+    Single source of truth reused by both `add service agent-memory`
+    (standalone) and `add abi-swarm` (which needs the same infra as part of
+    its orchestration bundle) — previously these were duplicated inline in
+    abi_swarm.py.
+    """
+    return {
+        f'{project_dir}-redis-stack': {
+            'image': 'redis:8',
+            'container_name': f'{project_dir}-redis-stack',
+            'ports': ['6379:6379'],
+            'command': 'redis-server --appendonly yes',
+            'volumes': ['redis_data:/data'],
+            'networks': [network_name],
+            'restart': 'unless-stopped',
+            'healthcheck': {
+                'test': ['CMD', 'redis-cli', 'ping'],
+                'interval': '10s',
+                'timeout': '5s',
+                'retries': 5,
+            },
+        },
+        f'{project_dir}-agent-memory': {
+            'image': 'redislabs/agent-memory-server:latest',
+            'container_name': f'{project_dir}-agent-memory',
+            'ports': ['8100:8000'],
+            'command': 'agent-memory api --host 0.0.0.0 --port 8000 --task-backend=asyncio',
+            'environment': [
+                f'REDIS_URL=redis://{project_dir}-redis-stack:6379',
+                'PORT=8000',
+                'DISABLE_AUTH=true',
+                'LONG_TERM_MEMORY=true',
+                'GENERATION_MODEL=ollama/qwen2.5:3b',
+                'FAST_MODEL=ollama/qwen2.5:3b',
+                'SLOW_MODEL=ollama/qwen2.5:3b',
+                'EMBEDDING_MODEL=ollama/nomic-embed-text:v1.5',
+                'OLLAMA_API_BASE=http://ollama:11434',
+                'REDISVL_VECTOR_DIMENSIONS=768',
+            ],
+            'depends_on': [f'{project_dir}-redis-stack'],
+            'networks': [network_name],
+            'restart': 'unless-stopped',
+            'healthcheck': {
+                'test': ['CMD', 'curl', '-f', 'http://localhost:8000/v1/health'],
+                'interval': '30s',
+                'timeout': '10s',
+                'retries': 3,
+            },
+        },
+    }
+
+
+def _update_compose_with_agent_memory(compose_file, runtime_config: dict):
+    """Add the Agent Memory Server + Redis to compose.yaml, and retroactively
+    wire AGENT_MEMORY_URL (+ depends_on) into every agent already registered
+    in runtime.yaml.
+
+    This is what lets a plain `add agent` (no swarm) start using
+    abi_core.memory.add_short_term_memory/get_short_term_memory — that API
+    silently no-ops without a reachable AGENT_MEMORY_URL, so an existing
+    agent that predates this service needs the retroactive wiring, not just
+    agents created afterward (those already get it via `_update_compose_with_agent`).
+    """
+    import yaml
+
+    try:
+        with open(compose_file, 'r') as f:
+            compose_data = yaml.safe_load(f) or {}
+
+        if 'services' not in compose_data:
+            compose_data['services'] = {}
+        services = compose_data['services']
+
+        project_dir = Path.cwd().name.lower().replace(' ', '-').replace('_', '-')
+
+        if any('agent-memory' in svc for svc in services.keys()):
+            console.print("❌ Agent Memory service already exists!", style="red")
+            return False
+
+        # Find network (reuse whatever the project already uses)
+        existing_networks = []
+        for service_config in services.values():
+            existing_networks.extend(service_config.get('networks', []) or [])
+        network_name = existing_networks[0] if existing_networks else 'abi-network'
+        if 'networks' not in compose_data:
+            compose_data['networks'] = {}
+        compose_data['networks'].setdefault(network_name, {'driver': 'bridge'})
+
+        # Avoid host-port conflicts (container ports stay fixed; only the
+        # host-side mapping shifts if 6379/8100 are already taken).
+        used_ports = set()
+        for svc_config in services.values():
+            for port_mapping in svc_config.get('ports', []):
+                if isinstance(port_mapping, str) and ':' in port_mapping:
+                    used_ports.add(int(port_mapping.split(':')[0]))
+
+        new_services = _build_agent_memory_services(project_dir, network_name)
+
+        redis_port = 6379
+        while redis_port in used_ports:
+            redis_port += 1
+        if redis_port != 6379:
+            new_services[f'{project_dir}-redis-stack']['ports'] = [f'{redis_port}:6379']
+        used_ports.add(redis_port)
+
+        memory_port = 8100
+        while memory_port in used_ports:
+            memory_port += 1
+        if memory_port != 8100:
+            new_services[f'{project_dir}-agent-memory']['ports'] = [f'{memory_port}:8000']
+
+        services.update(new_services)
+
+        if 'volumes' not in compose_data:
+            compose_data['volumes'] = {}
+        compose_data['volumes'].setdefault('redis_data', {'driver': 'local'})
+
+        # Retroactively wire AGENT_MEMORY_URL + depends_on into every agent
+        # already registered in runtime.yaml (agents added going forward
+        # pick this up automatically via _update_compose_with_agent).
+        memory_url = f'AGENT_MEMORY_URL=http://{project_dir}-agent-memory:8000'
+        memory_service_name = f'{project_dir}-agent-memory'
+        wired = []
+        for agent_name in runtime_config.get('agents', {}).keys():
+            possible_names = [f'{project_dir}-{agent_name}', f'{agent_name}-agent', agent_name]
+            svc_key = next((n for n in possible_names if n in services), None)
+            if not svc_key or svc_key in new_services:
+                continue
+            svc = services[svc_key]
+            env_list = svc.setdefault('environment', [])
+            if not any(isinstance(e, str) and e.startswith('AGENT_MEMORY_URL=') for e in env_list):
+                env_list.append(memory_url)
+            depends = svc.setdefault('depends_on', [])
+            if memory_service_name not in depends:
+                depends.append(memory_service_name)
+            wired.append(svc_key)
+
+        with open(compose_file, 'w') as f:
+            yaml.dump(compose_data, f, default_flow_style=False, indent=2, sort_keys=False)
+
+        console.print("✅ Agent Memory Server (AMS) + Redis added", style="green")
+        if wired:
+            console.print(f"🔗 Wired AGENT_MEMORY_URL into existing agents: {', '.join(wired)}", style="green")
+        return True
+
+    except Exception as e:
+        console.print(f"⚠️  Error updating compose file: {e}", style="yellow")
+        return False

@@ -44,9 +44,15 @@ directory as ``main.py``).
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type
 
 from abi_core.common.utils import abi_logging
+from abi_core.common.async_task_store import (
+    async_task_backend_from_env,
+    log_task_event,
+    new_async_task_id,
+)
+from abi_core.common.retry import retry_with_backoff
 
 
 # ── Node type enum ──────────────────────────────────────────────
@@ -87,6 +93,40 @@ class _RegisteredTask:
     depends_on: List[str] = field(default_factory=list)
 
 
+@dataclass
+class _RegisteredAsyncTask:
+    """Metadata collected by @agent.task_async — fire-and-forget background
+    work, launched via ``agent.execute_task_async(name, **kwargs)``."""
+
+    name: str
+    fn: Callable
+    max_retries: int = 3
+    base_delay: float = 1.0
+    on_error: Optional[Callable] = None
+    on_success: Optional[Callable] = None
+
+
+@dataclass
+class _RegisteredScheduledTask:
+    """Metadata collected by @agent.task_schedule — a recurring job on
+    AsyncIOScheduler. Every firing is gated by an OPA policy check AND an
+    overlap check against the shared async-task store before the wrapped
+    function runs — not "just a cron job"."""
+
+    name: str
+    fn: Callable
+    trigger: str  # "cron" | "interval" | "date" — passed through to APScheduler
+    trigger_args: Dict[str, Any] = field(default_factory=dict)
+    overlap_policy: Literal["skip", "allow"] = "skip"
+    max_concurrent: int = 1
+    max_retries: int = 3
+    base_delay: float = 1.0
+    opa_bundle_path: str = "abi/scheduled_task/allow"
+    fail_mode: Literal["open", "closed"] = "open"
+    on_error: Optional[Callable] = None
+    on_success: Optional[Callable] = None
+
+
 # ── AbiCore ─────────────────────────────────────────────────────
 
 class AbiCore:
@@ -116,6 +156,10 @@ class AbiCore:
         self.interface_name = interface_name
         self._registered_nodes: List[_RegisteredNode] = []
         self._registered_tasks: List[_RegisteredTask] = []
+        self._registered_async_tasks: List[_RegisteredAsyncTask] = []
+        self._registered_scheduled_tasks: List[_RegisteredScheduledTask] = []
+        self._async_task_store = async_task_backend_from_env()
+        self._agent_instance: Optional[Any] = None
 
         # Use provided config/agent_card or auto-import from config package
         if config is not None:
@@ -246,6 +290,128 @@ class AbiCore:
 
         return decorator
 
+    def task_async(
+        self,
+        name: str,
+        *,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        on_error: Optional[Callable] = None,
+        on_success: Optional[Callable] = None,
+    ) -> Callable:
+        """Register a fire-and-forget background function.
+
+        Unlike ``@agent.task()``, a task_async is not tied to the request
+        that launches it: ``await agent.execute_task_async(name, **kwargs)``
+        schedules it via ``asyncio.create_task`` and returns an id
+        immediately, without waiting for it to finish. Failures retry with
+        real exponential backoff (``base_delay * 2**attempt``) and every
+        attempt/outcome is logged auditably; status is queryable afterwards
+        via ``agent.get_async_task_status(async_task_id)``.
+
+        Args:
+            name: Unique name, looked up by ``execute_task_async``.
+            max_retries: Retry attempts on failure (exponential backoff).
+            base_delay: Base delay in seconds before the first retry.
+            on_error: Optional ``(async_task_id, error) -> None`` callback,
+                      called after retries are exhausted. Exceptions raised
+                      by the callback itself are logged, never propagated.
+            on_success: Optional ``(async_task_id, result) -> None``
+                        callback, called once the function succeeds.
+
+        Returns:
+            The original function (unmodified).
+        """
+
+        def decorator(fn: Callable) -> Callable:
+            self._registered_async_tasks.append(
+                _RegisteredAsyncTask(
+                    name=name,
+                    fn=fn,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    on_error=on_error,
+                    on_success=on_success,
+                )
+            )
+            return fn
+
+        return decorator
+
+    def task_schedule(
+        self,
+        name: str,
+        *,
+        trigger: str,
+        trigger_args: Optional[Dict[str, Any]] = None,
+        overlap_policy: Literal["skip", "allow"] = "skip",
+        max_concurrent: int = 1,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        opa_bundle_path: str = "abi/scheduled_task/allow",
+        fail_mode: Literal["open", "closed"] = "open",
+        on_error: Optional[Callable] = None,
+        on_success: Optional[Callable] = None,
+    ) -> Callable:
+        """Register a recurring job on AsyncIOScheduler — governed, not just
+        a cron job. Every firing is gated by:
+
+        1. An overlap check against the shared async-task store
+           (``overlap_policy="skip"``, the default, drops a firing if the
+           previous one is still running — like Kubernetes CronJob's
+           ``concurrencyPolicy=Forbid``).
+        2. An OPA policy check (``abi/scheduled_task/allow`` by default) —
+           fails OPEN (allows, with a logged warning) if OPA isn't
+           configured/reachable, since Guardian/OPA are optional
+           per-project infrastructure; pass ``fail_mode="closed"`` for a
+           project that wants this gate to fail closed instead.
+
+        Requires the ``apscheduler`` extra (``pip install
+        "abi-core-ai[scheduler]"``) — only if at least one
+        ``@agent.task_schedule`` is registered.
+
+        Args:
+            name: Unique job id.
+            trigger: APScheduler trigger type — "cron" | "interval" | "date".
+            trigger_args: Trigger kwargs passed through to APScheduler as-is
+                          (e.g. ``{"seconds": 300}`` or ``{"hour": 3}``).
+            overlap_policy: "skip" (default) drops overlapping firings;
+                             "allow" permits up to ``max_concurrent``.
+            max_concurrent: Max concurrent instances when ``overlap_policy``
+                            is "allow" (ignored when "skip").
+            max_retries: Retry attempts on failure (exponential backoff).
+            base_delay: Base delay in seconds before the first retry.
+            opa_bundle_path: OPA data path queried for the allow decision.
+            fail_mode: "open" (default) allows when OPA is unreachable;
+                       "closed" denies.
+            on_error: Optional ``(async_task_id, error) -> None`` callback.
+            on_success: Optional ``(async_task_id, result) -> None`` callback.
+
+        Returns:
+            The original function (unmodified).
+        """
+
+        def decorator(fn: Callable) -> Callable:
+            self._registered_scheduled_tasks.append(
+                _RegisteredScheduledTask(
+                    name=name,
+                    fn=fn,
+                    trigger=trigger,
+                    trigger_args=trigger_args or {},
+                    overlap_policy=overlap_policy,
+                    max_concurrent=max_concurrent,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    opa_bundle_path=opa_bundle_path,
+                    fail_mode=fail_mode,
+                    on_error=on_error,
+                    on_success=on_success,
+                )
+            )
+            return fn
+
+        return decorator
+
     async def execute_step(self, step_name: str, **kwargs) -> dict:
         """Execute a registered step by name with the given inputs.
 
@@ -306,7 +472,7 @@ class AbiCore:
         """
         import inspect
 
-        _SYSTEM = ("context_id", "task_id")
+        _SYSTEM = ("context_id", "task_id", "context_snapshot")
         try:
             params = inspect.signature(fn).parameters
         except (ValueError, TypeError):
@@ -387,6 +553,282 @@ class AbiCore:
             yield result
         else:
             raise TypeError(f"Task '{task_name}' must be an async function")
+
+    # ── Background / scheduled tasks ────────────────────────────
+
+    def _find_async_task(self, task_name: str) -> _RegisteredAsyncTask:
+        entry = next((t for t in self._registered_async_tasks if t.name == task_name), None)
+        if entry is None:
+            raise KeyError(
+                f"task_async '{task_name}' not found. "
+                f"Registered: {[t.name for t in self._registered_async_tasks]}"
+            )
+        return entry
+
+    async def execute_task_async(
+        self, task_name: str, *, context_id: Optional[str] = None, **kwargs
+    ) -> str:
+        """Launch a @agent.task_async function in the background and return
+        immediately with an id to poll via ``get_async_task_status``.
+
+        Snapshots the caller's session context (if any) BEFORE scheduling —
+        never re-resolved by ``context_id`` alone inside the background
+        coroutine, since the in-memory session backend is per-pod and the
+        background task can outlive/outrun the request that launched it.
+        """
+        entry = self._find_async_task(task_name)
+        async_task_id = new_async_task_id()
+
+        context_snapshot: Dict[str, Any] = {}
+        if context_id and self._agent_instance is not None and getattr(
+            self._agent_instance, "session_backend", None
+        ):
+            context_snapshot = await self._agent_instance.session_backend.get_context(context_id)
+
+        await self._async_task_store.create(async_task_id, task_name, context_id)
+
+        import asyncio
+
+        asyncio.create_task(
+            self._execute_and_audit(
+                fn=entry.fn,
+                name=entry.name,
+                async_task_id=async_task_id,
+                max_retries=entry.max_retries,
+                base_delay=entry.base_delay,
+                on_error=entry.on_error,
+                on_success=entry.on_success,
+                context_id=context_id,
+                context_snapshot=context_snapshot,
+                kwargs=kwargs,
+            )
+        )
+        return async_task_id
+
+    async def get_async_task_status(self, async_task_id: str) -> Optional[dict]:
+        """In-process status lookup for a task_async/task_schedule run —
+        the hook point for the settled "consult via A2A task_id" reuse; no
+        new HTTP route. Returns None if the id is unknown/expired."""
+        record = await self._async_task_store.get(async_task_id)
+        return record.to_dict() if record else None
+
+    async def get_session_context(self, context_id: str) -> Dict[str, Any]:
+        """Passthrough to the running AbiAgent's session context — a
+        ``@agent.task`` function only sees the AbiCore instance (``agent``
+        in scaffolded code), not the AbiAgent subclass that actually owns
+        ``session_backend``. Needed for framework-level capabilities like
+        ``abi_core.agent.plan_confirmation`` to work from a plain task.
+        Returns ``{}`` if called before ``.run()`` has set up the agent
+        instance (shouldn't happen at request-serving time)."""
+        if self._agent_instance is None:
+            return {}
+        return await self._agent_instance.get_session_context(context_id)
+
+    async def update_session_context(self, context_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+        """Passthrough to the running AbiAgent's session context — see
+        ``get_session_context`` for why this exists."""
+        if self._agent_instance is None:
+            return {}
+        return await self._agent_instance.update_session_context(context_id, patch)
+
+    async def _execute_and_audit(
+        self,
+        *,
+        fn: Callable,
+        name: str,
+        async_task_id: str,
+        max_retries: int,
+        base_delay: float,
+        on_error: Optional[Callable],
+        on_success: Optional[Callable],
+        context_id: Optional[str],
+        context_snapshot: Optional[Dict[str, Any]],
+        kwargs: Dict[str, Any],
+    ) -> None:
+        """Shared runner for task_async and task_schedule firings: retries
+        with real exponential backoff, logs every attempt/outcome
+        auditably, flushes those logs itself (independent of any HTTP
+        request's lifecycle), writes a breadcrumb back into session
+        context, and never lets a callback or an unexpected crash leave the
+        record stuck in "running" (which would permanently block
+        overlap_policy="skip" for this job name)."""
+        import inspect
+
+        call_kwargs = self._filter_system_kwargs(
+            fn, {**kwargs, "context_id": context_id, "context_snapshot": context_snapshot}
+        )
+
+        async def _call():
+            result = fn(**call_kwargs)
+            if inspect.isasyncgenfunction(fn):
+                collected: Dict[str, Any] = {}
+                async for chunk in result:
+                    if isinstance(chunk, dict):
+                        collected.update(chunk)
+                return collected
+            if inspect.isawaitable(result):
+                return await result
+            return result
+
+        attempts = 0
+
+        async def _on_retry(attempt: int, exc: BaseException) -> None:
+            nonlocal attempts
+            attempts = attempt
+            await self._async_task_store.bump_attempts(async_task_id, attempt)
+            log_task_event(
+                "task_async_attempt", task_name=name, async_task_id=async_task_id,
+                attempt=attempt, max_retries=max_retries, status="running", error=str(exc),
+                context_id=context_id,
+            )
+
+        try:
+            try:
+                result = await retry_with_backoff(
+                    _call, max_retries=max_retries, base_delay=base_delay, on_retry=_on_retry,
+                )
+            except Exception as exc:  # noqa: BLE001 — final failure after all retries
+                attempts = max(attempts, 1)
+                error_str = str(exc)
+                await self._async_task_store.mark_failed(async_task_id, error_str)
+                log_task_event(
+                    "task_async_failure", task_name=name, async_task_id=async_task_id,
+                    attempt=attempts, max_retries=max_retries, status="failed",
+                    error=error_str, context_id=context_id,
+                )
+                if on_error is not None:
+                    try:
+                        hook = on_error(async_task_id, error_str)
+                        if inspect.isawaitable(hook):
+                            await hook
+                    except Exception as cb_exc:  # noqa: BLE001 — a broken callback must not
+                        abi_logging(  # lose the already-recorded failure or crash the runner
+                            f"[⚠️] task_async on_error callback for '{name}' raised: {cb_exc}",
+                            level="warning",
+                        )
+            else:
+                await self._async_task_store.mark_done(async_task_id, result)
+                log_task_event(
+                    "task_async_success", task_name=name, async_task_id=async_task_id,
+                    attempt=max(attempts, 1), max_retries=max_retries, status="done",
+                    context_id=context_id,
+                )
+                if on_success is not None:
+                    try:
+                        hook = on_success(async_task_id, result)
+                        if inspect.isawaitable(hook):
+                            await hook
+                    except Exception as cb_exc:  # noqa: BLE001
+                        abi_logging(
+                            f"[⚠️] task_async on_success callback for '{name}' raised: {cb_exc}",
+                            level="warning",
+                        )
+
+            await self._write_async_task_breadcrumb(context_id, async_task_id, name)
+
+        except BaseException as crash:  # noqa: BLE001 — a crash in the runner itself must
+            try:  # still mark the record failed, or overlap_policy="skip" locks up forever
+                await self._async_task_store.mark_failed(async_task_id, f"Runner crashed: {crash}")
+                log_task_event(
+                    "task_async_failure", task_name=name, async_task_id=async_task_id,
+                    attempt=max(attempts, 1), max_retries=max_retries, status="failed",
+                    error=f"Runner crashed: {crash}", context_id=context_id,
+                )
+            except Exception:  # noqa: BLE001 — best-effort even in the crash path
+                pass
+        finally:
+            try:
+                from abi_core.common.utils import flush_logs
+
+                await flush_logs(task_id=f"async-{async_task_id}")
+            except Exception:  # noqa: BLE001 — never let log flushing mask the real outcome
+                pass
+
+    async def _write_async_task_breadcrumb(
+        self, context_id: Optional[str], async_task_id: str, name: str
+    ) -> None:
+        if not context_id or self._agent_instance is None:
+            return
+        backend = getattr(self._agent_instance, "session_backend", None)
+        if backend is None:
+            return
+        try:
+            record = await self._async_task_store.get(async_task_id)
+            if record is None:
+                return
+            current = await backend.get_context(context_id)
+            history = list(current.get("task_async_history", []))
+            history.append({
+                "async_task_id": async_task_id,
+                "task_name": name,
+                "status": record.status,
+                "started_at": record.started_at,
+                "finished_at": record.finished_at,
+                "attempts": record.attempts,
+                "error": record.error,
+            })
+            history = history[-20:]  # capped — bound growth over a long-lived context_id
+            await backend.update_context(context_id, {"task_async_history": history})
+        except Exception as e:  # noqa: BLE001 — breadcrumb is best-effort, never blocking
+            abi_logging(f"[⚠️] Could not write task_async breadcrumb: {e}", level="warning")
+
+    def _find_scheduled_task(self, task_name: str) -> Optional[_RegisteredScheduledTask]:
+        return next((t for t in self._registered_scheduled_tasks if t.name == task_name), None)
+
+    async def _run_scheduled_task(self, entry: _RegisteredScheduledTask) -> None:
+        """APScheduler job body — overlap check, then OPA gate, then run.
+        Order matters: if the firing is about to be skipped for overlap,
+        there's no point asking OPA for permission first."""
+        if entry.overlap_policy == "skip" and await self._async_task_store.is_running(entry.name):
+            log_task_event(
+                "task_schedule_skipped_overlap", task_name=entry.name, async_task_id="-",
+                status="skipped",
+            )
+            return
+
+        from abi_core.security.scheduled_task_policy import check_scheduled_task_policy
+
+        agent_name = getattr(self.config, "AGENT_NAME", getattr(self.config, "AGENT_DISPLAY_NAME", "unknown"))
+        allowed, reason = await check_scheduled_task_policy(
+            agent_name, entry.name, entry.trigger,
+            bundle_path=entry.opa_bundle_path, fail_mode=entry.fail_mode,
+        )
+        if not allowed:
+            log_task_event(
+                "task_schedule_denied", task_name=entry.name, async_task_id="-",
+                status="denied", error=reason,
+            )
+            return
+
+        async_task_id = new_async_task_id()
+        await self._async_task_store.create(async_task_id, entry.name, context_id=None)
+        await self._execute_and_audit(
+            fn=entry.fn, name=entry.name, async_task_id=async_task_id,
+            max_retries=entry.max_retries, base_delay=entry.base_delay,
+            on_error=entry.on_error, on_success=entry.on_success,
+            context_id=None, context_snapshot=None, kwargs={},
+        )
+
+    def _build_scheduler_jobs(self) -> List[dict]:
+        """Job specs for AsyncIOScheduler, built at .run() time and handed
+        down to agent_factory/start_server — the actual AsyncIOScheduler()
+        instance is only constructed inside Starlette's on_startup hook,
+        once a real event loop exists (see agent_factory.py/a2a_server.py)."""
+        jobs = []
+        for entry in self._registered_scheduled_tasks:
+            def _make_job(entry=entry):  # default-arg capture — avoids the
+                async def _job():        # classic late-binding closure bug
+                    await self._run_scheduled_task(entry)
+                return _job
+
+            jobs.append({
+                "id": entry.name,
+                "func": _make_job(),
+                "trigger": entry.trigger,
+                "trigger_args": entry.trigger_args,
+                "max_instances": 1 if entry.overlap_policy == "skip" else max(entry.max_concurrent, 2),
+            })
+        return jobs
 
     def tool(
         self,
@@ -646,6 +1088,38 @@ class AbiCore:
             # Bind execute_step so tasks can call agent.execute_step(...)
             agent_instance._abi_core = self
 
+        # Back-reference so execute_task_async/_run_scheduled_task can reach
+        # agent_instance.session_backend for context snapshots/breadcrumbs.
+        # Harmless even when neither task_async nor task_schedule is used.
+        self._agent_instance = agent_instance
+
+        scheduler_jobs = None
+        if self._registered_scheduled_tasks:
+            # Fail fast at boot, not silently the first time a job should
+            # have fired hours later.
+            try:
+                import apscheduler  # noqa: F401
+            except ImportError:
+                abi_logging(
+                    "[❌] @agent.task_schedule is registered but 'apscheduler' is "
+                    "not installed. Install the extra: pip install "
+                    "\"abi-core-ai[scheduler]\"",
+                    level="error",
+                )
+                raise
+
+            # Publish a discoverable default-allow rule ONLY if this project
+            # actually provisioned OPA and doesn't already have one — never
+            # overwrites a customized rule. The OPA gate is already fail-open
+            # (see check_scheduled_task_policy), so this is about operator
+            # discoverability, not correctness.
+            import os as _os
+            if _os.getenv("OPA_URL"):
+                from abi_core.opa.scheduled_task_policies import write_default_scheduled_task_policy
+                write_default_scheduled_task_policy("./opa/scheduled_task_policies.rego")
+
+            scheduler_jobs = self._build_scheduler_jobs()
+
         return agent_factory(
             agent_instance,
             self.config,
@@ -653,4 +1127,5 @@ class AbiCore:
             host=self.host,
             web_interface_cls=self.web_interface_cls,
             interface_name=self.interface_name,
+            scheduler_jobs=scheduler_jobs,
         )

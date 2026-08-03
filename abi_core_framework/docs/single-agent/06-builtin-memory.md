@@ -1,8 +1,9 @@
 # Built-in Memory API
 
 ```{note}
-**Alpha.** The built-in memory API is backed by the Agent Memory Server (AMS),
-provisioned by the ABI Swarm scaffolding. It is under active development and the
+**Alpha.** The built-in memory API is backed by the Agent Memory Server (AMS).
+Provision it with `abi-core add service agent-memory` — works for a standalone
+agent or an ABI Swarm project alike. It is under active development and the
 API may change between releases.
 ```
 
@@ -26,7 +27,15 @@ Use conversation memory for chat continuity. Use the built-in API when you need 
 
 ## Requirements
 
-The built-in memory API talks to the Agent Memory Server. Agents receive two environment variables (the swarm scaffolding sets these automatically):
+The built-in memory API talks to the Agent Memory Server. Provision it with:
+
+```bash
+abi-core add service agent-memory
+```
+
+This works in any project — a single agent created with `abi-core add agent`, or a full ABI Swarm. It adds the AMS + Redis containers to `compose.yaml` and, if agents already exist in the project, retroactively wires `AGENT_MEMORY_URL` (and the matching `depends_on`) into each of them — no manual editing needed. Any agent added *after* the service exists gets it automatically too. Then run `abi-core run` (or `docker compose up -d --build`) to start it.
+
+Agents receive two environment variables:
 
 | Variable | Purpose |
 |----------|---------|
