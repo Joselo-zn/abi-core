@@ -26,14 +26,25 @@ class AgentConfig:
     WEB_INTERFACE_PORT: int = int(os.getenv('WEB_INTERFACE_PORT', '8083'))
     
     # Model Configuration
-    MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen2.5:3b')
+    MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen3:latest')
     OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
-    
+
+    # reasoning=False is an Ollama/qwen3-specific kwarg (disables "thinking"
+    # mode — see the LLM_CONFIG comment below for why). Only valid for
+    # ChatOllama; forwarding it to another provider's constructor (e.g.
+    # ChatAnthropic) via extra_params would error or be silently rejected.
+    # Gate it on the actual provider instead of hardcoding it.
+    _OLLAMA_EXTRA_PARAMS: dict = {"reasoning": False}
+
     # LLM Configuration (unified dict for create_llm)
     LLM_CONFIG: dict = {
         "provider": os.getenv("LLM_PROVIDER", "ollama"),
-        "model": os.getenv("MODEL_NAME", "qwen2.5:3b"),
-        "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
+        "model": os.getenv("MODEL_NAME", "qwen3:latest"),
+        # None (unset) lets create_llm() omit temperature entirely, so the
+        # provider uses its own default — required for e.g. Claude models
+        # with extended thinking, which reject any explicit temperature
+        # other than 1. Set LLM_TEMPERATURE explicitly to override.
+        "temperature": float(os.environ["LLM_TEMPERATURE"]) if os.getenv("LLM_TEMPERATURE") else None,
         "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
         "api_key": os.getenv("LLM_API_KEY", ""),
         "aws_region": os.getenv("AWS_REGION", "us-east-1"),
@@ -41,8 +52,36 @@ class AgentConfig:
         "azure_endpoint": os.getenv("AZURE_ENDPOINT", ""),
         "vertex_project": os.getenv("VERTEX_PROJECT", ""),
         "vertex_location": os.getenv("VERTEX_LOCATION", "us-central1"),
+        # Provider- or model-generation-specific kwargs forwarded as-is to
+        # the LangChain chat model constructor (e.g. Claude's `thinking`,
+        # Gemini's `thinking_budget`/`thinking_level`, Azure's
+        # `api_version`). Edit this dict directly for your deployment.
+        #
+        # See .abi/tsd/2026-09-09-routing-decision-model-profiling.md for
+        # why qwen3 needs reasoning=False (thinking mode ON by default costs
+        # ~277s/call vs ~13s off, with no accuracy benefit, on EVERY
+        # reasoning turn — not just plan approval — which reliably triggers
+        # Chainlit's own ~60s disconnect bug #2108).
+        "extra_params": _OLLAMA_EXTRA_PARAMS if os.getenv("LLM_PROVIDER", "ollama") == "ollama" else {},
     }
-    
+
+    # Model used ONLY for the resolve_pending_plan structured decision — the
+    # highest-stakes routing decision (a false "approve" triggers real
+    # build_workflow/Docker execution). Profiled empirically against
+    # qwen3:latest (Ollama): 4/10 correct on approve phrasings with thinking
+    # on, vs 9/10 with reasoning disabled. Bigger local models (granite4.1:8b,
+    # devstral:24b) did NOT close the gap — this is about capability profile,
+    # not raw size. See .abi/specs/orchestrator-unified-routing-contract.md.
+    ROUTING_DECISION_MODEL_NAME: str = os.getenv("ROUTING_DECISION_MODEL_NAME", "qwen3:latest")
+    ROUTING_DECISION_LLM_CONFIG: dict = {
+        "provider": os.getenv("LLM_PROVIDER", "ollama"),
+        "model": os.getenv("ROUTING_DECISION_MODEL_NAME", "qwen3:latest"),
+        "temperature": float(os.environ["LLM_TEMPERATURE"]) if os.getenv("LLM_TEMPERATURE") else None,
+        "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
+        "api_key": os.getenv("LLM_API_KEY", ""),
+        "extra_params": _OLLAMA_EXTRA_PARAMS if os.getenv("LLM_PROVIDER", "ollama") == "ollama" else {},
+    }
+
     # Logging
     LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
     
@@ -88,6 +127,12 @@ class AgentConfig:
     SESSION_TTL: int = int(os.getenv('SESSION_TTL', '3600'))
     SESSION_REDIS_URL: str = os.getenv('SESSION_REDIS_URL', os.getenv('REDIS_URL', ''))
     ABI_SESSION_REQUIRED: bool = os.getenv('ABI_SESSION_REQUIRED', 'false').lower() == 'true'
+
+    # Conversation memory (AbiAgent.record_conversation_turn) — how many
+    # recent turns stay in the active session window before the oldest is
+    # promoted to AMS long-term memory. See
+    # .abi/specs/orchestrator-conversation-memory.md.
+    CONVERSATION_WINDOW: int = int(os.getenv('CONVERSATION_WINDOW', '5'))
 
     # Ollama Configuration (for distributed mode)
     START_OLLAMA: bool = os.getenv('START_OLLAMA', 'false').lower() == 'true'

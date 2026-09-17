@@ -16,7 +16,10 @@ decorator-based step/tool registration:
     @agent.step(
         name="store_data",
         depends_on=["clean_data"],
-        input_map={"data": "$clean_data.result"},
+        # $node_id.key reads `key` from the raw dict clean_data returned above
+        # (no implicit "result" wrapper) — $clean_data with no ".key" suffix
+        # would give you that whole {"cleaned": ...} dict instead.
+        input_map={"data": "$clean_data.cleaned"},
     )
     def store_data(data):
         return {"stored": True}
@@ -79,6 +82,7 @@ class _RegisteredNode:
     retry_delay: float = 1.0
     node_type: str = _NodeType.STEP
     tools: List[str] = field(default_factory=list)
+    timeout: Optional[float] = None
 
 
 @dataclass
@@ -195,6 +199,7 @@ class AbiCore:
         max_retries: int = 3,
         retry_delay: float = 1.0,
         tools: Optional[List[str]] = None,
+        timeout: Optional[float] = None,
     ) -> Callable:
         """Register a deterministic step in the execution DAG.
 
@@ -213,6 +218,10 @@ class AbiCore:
             tools: List of tool names that MUST be called during this step.
                    If declared, the framework enforces usage and falls back
                    to deterministic execution if the LLM doesn't call them.
+            timeout: Wall-clock cap in seconds for a single attempt of this
+                     step. None (default) means unbounded — use for steps
+                     whose cost varies wildly by model/workload (e.g. an LLM
+                     tool-calling step) instead of relying on the DAG-wide cap.
 
         Returns:
             The original function (unmodified).
@@ -230,6 +239,7 @@ class AbiCore:
                     retry_delay=retry_delay,
                     node_type=_NodeType.STEP,
                     tools=tools or [],
+                    timeout=timeout,
                 )
             )
             return fn
@@ -631,6 +641,38 @@ class AbiCore:
             return {}
         return await self._agent_instance.update_session_context(context_id, patch)
 
+    async def record_error(self, context_id: str, error_type: str, message: str) -> None:
+        """Passthrough to the running AbiAgent's ``record_error`` — see
+        ``get_session_context`` for why this exists."""
+        if self._agent_instance is None:
+            return
+        await self._agent_instance.record_error(context_id, error_type, message)
+
+    async def record_pending_plan(self, context_id: str, plan: dict, original_query: str) -> None:
+        """Passthrough to the running AbiAgent's ``record_pending_plan`` —
+        see ``get_session_context`` for why this exists."""
+        if self._agent_instance is None:
+            return
+        await self._agent_instance.record_pending_plan(context_id, plan, original_query)
+
+    async def clear_pending_plan(self, context_id: str) -> None:
+        """Passthrough to the running AbiAgent's ``clear_pending_plan`` —
+        see ``get_session_context`` for why this exists."""
+        if self._agent_instance is None:
+            return
+        await self._agent_instance.clear_pending_plan(context_id)
+
+    async def record_conversation_turn(
+        self, context_id: str, query: str, response_text: str, window: int = 5
+    ) -> None:
+        """Passthrough to the running AbiAgent's ``record_conversation_turn``
+        — see ``get_session_context`` for why this exists."""
+        if self._agent_instance is None:
+            return
+        await self._agent_instance.record_conversation_turn(
+            context_id, query, response_text, window=window
+        )
+
     async def _execute_and_audit(
         self,
         *,
@@ -969,6 +1011,14 @@ class AbiCore:
         graph = ToolExecutionGraph(graph_id="agent")
 
         for entry in self._registered_nodes:
+            if entry.node_type == _NodeType.TOOL and not entry.depends_on:
+                # Standalone @agent.tool() (no depends_on): meant for the LLM to
+                # call on demand, not a DAG participant. A disconnected node with
+                # no dependents becomes an unconditional level-0 entry point in
+                # ToolExecutionGraph (see tool_graph.py's topological sort) — it
+                # would silently run on EVERY request regardless of the query.
+                # Goes to _collect_langchain_tools() / extra_tools instead.
+                continue
             if entry.node_type == _NodeType.MCP_TOOL and entry.fn is None:
                 # Pure MCP tool — use tool name for remote call
                 graph.add_node(
@@ -980,6 +1030,7 @@ class AbiCore:
                         depends_on=entry.depends_on,
                         max_retries=entry.max_retries,
                         retry_delay=entry.retry_delay,
+                        timeout=entry.timeout,
                     )
                 )
             else:
@@ -993,35 +1044,63 @@ class AbiCore:
                         depends_on=entry.depends_on,
                         max_retries=entry.max_retries,
                         retry_delay=entry.retry_delay,
+                        timeout=entry.timeout,
                     )
                 )
 
         steps = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.STEP)
-        tools = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.TOOL)
+        dag_tools = sum(
+            1 for n in self._registered_nodes if n.node_type == _NodeType.TOOL and n.depends_on
+        )
+        standalone_tools = sum(
+            1 for n in self._registered_nodes if n.node_type == _NodeType.TOOL and not n.depends_on
+        )
         mcp = sum(1 for n in self._registered_nodes if n.node_type == _NodeType.MCP_TOOL)
         abi_logging(
-            f"[🔧] ToolExecutionGraph built: {len(self._registered_nodes)} nodes "
-            f"({steps} steps, {tools} tools, {mcp} mcp_tools)"
+            f"[🔧] ToolExecutionGraph built: {len(graph.nodes)} nodes "
+            f"({steps} steps, {dag_tools} dag_tools, {mcp} mcp_tools"
+            + (f", {standalone_tools} standalone tools excluded → LLM-callable" if standalone_tools else "")
+            + ")"
         )
         return graph
 
     def _collect_langchain_tools(self) -> List:
-        """Convert @agent.tool() functions into LangChain StructuredTools."""
-        tool_nodes = [n for n in self._registered_nodes if n.node_type == _NodeType.TOOL]
+        """Convert standalone @agent.tool() functions (no depends_on) into
+        LangChain StructuredTools for the LLM's own tool-calling loop.
+
+        Tools WITH depends_on stay DAG-only (see _build_tool_graph) — their
+        input comes from another step's output via input_map, not from
+        freeform LLM-generated arguments, so exposing them to the LLM would
+        be actively wrong, not just redundant.
+        """
+        tool_nodes = [
+            n for n in self._registered_nodes
+            if n.node_type == _NodeType.TOOL and not n.depends_on
+        ]
         if not tool_nodes:
             return []
+
+        import inspect
 
         from langchain_core.tools import StructuredTool
 
         lc_tools = []
         for entry in tool_nodes:
-            lc_tools.append(
-                StructuredTool.from_function(
-                    func=entry.fn,
-                    name=entry.name,
-                    description=entry.fn.__doc__ or f"Tool: {entry.name}",
-                )
-            )
+            # @agent.tool() functions are conventionally async (this is an
+            # async-native framework — see e.g. ensure_model_available).
+            # StructuredTool.from_function(func=<async fn>) silently runs it
+            # via the SYNC path (self.run(...)), never awaiting it — the
+            # coroutine object itself becomes the "result" and the tool
+            # effectively does nothing. Verified empirically: an async tool
+            # registered via func= gets invoked (the LLM calls it) but its
+            # body never runs, so the LLM sees no usable output. coroutine=
+            # is the correct slot for an async callable.
+            kwargs = dict(name=entry.name, description=entry.fn.__doc__ or f"Tool: {entry.name}")
+            if inspect.iscoroutinefunction(entry.fn):
+                kwargs["coroutine"] = entry.fn
+            else:
+                kwargs["func"] = entry.fn
+            lc_tools.append(StructuredTool.from_function(**kwargs))
 
         abi_logging(f"[🔧] {len(lc_tools)} LangChain tools created from @agent.tool()")
         return lc_tools
@@ -1072,13 +1151,15 @@ class AbiCore:
         if tool_graph is not None:
             agent_instance.tool_graph = tool_graph
 
-        # Inject LangChain tools from @agent.tool() into agent
+        # Inject LangChain tools from standalone @agent.tool() (no depends_on)
+        # into agent, and rebuild self.agent so they're actually bound — __init__
+        # already built self.agent with an empty extra_tools before run() ever
+        # saw this instance, so a rebuild is required, not optional (see
+        # AbiAgent._build_langchain_agent's docstring).
         lc_tools = self._collect_langchain_tools()
         if lc_tools:
-            if hasattr(agent_instance, "extra_tools"):
-                agent_instance.extra_tools.extend(lc_tools)
-            else:
-                agent_instance.extra_tools = lc_tools
+            agent_instance.extra_tools.extend(lc_tools)
+            agent_instance._build_langchain_agent()
 
         # Inject registered tasks and execute_step into agent
         if self._registered_tasks:

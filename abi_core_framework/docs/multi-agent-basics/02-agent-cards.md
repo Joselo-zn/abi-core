@@ -31,7 +31,7 @@ An agent card is a JSON file that tells the world what your agent can do and how
   ],
   "llmConfig": {
     "provider": "ollama",
-    "model": "qwen2.5:3b"
+    "model": "qwen3:latest"
   },
   "auth": {
     "method": "hmac_sha256",

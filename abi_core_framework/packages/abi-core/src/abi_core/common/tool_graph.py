@@ -7,7 +7,10 @@ execution order — the LLM never decides which tool to call next.
 
 Supports:
 - DAG-based deterministic execution via LangGraph
-- $-reference resolution between nodes (e.g. $input.user_query, $step1.result)
+- $-reference resolution between nodes: $node_id.key reads `key` from the RAW
+  dict that node's function returned (no implicit "result" wrapper — a bare
+  $node_id with no ".key" suffix returns that whole dict). E.g. $input.user_query,
+  $step1.some_field_step1_returned
 - Checkpoint/resume on failures (LangGraph state is preserved)
 - Construction from JSON config or programmatic API
 - Retry with exponential backoff per node
@@ -102,6 +105,7 @@ class ToolGraphNode:
     depends_on: List[str] = field(default_factory=list)
     max_retries: int = 3
     retry_delay: float = 1.0
+    timeout: Optional[float] = None  # per-node wall-clock cap, seconds; None = unbounded
     # Runtime state
     status: NodeStatus = NodeStatus.PENDING
     result: Any = None
@@ -374,11 +378,21 @@ class ToolExecutionGraph:
                     # Dispatch: local fn or MCP tool
                     if local_fn:
                         if inspect.iscoroutinefunction(local_fn):
-                            result = await local_fn(**resolved_args)
+                            call = local_fn(**resolved_args)
+                            result = (
+                                await asyncio.wait_for(call, timeout=node.timeout)
+                                if node.timeout
+                                else await call
+                            )
                         else:
                             result = local_fn(**resolved_args)
                     else:
-                        result = await toolkit.call(node.tool, **resolved_args)
+                        call = toolkit.call(node.tool, **resolved_args)
+                        result = (
+                            await asyncio.wait_for(call, timeout=node.timeout)
+                            if node.timeout
+                            else await call
+                        )
 
                     if isinstance(result, dict) and "error" in result:
                         raise RuntimeError(result["error"])
@@ -403,6 +417,17 @@ class ToolExecutionGraph:
                         "status": GraphStatus.RUNNING.value,
                     }
 
+                except asyncio.TimeoutError:
+                    last_error = f"Node '{node.id}' exceeded its {node.timeout}s timeout"
+                    node.attempts = attempt + 1
+                    abi_logging(
+                        f"[⚠️] Node '{node.id}' attempt {attempt + 1}/{node.max_retries}: {last_error}",
+                        level="warning",
+                    )
+                    if attempt < node.max_retries - 1:
+                        wait = node.retry_delay * (attempt + 1)
+                        await asyncio.sleep(wait)
+                    continue
                 except Exception as e:
                     last_error = str(e)
                     node.attempts = attempt + 1

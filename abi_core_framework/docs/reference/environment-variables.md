@@ -6,14 +6,16 @@ All variables are set in `compose.yaml` per service. Agents read them via `confi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MODEL_NAME` | `qwen2.5:3b` | LLM model name |
+| `MODEL_NAME` | `qwen3:latest` | LLM model name |
 | `OLLAMA_HOST` | `http://<project>-ollama:11434` | Ollama server URL |
-| `LLM_PROVIDER` | `ollama` | Provider: ollama, openai, gemini, grok, anthropic, bedrock, azure |
+| `LLM_PROVIDER` | `ollama` | Provider: ollama, openai, gemini, grok, anthropic, bedrock, azure, vertex |
 | `LLM_API_KEY` | — | API key for cloud providers |
-| `LLM_TEMPERATURE` | `0.1` | LLM temperature |
+| `LLM_TEMPERATURE` | unset (provider default) | LLM temperature. Leave unset for models where the provider must pick it — e.g. Claude 4.7+ rejects any explicit `temperature`/`top_p`/`top_k` outright (HTTP 400), unconditionally, not just with extended thinking. Set explicitly only for providers/models that still honor it. |
 | `AGENT_PORT` | auto-assigned | A2A protocol port |
 | `WEB_INTERFACE_PORT` | auto-assigned | HTTP/SSE port (if web interface enabled) |
 | `LOG_LEVEL` | `INFO` | DEBUG, INFO, WARNING, ERROR |
+| `ABI_REASONING_TIMEOUT` | `180` | Seconds a single reasoning turn (routing decision, planner call, synthesis) may run before the agent gives up and reports a timeout to the user |
+| `ABI_DAG_MAX_WAIT` | `900` | Seconds a full DAG execution (tool-calling pipeline) may run before giving up — separate and more generous than `ABI_REASONING_TIMEOUT` because a DAG step can itself be a slow LLM tool-calling call. See [Troubleshooting → Timeout reported but the work finished anyway](../production/03-troubleshooting.md#timeout-reported-but-the-work-finished-anyway). |
 
 ## Semantic Layer
 
@@ -42,7 +44,8 @@ All variables are set in `compose.yaml` per service. Agents read them via `confi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ARTIFACT_ENDPOINT` | `http://<project>-minio:9000` | MinIO URL |
+| `ARTIFACT_ENDPOINT` | `http://<project>-minio:9000` | MinIO URL used for internal I/O (upload/download between services) — an in-Docker-network address, not reachable from a browser |
+| `ARTIFACT_PUBLIC_ENDPOINT` | falls back to `ARTIFACT_ENDPOINT` | MinIO URL used **only** when generating a presigned download link for a human (e.g. a link in a chat response). Set this to whatever host the user's browser can actually reach — `http://localhost:9000` in local dev, or your real public hostname/reverse-proxy in production. Must be the S3 API endpoint (same port as `ARTIFACT_ENDPOINT`, typically 9000) — MinIO's Console UI port (9001) does not validate presigned URLs, it just serves the Console's own app shell. |
 | `ARTIFACT_ACCESS_KEY` | `minioadmin` | MinIO access key |
 | `ARTIFACT_SECRET_KEY` | `minioadmin` | MinIO secret key |
 | `ARTIFACT_BUCKET` | `abi-artifacts` | Default bucket |
@@ -53,13 +56,13 @@ All variables are set in `compose.yaml` per service. Agents read them via `confi
 ## Agent Memory (Redis AMS)
 
 ```{note}
-**Alpha.** The Agent Memory Server is provisioned by the ABI Swarm scaffolding, which
-is under active development. These variables may change between releases.
+**Alpha.** The Agent Memory Server integration is under active development. These
+variables may change between releases.
 ```
 
-The swarm scaffolding provisions a Redis 8 instance and a Redis Agent Memory Server
-(AMS) for system-wide short-term (working) and long-term memory. Agents reach it
-over the Docker network.
+`abi-core add service agent-memory` provisions a Redis 8 instance and a Redis Agent
+Memory Server (AMS) for system-wide short-term (working) and long-term memory.
+Agents reach it over the Docker network.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -73,9 +76,9 @@ AMS service configuration (set on the `<project>-agent-memory` service in `compo
 | `REDIS_URL` | `redis://<project>-redis-stack:6379` | Redis 8 backing store |
 | `DISABLE_AUTH` | `true` | Disable auth (local/dev only) |
 | `LONG_TERM_MEMORY` | `true` | Enable long-term (vector) memory |
-| `GENERATION_MODEL` | `ollama/qwen2.5:3b` | LLM for summarization/extraction (via LiteLLM) |
-| `FAST_MODEL` | `ollama/qwen2.5:3b` | Model for topic extraction / NER |
-| `SLOW_MODEL` | `ollama/qwen2.5:3b` | Model for complex tasks |
+| `GENERATION_MODEL` | `ollama/qwen3:latest` | LLM for summarization/extraction (via LiteLLM) |
+| `FAST_MODEL` | `ollama/qwen3:latest` | Model for topic extraction / NER |
+| `SLOW_MODEL` | `ollama/qwen3:latest` | Model for complex tasks |
 | `EMBEDDING_MODEL` | `ollama/nomic-embed-text:v1.5` | Embedding model (768 dims) |
 | `OLLAMA_API_BASE` | `http://ollama:11434` | Ollama endpoint for LiteLLM |
 | `REDISVL_VECTOR_DIMENSIONS` | `768` | Vector dimensions (must match embedding model) |

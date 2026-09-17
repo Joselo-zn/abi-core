@@ -35,7 +35,11 @@ class AgentConfig:
     LLM_CONFIG: dict = {
         "provider": os.getenv("LLM_PROVIDER", "ollama"),
         "model": os.getenv("MODEL_NAME", "{{ model_name }}"),
-        "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
+        # None (unset) lets create_llm() omit temperature entirely, so the
+        # provider uses its own default — required for e.g. Claude models
+        # with extended thinking, which reject any explicit temperature
+        # other than 1. Set LLM_TEMPERATURE explicitly to override.
+        "temperature": float(os.environ["LLM_TEMPERATURE"]) if os.getenv("LLM_TEMPERATURE") else None,
         "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://ollama:11434")),
         "api_key": os.getenv("LLM_API_KEY", ""),
         # Cloud-specific (only used when provider requires them)
@@ -44,6 +48,11 @@ class AgentConfig:
         "azure_endpoint": os.getenv("AZURE_ENDPOINT", ""),
         "vertex_project": os.getenv("VERTEX_PROJECT", ""),
         "vertex_location": os.getenv("VERTEX_LOCATION", "us-central1"),
+        # Provider- or model-generation-specific kwargs forwarded as-is to
+        # the LangChain chat model constructor (e.g. Claude's `thinking`,
+        # Gemini's `thinking_budget`/`thinking_level`, Azure's
+        # `api_version`). Edit this dict directly for your deployment.
+        "extra_params": {},
     }
     
     # Logging

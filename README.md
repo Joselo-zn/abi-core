@@ -178,7 +178,7 @@ from a2a.types import AgentCard
 class MyAgentConfig:
     AGENT_NAME = os.getenv("AGENT_NAME", "my-agent")
     AGENT_PORT = int(os.getenv("AGENT_PORT", "8001"))
-    MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:3b")
+    MODEL_NAME = os.getenv("MODEL_NAME", "qwen3:latest")
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     LLM_CONFIG = {
         "provider": "ollama",
@@ -300,7 +300,7 @@ AGENT_PORT=8001
 ABI_ROLE=my-agent
 
 # LLM
-MODEL_NAME=qwen2.5:3b
+MODEL_NAME=qwen3:latest
 OLLAMA_HOST=http://my-swarm-ollama:11434
 LLM_PROVIDER=ollama
 
@@ -324,7 +324,7 @@ project:
   name: "my-swarm"
   version: "1.0.0"
   model_serving: "centralized"
-  default_model: "qwen2.5:3b"
+  default_model: "qwen3:latest"
 
 agents:
   orchestrator:

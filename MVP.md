@@ -48,7 +48,7 @@ The Planner was refactored to produce structured plans:
       "description": "Create a shell script...",
       "steps": ["write_file with content", "verify with list_files"],
       "tools_needed": ["write_file", "list_files"],
-      "model": "qwen2.5:3b",
+      "model": "qwen3:latest",
       "dependencies": []
     }
   ]

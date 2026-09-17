@@ -118,6 +118,18 @@ async def assign_agents(plan_data):
         task_desc = task.get("description", "")
         task_id = task.get("task_id", "unknown")
 
+        if task.get("direct_tool"):
+            # Fixed framework tool (e.g. write_pdf), executed by the Planner
+            # itself — no ephemeral agent needed, skip the semantic agent
+            # search entirely. See .abi/specs/planner-direct-tool-pdf.md.
+            task["type"] = "direct_tool"
+            task["agents"] = []
+            abi_logging(
+                f"[⚡] Task '{task_id}': direct_tool='{task['direct_tool']}' → "
+                f"Planner executes directly, no agent search"
+            )
+            continue
+
         found_agent = await tool_find_agent.ainvoke(task_desc)
 
         if found_agent:

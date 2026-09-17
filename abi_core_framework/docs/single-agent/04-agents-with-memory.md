@@ -88,7 +88,7 @@ The two kinds of memory are different:
 - **Agent memory** — the conversation thread of a single agent (`thread_id`, in-process). Local and volatile.
 - **System memory** — a global store shared across the swarm, persisted in Redis. It captures events that matter to the whole system (e.g. a pending clarification, results of past tasks), survives restarts, and any agent can query it.
 
-The swarm scaffolding (`abi-core create swarm`) provisions system memory automatically with two services:
+`abi-core add service agent-memory` provisions system memory with two services:
 
 - `<project>-redis-stack` — Redis 8 (backing store)
 - `<project>-agent-memory` — Redis Agent Memory Server (working + long-term memory)

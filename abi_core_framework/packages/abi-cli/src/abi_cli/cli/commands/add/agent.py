@@ -14,7 +14,7 @@ from .compose import _update_compose_with_agent, _update_compose_with_agent_card
 @click.command("agent")
 @click.option('--name', '-n', required=True, help='Agent name')
 @click.option('--description', '-d', help='Agent description')
-@click.option('--model', default='qwen2.5:3b', help='LLM model to use')
+@click.option('--model', default='qwen3:latest', help='LLM model to use')
 @click.option('--with-web-interface', is_flag=True, help='Include web interface for HTTP/SSE access')
 def add_agent(name, description, model, with_web_interface):
     """Add a new agent to the project"""

@@ -32,7 +32,7 @@ def provision_models(force):
     # Read runtime configuration
     try:
         with open(runtime_file, 'r') as f:
-            runtime_config = yaml.safe_load(f)
+            runtime_config = yaml.safe_load(f) or {}
     except Exception as e:
         click.echo(f"❌ Error reading runtime.yaml: {e}")
         return 1
@@ -59,7 +59,7 @@ def provision_models(force):
         context = {
             'project_name': project_name,
             'project_dir': project_name.lower().replace(' ', '-').replace('_', '-'),
-            'model_name': runtime_config.get('project', {}).get('default_model', 'qwen2.5:3b'),
+            'model_name': runtime_config.get('project', {}).get('default_model', 'qwen3:latest'),
             'embedding_model': 'nomic-embed-text:v1.5',
             'model_serving': model_serving,
             'agents': agents

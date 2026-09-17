@@ -38,6 +38,8 @@ async def gather_context(query):
     input_map={"context": "$gather_context", "query": "$input.query"},
     depends_on=["gather_context"],
     tools=["write_file"],
+    timeout=config.EXECUTION_TIMEOUT,
+    max_retries=1,
 )
 async def analyze_and_execute(context, query):
     """Phase 2: LLM autonomous execution with tools, enriched with memory context."""

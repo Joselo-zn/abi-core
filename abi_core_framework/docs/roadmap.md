@@ -13,7 +13,7 @@ What's working today:
 - ✅ Orchestrator + Planner + Builder agents *(alpha)*
 - ✅ Ephemeral agent creation (Docker containers on-demand) *(alpha)*
 - ✅ Artifact Store (MinIO)
-- ✅ CLI scaffolding (create project, add agent, create swarm *(alpha)*)
+- ✅ CLI scaffolding (create project, add agent)
 - ✅ Web interface (SSE streaming, Open WebUI compatible)
 - ✅ Task orchestration v2 (parallel, depends_on, routing)
 - ✅ MCPToolkit (dynamic MCP tool access)
@@ -24,7 +24,7 @@ What's working today:
 What's being worked on:
 
 - 🔄 Plan Confirmation — user approves plan before execution
-- 🔄 Context Engine (Redis / Agent Memory Server) — shared system memory across agents *(alpha: AMS deployed in swarm scaffolding)*
+- 🔄 Context Engine (Redis / Agent Memory Server) — shared system memory across agents *(alpha: AMS deployed via `abi-core add service agent-memory`)*
 - 🔄 TUI improvements — interactive terminal dashboard
 - 🔄 Result validation — verify agent outputs against schemas
 - 🔄 Swarm knowledge base — persistent learning across sessions

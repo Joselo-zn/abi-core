@@ -40,6 +40,15 @@ class PlanTask(BaseModel):
     description: str = Field(..., min_length=10, max_length=500, description="Clear, actionable instruction for the executing agent")
     dependencies: List[str] = Field(default_factory=list, description="task_ids this task depends on")
     target: Optional[TaskTarget] = Field(None, description="What this task produces — tag identifies the artifact")
+    direct_tool: Optional[Literal["write_pdf"]] = Field(
+        None,
+        description=(
+            "Set ONLY when this task's deliverable is a fixed, simple artifact "
+            "producible by a known framework tool without any generated/executed "
+            "code — today: a PDF. When set, the Planner executes it directly "
+            "(no ephemeral agent). See .abi/specs/planner-direct-tool-pdf.md."
+        ),
+    )
 
     @field_validator("description")
     @classmethod

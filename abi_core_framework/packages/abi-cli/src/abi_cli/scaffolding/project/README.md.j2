@@ -118,7 +118,7 @@ Policies are defined in `services/guardian/opa/policies/` using Rego language:
 
 3. **Initialize Ollama models:**
    ```bash
-   docker exec {{ project_dir }}-ollama ollama pull {{ model_name | default('qwen2.5:3b') }}
+   docker exec {{ project_dir }}-ollama ollama pull {{ model_name | default('qwen3:latest') }}
    {% if with_semantic_layer %}
    docker exec {{ project_dir }}-ollama ollama pull {{ embedding_model | default('nomic-embed-text:v1.5') }}
    {% endif %}
@@ -186,7 +186,7 @@ Policies are defined in `services/guardian/opa/policies/` using Rego language:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ABI_ROLE` | {{ project_name }} | ABI role identifier |
-| `MODEL_NAME` | {{ model_name | default('qwen2.5:3b') }} | Primary LLM model |
+| `MODEL_NAME` | {{ model_name | default('qwen3:latest') }} | Primary LLM model |
 | `OLLAMA_HOST` | http://localhost:11434 | Ollama service URL |
 {% if with_semantic_layer %}
 | `SEMANTIC_LAYER_HOST` | http://localhost:10100 | Semantic layer service URL |

@@ -1,26 +1,27 @@
 """Orchestrator Agent — Steps.
 
-DAG:
+DAG (deterministic, runs before the LLM gets any freedom — see
+.abi/tsd/2026-08-2X-orchestrator-tool-call-routing.md):
   classify_query | guardian_validate  (parallel)
     -> gate_decision
-      -> call_planner
-        -> extract_plan
-          -> check_model_availability  (tools.py, @agent.tool, read-only)
 
-`build_workflow` (below) is NOT part of this DAG — it actually calls the
-Builder and creates Docker containers for build_and_execute tasks, so it must
-only run after the user approves the plan (Plan Confirmation). It's a plain
-function, called directly by orchestrator.py::stream() once approved.
+`classify_query` only does sentinel matching (button clicks) and peeks at
+pending clarification/plan state — no LLM call. Everything that used to be
+`call_planner` -> `extract_plan` -> `check_model_availability` (tools.py) is
+no longer part of the DAG: the decision to call the Planner now comes from
+the Orchestrator's reasoning turn (a tool call, not a DAG classification),
+which doesn't exist yet when this DAG runs — same reason `build_workflow`
+was never a DAG node. They're plain functions now, called directly by
+`orchestrator.py::_call_planner_and_respond`.
 """
 
 import json
 
 from app import agent
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, format_plan_summary, format_conversation_summary
 from abi_core.common.a2a_response import A2AResponse
 from abi_core.common.semantic_tools import tool_find_agent, MCPToolkit
 from abi_core.common.workflow import AgentInteractionFlow, InteractionFlowNode
-from abi_core.common import prompts
 from a2a.types import AgentCard
 from abi_core.common.agent_card_loader import build_agent_card, get_agent_url
 from abi_core.agent.agent import AbiAgent
@@ -32,14 +33,24 @@ INFRA_AGENTS = {"builder", "planner", "orchestrator", "guardian", "semantic-laye
 # Working-memory topic used to mark a session awaiting a planner clarification
 PENDING_CLARIFICATION_TOPIC = "pending_clarification"
 
-# Sentinels + pending-plan classification: framework-level since 2026-08-03,
-# see abi_core.agent.plan_confirmation (extracted so a standalone agent can
-# use the same confirm/reject/modify state machine, not just the swarm).
+# Sentinel the ClarificationForm custom element sends (chainlit_app.py) —
+# same "deterministic, zero-LLM" pattern as PLAN_CONFIRM_APPROVE/REJECT/MODIFY
+# below, applied to clarification answers. See
+# .abi/specs/deterministic-clarification-answers.md.
+CLARIFICATION_ANSWER_SENTINEL = "__clarification_answer__"
+
+# Sentinels: framework-level since 2026-08-03, see abi_core.agent.plan_confirmation
+# (extracted so a standalone agent can use the same confirm/reject/modify state
+# machine, not just the swarm). classify_plan_confirmation_sentinel is the sync,
+# zero-LLM sentinel-only slice of it (2026-08 tool-call routing redesign) —
+# free-text interpretation of a pending plan is now the reasoning turn's job
+# (resolve_pending_plan action, see build_routing_contract below and
+# abi_core.agent.routing_tools), not this DAG's.
 from abi_core.agent.plan_confirmation import (
     PLAN_CONFIRM_APPROVE,
     PLAN_CONFIRM_REJECT,
     PLAN_CONFIRM_MODIFY,
-    classify_plan_confirmation_reply,
+    classify_plan_confirmation_sentinel,
 )
 
 
@@ -52,66 +63,63 @@ from abi_core.agent.plan_confirmation import (
     },
 )
 async def classify_query(query, context_id="", session_context=None):
-    """Classify query as simple or complex using the orchestrator's LLM.
-
-    Two deterministic short-circuits run before the LLM triage:
-
-    1. A pending plan awaiting the user's approve/reject/modify decision.
-       This is *session* context (not a system-level memory event) — passed
-       in via $input.session_context because this function has no `self`/
-       session_backend access; orchestrator.py::stream() reads/writes it.
-    2. A pending clarification answer (system-level event in short-term
-       memory — see _load_pending_clarification).
+    """Sentinel check + pending-clarification peek. No LLM call — everything
+    that needs to interpret free text (is this a confirmation reply? does it
+    answer the pending clarification? is it a new complex request?) is the
+    reasoning turn's job now (orchestrator.py::_reasoning_turn), not this
+    step's. `session_context` is passed in via $input because this function
+    has no `self`/session_backend access — orchestrator.py reads/writes it.
     """
-    from abi_core.agent.llm_provider import invoke
-    from abi_core.common.utils import clean_llm_json
-
-    # ── Deterministic check: is this a plan-confirmation reply? ──
     session_context = session_context or {}
-    plan_reply = classify_plan_confirmation_reply(query, session_context)
-    if plan_reply is not None:
-        abi_logging(f"[🔁] Plan confirmation: {plan_reply['classification']} for session '{context_id}'")
-        return plan_reply
 
-    # ── Deterministic check: is this a pending clarification answer? ──
-    pending = await _load_pending_clarification(context_id)
-    if pending:
-        abi_logging(f"[🔁] Clarification answer detected for session '{context_id}'")
-        return {
-            "classification": "clarification_response",
-            "original_query": pending.get("original_query", ""),
-            "clarification": pending.get("clarification", ""),
-            "user_answer": query,
-        }
+    # ── Deterministic check: is this a plan-confirmation button click? ──
+    sentinel_result = classify_plan_confirmation_sentinel(query, session_context)
+    if sentinel_result is not None:
+        abi_logging(f"[🔁] Plan confirmation sentinel: {sentinel_result['classification']} for session '{context_id}'")
+        return sentinel_result
 
-    try:
-        text = await invoke(
-            config.LLM_CONFIG,
-            prompts.ORCHESTRATOR_TRIAGE_PROMPT.format(query=query),
-        )
-        parsed = clean_llm_json(text)
-        classification = parsed.get("classification", "complex")
+    # ── Peek (never clear here) at a pending clarification, if any ──
+    pending_clarification = await _peek_pending_clarification(context_id)
 
-        if classification not in ("simple", "complex"):
-            classification = "complex"
+    # ── Deterministic check: is this the clarification form's submit? ──
+    # Same reasoning as the plan-confirmation sentinel above — the form
+    # (chainlit_app.py's ClarificationForm custom element) sends a JSON
+    # payload instead of free text specifically so this never has to be an
+    # LLM guess. Root cause this replaces: the reasoning turn's
+    # `resolve_pending_clarification` decision used the *default* model
+    # (never the profiled-better one — see
+    # .abi/tsd/2026-09-09-routing-decision-model-profiling.md, which only
+    # covered `resolve_pending_plan`), and a misclassified short reply
+    # discarded the real `original_query`, replacing it with just the
+    # fragment — reproduced live, see
+    # .abi/specs/deterministic-clarification-answers.md. Only trusted when
+    # a clarification is genuinely pending — a form submitted for a stale
+    # session with no pending clarification falls through to
+    # reasoning_required like any other message, same "orphaned" safety net
+    # already in place for plan-confirmation sentinels.
+    if pending_clarification:
+        try:
+            parsed = json.loads(query)
+        except (json.JSONDecodeError, TypeError):
+            parsed = None
+        if isinstance(parsed, dict) and parsed.get("_sentinel") == CLARIFICATION_ANSWER_SENTINEL:
+            abi_logging(f"[🔁] Clarification form submitted for session '{context_id}'")
+            return {
+                "classification": "clarification_answered",
+                "answers": parsed.get("answers", {}),
+                "pending_clarification": pending_clarification,
+            }
 
-        abi_logging(f"[🔍] Triage: '{classification}' for query: {query[:80]}")
-        return {"classification": classification}
-
-    except Exception as e:
-        abi_logging(f"[⚠️] Triage failed, defaulting to complex: {e}")
-        return {"classification": "complex"}
+    return {"classification": "reasoning_required", "pending_clarification": pending_clarification or None}
 
 
-async def _load_pending_clarification(context_id: str) -> dict:
+async def _peek_pending_clarification(context_id: str) -> dict:
     """Return the pending-clarification event for a session, or {} if none.
-
-    The event is a system-level signal stored in short-term (working) memory by
-    the orchestrator when it emits an ``input_required``. Reading it is best
-    effort: if memory is unavailable, we degrade to normal triage (returns {}).
-
-    On a hit, the event is cleared so the next normal request in the session is
-    not misinterpreted as another clarification answer.
+    Read-only — unlike the pre-redesign `_load_pending_clarification`, this
+    does NOT clear it. Clearing now only happens when the reasoning turn's
+    `resolve_pending_clarification` tool is actually called (orchestrator.py)
+    — never just because a message arrived while one was pending, which was
+    the root cause of the "no hablo ingles" bug this redesign fixes.
     """
     if not config.AGENT_MEMORY_URL or not context_id:
         return {}
@@ -136,10 +144,7 @@ async def _load_pending_clarification(context_id: str) -> dict:
         if not last_pending:
             return {}
 
-        payload = _extract_clarification_payload(last_pending)
-        if payload:
-            await _clear_pending_clarification(context_id)
-        return payload
+        return _extract_clarification_payload(last_pending)
     except Exception as e:
         abi_logging(f"[⚠️] Could not read pending clarification: {e}")
         return {}
@@ -287,19 +292,10 @@ def gate_decision(triage, guardian, query):
     # Guardian approved — proceed based on triage
     classification = triage.get("classification", "complex")
 
-    # Clarification answer — deterministically route to planner with enriched query
-    if classification == "clarification_response":
-        original = triage.get("original_query", "")
-        answer = triage.get("user_answer", query)
-        enriched = (
-            f"{original}\n\nUser clarification: {answer}"
-            if original else answer
-        )
-        abi_logging("[🔁] Gate: clarification answer, re-routing to planner")
-        return {"action": "call_planner", "query": enriched}
-
-    # Plan confirmation replies — deterministic, no planner/builder involved
-    # except for "call_planner" via plan_modify_feedback below.
+    # Plan confirmation replies via sentinel (button click) — deterministic,
+    # no planner/builder involved, no LLM. Free-text replies to a pending
+    # plan/clarification no longer classify here at all — that's the
+    # reasoning turn's job (orchestrator.py::_reasoning_turn), see below.
     if classification == "plan_confirmed":
         abi_logging("[✅] Gate: plan confirmed by user")
         return {"action": "execute_confirmed_plan", "plan": triage.get("pending_plan")}
@@ -312,45 +308,70 @@ def gate_decision(triage, guardian, query):
         abi_logging("[✏️] Gate: user wants to modify the plan")
         return {"action": "plan_modify_requested"}
 
-    if classification == "plan_modify_feedback":
-        original = triage.get("original_query", "")
-        feedback = triage.get("feedback", query)
-        enriched = f"{original}\n\nCambios solicitados: {feedback}" if original else feedback
-        abi_logging("[🔁] Gate: plan modification feedback, re-routing to planner")
-        return {"action": "call_planner", "query": enriched}
+    if classification == "clarification_answered":
+        abi_logging("[✅] Gate: clarification form answered by user")
+        return {
+            "action": "clarification_answered",
+            "answers": triage.get("answers", {}),
+            "pending_clarification": triage.get("pending_clarification"),
+        }
 
-    if classification == "simple":
-        abi_logging(f"[✅] Gate: simple query, responding directly")
-        return {"action": "respond_direct", "query": query}
-    else:
-        abi_logging(f"[✅] Gate: complex query, calling planner")
-        return {"action": "call_planner", "query": query}
+    if classification == "plan_confirmation_orphaned":
+        # query looked like an approve/reject/modify reply, but there's no
+        # pending plan in this session to apply it to — most likely lost
+        # session continuity (no token, so each request lands in a fresh
+        # anonymous context). Say so instead of silently planning around the
+        # literal word "aprobado"/"sí"/etc.
+        abi_logging("[⚠️] Gate: plan-confirmation-looking reply with no pending plan", level="warning")
+        return {"action": "plan_confirmation_orphaned"}
+
+    # classification == "reasoning_required" — everything else (new request,
+    # clarification reply, or free text about a pending plan) goes to the
+    # LLM's own reasoning turn with tools, instead of being pre-classified
+    # here by code.
+    abi_logging("[🧠] Gate: handing off to the reasoning turn")
+    return {"action": "reasoning_turn", "pending_clarification": triage.get("pending_clarification")}
 
 
-# ── Level 2+: Planning pipeline (only runs if gate says call_planner) ──
+# ── Routing contract — plain function, NOT a DAG node ────────────
+#
+# Only needed when gate_decision produced action="reasoning_turn" — every
+# other action (execute_confirmed_plan, blocked, system_error, ...) skips it
+# entirely, same reasoning as why call_planner/build_workflow below aren't
+# DAG nodes either. Called directly by orchestrator.py::stream(). See
+# .abi/specs/orchestrator-unified-routing-contract.md.
 
-@agent.step(
-    name="call_planner",
-    depends_on=["gate_decision"],
-    input_map={
-        "gate": "$gate_decision",
-        "query": "$input.query",
-        "context_id": "$input.context_id",
-        "task_id": "$input.task_id",
-    },
-)
-async def call_planner(gate, query, context_id, task_id):
-    """Call Planner agent and return raw A2A results.
-
-    Skips if gate_decision action is not 'call_planner'.
+def build_routing_contract(query: str, session_ctx: dict, pending_clarification: dict) -> dict:
+    """Deterministically assemble the one contract shape the reasoning
+    turn's structured decision is built against — same shape regardless of
+    whether a plan/clarification is pending or nothing is. `valid_actions`
+    is computed here, once, instead of being recomputed (and able to
+    diverge) in the LLM-facing prompt-building code.
     """
-    if gate.get("action") != "call_planner":
-        return {"gate_passthrough": gate}
+    pending_plan = session_ctx.get("pending_plan")
 
-    # The gate may carry an enriched query (e.g. a clarification answer combined
-    # with the original request). Prefer it over the raw input query.
-    query = gate.get("query") or query
+    if pending_plan:
+        valid_actions = ["resolve_pending_plan", "answer_directly"]
+    elif pending_clarification:
+        valid_actions = ["resolve_pending_clarification", "answer_directly"]
+    else:
+        valid_actions = ["create_plan", "answer_directly"]
 
+    return {
+        "query": query,
+        "recent_conversation_summary": format_conversation_summary(session_ctx.get("conversation_summary")),
+        "pending_plan_summary": format_plan_summary(pending_plan) if pending_plan else None,
+        "pending_clarification_question": pending_clarification.get("clarification"),
+        "valid_actions": valid_actions,
+        # Consumed by the caller right after this call (see orchestrator.py's
+        # stream()) — shows up exactly once, on the turn right after the
+        # failure, never again. See .abi/specs/orchestrator-last-error-awareness.md.
+        "recent_error_summary": session_ctx.get("last_error"),
+    }
+
+
+async def call_planner(query, context_id, task_id):
+    """Call Planner agent and return raw A2A results."""
     abi_logging(f"[📞] Calling Planner: {query}")
 
     planner_card = await tool_find_agent.ainvoke({"query": "planner"})
@@ -377,25 +398,16 @@ async def call_planner(gate, query, context_id, task_id):
     return results
 
 
-@agent.step(
-    name="extract_plan",
-    depends_on=["call_planner"],
-    input_map={"planner_results": "$call_planner"},
-)
 def extract_plan(planner_results):
     """Extract execution plan from Planner results using A2AResponse."""
-    # Gate passthrough — not a planner response
-    if isinstance(planner_results, dict) and "gate_passthrough" in planner_results:
-        return planner_results
-
     abi_logging(f"[🔍] extract_plan received {len(planner_results)} results")
     for i, r in enumerate(planner_results):
         parsed = A2AResponse.parse(r)
         abi_logging(f"  [{i}] {parsed}")
 
-    needs_clarification, msg = A2AResponse.find_clarification(planner_results)
+    needs_clarification, msg, questions = A2AResponse.find_clarification(planner_results)
     if needs_clarification:
-        return {"clarification": msg}
+        return {"clarification": msg, "questions": questions}
 
     plan = A2AResponse.find_plan(planner_results)
     if not plan:
@@ -408,12 +420,13 @@ def extract_plan(planner_results):
 async def build_workflow(plan_result, context_id, task_id):
     """Build AgentInteractionFlow from the extracted plan.
 
-    NOT a DAG step (no @agent.step) — this function calls the Builder for
-    real (build_flow.run_workflow() below actually creates Docker containers
-    for build_and_execute/create_tools_and_execute tasks), so it must only
-    run *after* the user has approved the plan. orchestrator.py::stream()
-    calls it directly once a plan is confirmed; check_model_availability
-    (tools.py, @agent.tool, read-only) is the DAG's terminal node instead.
+    NOT a DAG step — this function calls the Builder for real
+    (build_flow.run_workflow() below actually creates Docker containers for
+    build_and_execute/create_tools_and_execute tasks), so it must only run
+    *after* the user has approved the plan. orchestrator.py::stream() calls
+    it directly once a plan is confirmed. Same reasoning as call_planner/
+    extract_plan/check_model_availability (tools.py) — none of these are DAG
+    nodes anymore since the 2026-08 tool-call routing redesign.
 
     Handles three task types:
     - "execute": agent exists → add directly to workflow
@@ -452,6 +465,17 @@ async def build_workflow(plan_result, context_id, task_id):
         if not builder_card:
             return {"error": "Builder agent not found — cannot create ephemeral agents"}
         abi_logging(f"[🔧] Builder agent found: {builder_card.name}")
+
+    # Find planner once (reused for all direct_tool tasks — see
+    # .abi/specs/planner-direct-tool-pdf.md). The Planner executes these
+    # itself; no Builder, no ephemeral container.
+    planner_card = None
+    needs_planner_direct = any(t.get("type") == "direct_tool" for t in tasks)
+    if needs_planner_direct:
+        planner_card = await tool_find_agent.ainvoke({"query": "planner"})
+        if not planner_card:
+            return {"error": "Planner agent not found — cannot execute direct_tool tasks"}
+        abi_logging(f"[🔧] Planner agent found for direct_tool: {planner_card.name}")
 
     for task in tasks:
         tid = task.get("task_id")
@@ -584,12 +608,34 @@ async def build_workflow(plan_result, context_id, task_id):
                 f"[✅] Task {tid}: ephemeral agent '{ephemeral_agent.get('name')}' "
                 f"ready at {ephemeral_agent.get('url')}"
             )
+
+        elif task_type == "direct_tool":
+            # Fixed framework tool (e.g. write_pdf) — the Planner executes it
+            # directly, no ephemeral agent. Structured JSON query (same
+            # pattern as build_and_execute's build_query), not free text, so
+            # the Planner's entrypoint can detect it deterministically before
+            # running its normal planning DAG. See
+            # .abi/specs/planner-direct-tool-pdf.md.
+            direct_query = json.dumps({
+                "_direct_tool": task.get("direct_tool"),
+                "task_id": tid,
+                "description": desc,
+                "target_tag": target.get("tag") if target else None,
+            })
+            abi_logging(f"[⚡] Task {tid}: direct_tool='{task.get('direct_tool')}' → Planner")
+            target = planner_card
+
         else:
             abi_logging(f"[⚠️] Task {tid}: unknown type '{task_type}', skipping")
             continue
 
         abi_logging(f"[✅] Task {tid}: assigned to agent '{target.name}' at {get_agent_url(target)} with prompt {desc}")
-        node_desc = methodology_block + desc if methodology_block else desc
+        if task_type == "direct_tool":
+            # Structured JSON, not prose — the methodology block (free text)
+            # doesn't apply here, the Planner's entrypoint parses this as JSON.
+            node_desc = direct_query
+        else:
+            node_desc = methodology_block + desc if methodology_block else desc
         node = InteractionFlowNode(
             task=node_desc,
             source_agent_card=AGENT_CARD,

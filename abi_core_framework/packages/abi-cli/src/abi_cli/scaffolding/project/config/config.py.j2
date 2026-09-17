@@ -25,7 +25,7 @@ class {{ project_name.title().replace('_', '').replace('-', '').replace(' ', '')
         self.agent_base = os.getenv('AGENT_BASE', f'http://{self.agent_host}:{self.agent_port}')
         
         # Model settings
-        self.model_name = os.getenv('MODEL_NAME', '{{ model_name | default("qwen2.5:3b") }}')
+        self.model_name = os.getenv('MODEL_NAME', '{{ model_name | default("qwen3:latest") }}')
         self.ollama_host = os.getenv('OLLAMA_HOST', 'http://{{ project_dir }}-ollama:11434')
         
         # Security settings

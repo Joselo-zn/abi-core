@@ -23,6 +23,22 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from google.protobuf.json_format import MessageToDict
+
+
+def _proto_data_to_dict(obj) -> Optional[dict]:
+    """``obj.data`` is a ``google.protobuf.Value`` — never a Python dict,
+    even once populated. ``HasField`` distinguishes "never set" from "set to
+    an empty dict" (an unset message field isn't ``None``, it's a proto3
+    zero-value message); ``MessageToDict`` converts a populated one back into
+    a real Python dict/list/scalar."""
+    try:
+        if obj.HasField("data"):
+            return MessageToDict(obj.data)
+    except (ValueError, AttributeError):
+        pass
+    return None
+
 
 def _safe_get(obj, *attrs):
     """Walk a chain of attributes, returning None if any is missing."""
@@ -124,13 +140,22 @@ class A2AResponse:
                 status = result.status_update.status
                 state_val = status.state
                 resp.state = str(state_val) if state_val else None
-                # Extract message text
+                # Extract message text (existing) and structured data
+                # alongside it (new) — a require_user_input response can
+                # carry both a text Part and a data Part in the same
+                # message (agent_executor.py), same two-Part pattern
+                # already used for completed-task artifacts. No `break`:
+                # need to visit every part, not stop at the first text hit,
+                # or a data Part after the text one would never be seen.
+                # See .abi/specs/deterministic-clarification-answers.md.
                 if status.HasField('message'):
                     for part in status.message.parts:
                         text = getattr(part, 'text', None)
-                        if text:
+                        if text and resp.status_message is None:
                             resp.status_message = text
-                            break
+                        data = _proto_data_to_dict(part)
+                        if isinstance(data, dict) and resp.data is None:
+                            resp.data = data
                 return resp
 
             if result.HasField('task'):
@@ -175,6 +200,13 @@ class A2AResponse:
                         else str(state_obj)
                     )
                 resp.status_message = cls._extract_message_from_status(status)
+                # Also extract structured data from the status message's
+                # parts (legacy pydantic path — see the protobuf branch
+                # above for the primary code path). See
+                # .abi/specs/deterministic-clarification-answers.md.
+                message = _safe_get(status, "message")
+                for part in getattr(message, "parts", []) if message else []:
+                    cls._extract_part(part, resp)
             return resp
 
         # Full Task object
@@ -230,13 +262,19 @@ class A2AResponse:
         """Check if any result requests clarification.
 
         Returns:
-            ``(True, message)`` if clarification needed, else ``(False, None)``.
+            ``(True, message, questions)`` if clarification needed —
+            ``questions`` is the structured list from
+            ``AgentResponse.input_required(..., questions=...)`` if it
+            survived the wire (see
+            .abi/specs/deterministic-clarification-answers.md), else ``[]``.
+            ``(False, None, [])`` if no clarification needed.
         """
         for resp in cls.from_results(results):
             if resp.is_input_required:
                 msg = resp.status_message or "Agent requires clarification"
-                return True, msg
-        return False, None
+                questions = (resp.data or {}).get("questions", []) if resp.data else []
+                return True, msg, questions
+        return False, None, []
 
     @classmethod
     def collect_text(cls, results: list) -> List[str]:
@@ -282,7 +320,7 @@ class A2AResponse:
         # Wrapped part: part.root.data or part.root.text
         root = getattr(part, "root", None)
         if root is not None:
-            data = getattr(root, "data", None)
+            data = _proto_data_to_dict(root)
             if isinstance(data, dict) and resp.data is None:
                 resp.data = data
                 return
@@ -292,7 +330,7 @@ class A2AResponse:
                 return
 
         # Direct part: part.data or part.text
-        data = getattr(part, "data", None)
+        data = _proto_data_to_dict(part)
         if isinstance(data, dict) and resp.data is None:
             resp.data = data
             return

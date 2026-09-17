@@ -51,11 +51,13 @@ This needs a real `context_id` to hang a pending plan off of — see [Sessions &
 
 ```python
 # agents/runner/tasks.py
+from config import config
 from abi_core.agent.agent_response import AgentResponse
 from abi_core.agent.plan_confirmation import (
     classify_plan_confirmation_reply,
     record_pending_plan,
     clear_pending_plan,
+    ORPHANED_CONFIRMATION_MESSAGE,
 )
 from abi_core.common.utils import format_plan_summary
 
@@ -63,7 +65,12 @@ from abi_core.common.utils import format_plan_summary
 @agent.task(name="plan_and_execute", task_id="task-plan-and-execute")
 async def plan_and_execute(query, context_id=None, task_id=None):
     session_context = await agent.get_session_context(context_id) if context_id else {}
-    reply = classify_plan_confirmation_reply(query, session_context) if context_id else None
+    reply = (
+        await classify_plan_confirmation_reply(
+            query, session_context, config.LLM_CONFIG, session_id=context_id
+        )
+        if context_id else None
+    )
 
     plan_result = None
     if reply is not None:
@@ -83,6 +90,12 @@ async def plan_and_execute(query, context_id=None, task_id=None):
             enriched = f"{reply['original_query']}\n\nRequested changes: {reply['feedback']}"
             async for r in _plan_then_confirm(enriched, context_id):
                 yield r
+            return
+        elif classification == "plan_confirmation_orphaned":
+            # Looked like approve/reject/modify, but no pending plan exists
+            # in this session — say so instead of silently planning around
+            # the literal reply text. See the warning below.
+            yield AgentResponse.text(ORPHANED_CONFIRMATION_MESSAGE)
             return
     else:
         async for r in _plan_then_confirm(query, context_id):
@@ -125,7 +138,7 @@ async def _plan_then_confirm(query, context_id):
     yield AgentResponse.input_required(format_plan_summary(display_plan), action_type="plan_confirmation")
 ```
 
-`classify_plan_confirmation_reply(query, session_context)` does the actual reading of minds — given the incoming message and whatever's in session context, it tells you which of four things just happened, or `None` if this is a brand-new request:
+`classify_plan_confirmation_reply(query, session_context, llm_config, session_id=...)` does the actual reading of minds — given the incoming message and whatever's in session context, it tells you which of five things just happened, or `None` if this is a brand-new request:
 
 | Classification | Meaning |
 |---|---|
@@ -133,8 +146,27 @@ async def _plan_then_confirm(query, context_id):
 | `plan_rejected` | User said no |
 | `plan_modify_requested` | User wants changes, hasn't said what yet |
 | `plan_modify_feedback` | User just described the changes — `reply["feedback"]` |
+| `plan_confirmation_orphaned` | Looks like a reply (a sentinel) but there's no pending plan to apply it to |
 
-It matches natural language ("sí", "yes", "no", "cancelar", "aprobar") as well as fixed sentinel strings a UI's approve/reject/modify buttons can send — `PLAN_CONFIRM_APPROVE`, `PLAN_CONFIRM_REJECT`, `PLAN_CONFIRM_MODIFY` (also importable from `abi_core.agent.plan_confirmation`).
+Two fast paths need no LLM call: the fixed sentinel strings a UI's approve/reject/modify buttons send (`PLAN_CONFIRM_APPROVE`, `PLAN_CONFIRM_REJECT`, `PLAN_CONFIRM_MODIFY`, also importable from `abi_core.agent.plan_confirmation`), and a reply that arrives right after you set `awaiting_plan_modification` (it's already known to be the feedback, no interpretation needed). **Everything else — free text, in any language or phrasing — is interpreted by the LLM**, not matched against a hardcoded word list. "yes", "sí", "looks good", "está perfecto, dale" all resolve to `plan_confirmed` the same way. Say "no, hazlo más corto" and you get `plan_modify_feedback` directly, with the feedback already extracted — no second round-trip asking what to change.
+
+```{warning}
+**Don't skip the session token.** Without one, every request lands in a
+*fresh, unique* session (that's deliberate — see
+[Sessions & Multi-turn](07-sessions-multi-turn.md)), so there's never a
+pending plan to find. Before this page's `plan_confirmation_orphaned`
+classification existed, that meant your reply — "aprobado" — got planned
+as if *it* were the request:
+
+    $ curl -X POST .../stream -d '{"query": "aprobado"}'
+    → 📋 Plan Created — Objective: aprobado
+       1. Define what 'aprobado' means in this context...
+
+That's exactly the trap: no token, so `session_context` is empty, so the
+reply looks like a brand-new (nonsensical) request. Now it's caught —
+you get `ORPHANED_CONFIRMATION_MESSAGE` back instead — but the fix is
+still to **use the session token**, not to rely on the friendlier error.
+```
 
 ## Talk to it
 
@@ -168,7 +200,7 @@ data: 📋 Plan Created
 ```bash
 curl -N -X POST http://localhost:8002/stream \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"query": "sí"}'
+  -d '{"query": "looks good, go ahead"}'
 ```
 
 ```
@@ -177,23 +209,25 @@ event: status → "Step 2/2: Translate the written haiku to Italian"
 event: result → {"actions": [...], "outcomes": [...]}
 ```
 
-Reply `"no"` instead and you'll get `"Plan cancelled."` with nothing executed. Reply with the modify sentinel (or "cambiar"-style phrasing your own triage recognizes) and you'll be asked what to change, then re-planned with your feedback folded in.
+That reply works in Spanish too — `{"query": "está perfecto, dale"}` behaves identically, since the LLM is interpreting intent, not matching a fixed phrase. Reply `"nah, don't bother"` (or "no") instead and you'll get `"Plan cancelled."` with nothing executed. Reply `"no, hazlo más corto"` and the modify feedback ("hazlo más corto") is extracted in the same turn — no follow-up question needed.
 
 ## What happened
 
 1. `select_methodology` picked a decomposition strategy before the actual planning call — same technique, same registry, the swarm's Planner uses
 2. The first turn planned, then stopped — `record_pending_plan` parked the plan in session context and the task yielded `input_required` instead of running anything
-3. The second turn's query ("sí") had no pending-plan-shaped content of its own — `classify_plan_confirmation_reply` recognized it as a reply *to* the pending plan, using the session context from turn 1
+3. The second turn's query ("looks good, go ahead") had no pending-plan-shaped content of its own — because a plan *was* pending, `classify_plan_confirmation_reply` sent it to the LLM to interpret, which recognized it as an approval
 4. Because the session token resolves to the same `context_id` on both requests, the plan recorded in turn 1 was still there in turn 2
 5. Only after classification came back `plan_confirmed` did the task actually loop over `execute_action`
+6. If there'd been no token — a fresh session on every request — `classify_plan_confirmation_reply` would have recognized the sentinel/short-word case as orphaned; for free text like "looks good", with no pending plan it just returns `None` and the reply gets planned as a (probably nonsensical) new request — the token is still what actually fixes this, not the classifier
 
 ## Key rules
 
 - **This needs a real session.** Without a `context_id` that persists across requests, there's nowhere to remember "there's a plan waiting for a reply" — see [Sessions & Multi-turn](07-sessions-multi-turn.md).
-- **`classify_plan_confirmation_reply` is a pure function.** No I/O, no LLM call — it's a deterministic read of `query` + whatever's in session context. Cheap to call on every turn.
+- **`classify_plan_confirmation_reply` is `async` and can call the LLM.** Sentinels and modify-feedback replies are free (no LLM call); everything else costs one `invoke()`. It never raises — an LLM failure or unparseable response just falls back to `None` (treated as a new request), never guesses "approved".
 - **Don't forget `awaiting_plan_modification`.** It's what tells the *next* turn "the next thing you get is feedback, not a new request" — skip setting it and a modify request silently loses the plan it was supposed to change.
+- **Always handle `plan_confirmation_orphaned`.** It's the difference between a clear "I don't have a plan waiting" and the agent quietly trying to plan the word "sí". Skipping this branch brings back the exact bug it exists to catch.
 - **This is the same primitive the swarm uses.** ABI Swarm's Orchestrator calls the exact same `classify_plan_confirmation_reply`/`record_pending_plan`/`clear_pending_plan` — what differs is what happens *after* approval: the swarm hands off to the Builder over A2A, a single agent just loops over its own steps.
 
 ## Next step
 
-👉 [Testing Agents](05-testing-agents.md)
+👉 [Rich Elements](10-rich-elements.md)

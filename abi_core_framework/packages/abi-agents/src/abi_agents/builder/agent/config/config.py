@@ -24,14 +24,18 @@ class AgentConfig:
     SERVICE_PORT: int = int(os.getenv('SERVICE_PORT', '11439'))
 
     # Model Configuration
-    MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen2.5:3b')
+    MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen3:latest')
     OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 
     # LLM Configuration (unified dict for create_llm)
     LLM_CONFIG: dict = {
         "provider": os.getenv("LLM_PROVIDER", "ollama"),
-        "model": os.getenv("MODEL_NAME", "qwen2.5:3b"),
-        "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
+        "model": os.getenv("MODEL_NAME", "qwen3:latest"),
+        # None (unset) lets create_llm() omit temperature entirely, so the
+        # provider uses its own default — required for e.g. Claude models
+        # with extended thinking, which reject any explicit temperature
+        # other than 1. Set LLM_TEMPERATURE explicitly to override.
+        "temperature": float(os.environ["LLM_TEMPERATURE"]) if os.getenv("LLM_TEMPERATURE") else None,
         "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
         "api_key": os.getenv("LLM_API_KEY", ""),
         "aws_region": os.getenv("AWS_REGION", "us-east-1"),
@@ -39,6 +43,11 @@ class AgentConfig:
         "azure_endpoint": os.getenv("AZURE_ENDPOINT", ""),
         "vertex_project": os.getenv("VERTEX_PROJECT", ""),
         "vertex_location": os.getenv("VERTEX_LOCATION", "us-central1"),
+        # Provider- or model-generation-specific kwargs forwarded as-is to
+        # the LangChain chat model constructor (e.g. Claude's `thinking`,
+        # Gemini's `thinking_budget`/`thinking_level`, Azure's
+        # `api_version`). Edit this dict directly for your deployment.
+        "extra_params": {},
     }
 
     # Logging

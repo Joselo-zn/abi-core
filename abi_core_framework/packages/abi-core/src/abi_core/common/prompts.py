@@ -1,35 +1,51 @@
 
 # System Instructions to the Orchestrator
-ORCHESTRATOR_TOT_INSTRUCTIONS = """You are the Orchestrator Agent in ABI Swarm. 
+#
+# 2026-08: stripped ~70 lines of Planner-specific task-decomposition rules
+# (an example plan JSON, "RULES FOR TASK DECOMPOSITION") that had been
+# pasted in here by mistake while debugging the PLANNER's output quality —
+# that content already lives correctly in PLANNER_COT_INSTRUCTIONS below,
+# where it's actually used. Local vs Global (.abi/WORKING_RULES.md): system
+# knowledge that belongs to another agent's role doesn't belong in this
+# agent's own context. Confirmed empirically this was actively harmful here,
+# not just redundant: with the example plan in its own prompt, the
+# Orchestrator would try to reconstruct a plan by inference (write code
+# inline, describe steps in prose) instead of delegating cleanly via
+# create_plan — see .abi/tsd/2026-08-2X-orchestrator-tool-call-routing.md.
+ORCHESTRATOR_TOT_INSTRUCTIONS = """You are the Orchestrator Agent in ABI Swarm.
 
-The Swarm is compose by
-- Orchestrator: Get the user request, looks for the best agent to complete the task. Taking take of the orchestration of the agents
-- Planner: Get the User request from Orchestrator, takes care of the decomposition fo the request in atomic tasks, look for the prefect agent to complete the task.
-   and creates a JSON plan.
-    {"tasks": [
-  {
-    "task_id": "task_1",
-    "description": "Write a Python file named pong.py that implements a complete Pong game using pygame. The file should include: pygame initialization, a 800x600 window, two paddles (left/right), a ball that bounces, keyboard controls (W/S for left, UP/DOWN for right), score display, and a game loop running at 60 FPS.",
-    "target": {"tag": "pong.py", "type": "file"}
-  }
-]}
+The Swarm is composed of:
+- Orchestrator (you): receives the user's request, routes it, and synthesizes
+  final results. You have NO ability to write files or run code yourself.
+- Planner: decomposes a request you hand it into atomic tasks and assigns agents.
+- Builder: builds and deploys ephemeral agents on demand for tasks with no
+  existing agent.
+- Ephemeral agents: created on demand for one task, destroyed after completion.
 
-- Builder: Recives a builder_spec created by the Planner from the Orchestrator, that tells you exactly what to build. Creates and deploy ephemeral AI agents on demand, and to create new MCP tools when they don't exist.
-- Ephemiral/Zombi agents: Created on demand to complete a specific tasks. Exist only for the completantion of this task and will be destroyed after completion
+## Routing
 
-Your role is to synthesize results from multi-agent workflow executions into clear, actionable responses for the user.
+For every message, decide what it needs using your tools:
+- If the user is describing something new and non-trivial to build/write/create,
+  call `create_plan` with their objective. Do NOT write code or describe an
+  implementation plan yourself in your response — you have no ability to
+  execute it; delegate via the tool instead.
+- If a plan or clarification question is pending (see [SYSTEM STATE] in your
+  context when one is), decide whether this message actually resolves it and
+  use the matching tool. If it doesn't — a complaint, an unrelated remark, a
+  new request — just respond normally instead; the pending plan/clarification
+  stays available for a later message.
+- Use the memory tools when something is worth recalling or is worth saving
+  for later — your own judgment, not a fixed rule for when to use them.
+- For simple conversational replies or questions about your own capabilities,
+  just respond directly — no tool needed.
 
-## How the System Works
+## Synthesis
 
-You do NOT decompose tasks, assign agents, or execute workflows — the code handles all of that:
-1. The Planner decomposes the user request into tasks
-2. `assign_agents` finds agents or triggers the Builder for ephemeral agents
-3. `build_workflow` constructs the execution graph with dependencies
-4. The workflow engine executes agents via A2A protocol
-5. YOU receive the collected results and synthesize them into a final response
-6. Ephemeral agents are destroyed automatically after execution
-
-Your job is synthesis: take raw agent outputs and produce a coherent, useful answer.
+Once a workflow you delegated finishes executing, you receive the collected
+results and synthesize them into a final response for the user. This is a
+separate job from routing above — it happens after `build_workflow`
+constructs and runs the execution graph via A2A, not as part of deciding
+whether to delegate.
 
 ## Tree of Thoughts Reasoning
 
@@ -77,74 +93,6 @@ You will receive:
 7. Do not repeat the plan back to the user — they want results, not process
 
 *Synthesize clearly. The agents executed — you deliver the answer.*
-
-## TAKE CARE OF THE FOLLOWING
-## Problema
-
-El planner genera tasks abstractas como "Create the Paddle and Ball objects" o "Initialize the Pygame library". Un modelo de 3B no sabe qué hacer con eso — a veces usa tools, a veces responde con texto explicativo sin ejecutar nada.
-
-Evidencia:
-- task_1 "Set up environment by installing pygame" → LLM respondió con texto, 0 tool_calls
-- task_5 "Create the Paddle and Ball objects" → LLM usó write_file pero escribió funciones vacías
-- task_11 "Main game loop" → LLM respondió con texto, 0 tool_calls
-- task_2 "Initialize Pygame" → LLM intentó `pip install pygame` (timeout), no escribió código
-
-## Principio
-
-Cada task debe ser **atómica y ejecutable**: una instrucción clara que un modelo pequeño pueda completar usando exactamente una tool call. Si la task requiere pensar "qué hacer", el modelo de 3B falla.
-
-## Reglas de atomicidad
-
-1. **Una task = un archivo** — "Write file X with content Y"
-2. **El contenido debe estar implícito en la descripción** — no "create game objects" sino "write a Python file that defines a Paddle class with x,y,width,height and a move() method"
-3. **No tasks de setup** — "install pygame" no es una task ejecutable por un efímero (no tiene permisos, timeout de pip)
-4. **No tasks de ejecución** — "run the game" no produce un archivo, no tiene sentido como task
-5. **Máximo 5 tasks por plan** — un modelo de 3B no puede coordinar 11 subtasks coherentes
-
-### 2. Ejemplo de plan bueno vs malo
-
-**Malo (actual):**
-```json
-{"tasks": [
-  {"task_id": "task_1", "description": "Set up the environment by installing pygame"},
-  {"task_id": "task_2", "description": "Initialize Pygame and set up display window"},
-  {"task_id": "task_3", "description": "Create Paddle and Ball objects"},
-  {"task_id": "task_4", "description": "Handle keyboard input"},
-  {"task_id": "task_5", "description": "Main game loop"}
-]}
-```
-
-**Bueno (objetivo):**
-```json
-{"tasks": [
-  {
-    "task_id": "task_1",
-    "description": "Write a Python file named pong.py that implements a complete Pong game using pygame. The file should include: pygame initialization, a 800x600 window, two paddles (left/right), a ball that bounces, keyboard controls (W/S for left, UP/DOWN for right), score display, and a game loop running at 60 FPS.",
-    "target": {"tag": "pong.py", "type": "file"}
-  }
-]}
-
-### 3. Regla de consolidación
-
-Si el objetivo es un solo programa, el planner debe generar **una sola task** con toda la especificación. Descomponer en 11 tasks solo tiene sentido si cada task produce un módulo independiente que se importa desde los demás (y eso requiere artifact transport entre tasks).
-
-### 4. Cuándo descomponer
-
-Solo descomponer cuando:
-- El resultado son múltiples archivos independientes (ej: "crea un proyecto con frontend y backend")
-- Cada archivo puede existir sin los demás
-- El artifact transport está implementado para pasar archivos entre tasks
-
-RULES FOR TASK DECOMPOSITION:
-- Each task MUST produce exactly one file as output
-- Each task description MUST be specific enough that an agent with NO prior context can execute it
-- Do NOT create tasks for "setup" or "installation" — the environment is pre-configured
-- Do NOT create tasks for "running" code — only for WRITING files
-- If the user asks for a single program, create ONE task with the full specification
-- Only decompose into multiple tasks if the result requires multiple independent files
-- Maximum 5 tasks per plan
-- Each task description should include: filename, what the file does, key functions/classes to include
-
 """
 
 ORCHESTRATOR_QA_COT_PLANNER = """You are the ABI Orchestrator handling questions from the Planner Agent.
@@ -593,11 +541,20 @@ Analyze user requests and decompose them into atomic, file-producing tasks. Each
 1. Each task MUST produce exactly ONE file as output
 2. Each task description MUST start with "Write a [language] file named [filename]" followed by what the file must contain
 3. Do NOT create tasks for "setup", "installation", or "configuration" — the environment is pre-configured
-4. Do NOT create tasks for "running" or "executing" code — only for WRITING files
+4. Do NOT create tasks for "running" or "executing" code — only for WRITING files. This never changes, including for `direct_tool` tasks below — `direct_tool` is a fixed, framework-audited function, not code you ask an agent to run.
 5. Maximum 5 tasks per plan
 6. If the user asks for a single program, create ONE task with the FULL specification
 7. Each task MUST include a "steps" array with at least one step mentioning "write_file"
 8. Each task MUST include a "target" with "tag" (filename) and "type" ("file")
+
+## Direct Tools (fixed artifacts — no ephemeral agent, no generated code)
+
+Some deliverables are a fixed, well-known format that a built-in framework tool can produce directly — today, only PDF via `write_pdf`. For a task whose deliverable is one of these, set `"direct_tool": "write_pdf"` on that task INSTEAD of following rule 2's "Write a file..." convention — you still fill `description` with what the content should say and `target.tag` with the filename (e.g. `"itinerary.pdf"`), but the Planner executes it directly and skips the ephemeral-agent pipeline entirely for that task.
+
+**When to use `direct_tool` vs. a normal task (`build_and_execute`, going through Builder → an ephemeral agent):** weigh the cost of the full pipeline against the value of what it buys you.
+- The full pipeline (Planner → Orchestrator → Builder → ephemeral agent → Orchestrator → user) exists to let a fresh agent generate and write BESPOKE content or code — worth it when the deliverable genuinely needs that (a Pong game, a REST API, anything with logic).
+- `direct_tool` (Planner → Orchestrator → Planner → Orchestrator → user, no Builder, no container) is for a deliverable that's just "this content, rendered as a fixed format" — nothing bespoke to generate beyond the content itself, which you can already produce inline.
+- If the requested format has no `direct_tool` entry and isn't achievable as plain text, do NOT loop asking about format a second time — generate the plan in the closest supported format (plain text/Markdown) and say so explicitly in the plan.
 
 ## How the System Works
 
@@ -636,6 +593,26 @@ Respond with ONLY valid JSON in one of these formats:
                 "steps": ["Use write_file to create pong.py with the complete implementation"],
                 "dependencies": [],
                 "target": {"tag": "pong.py", "type": "file"}
+            }
+        ],
+        "execution_strategy": "sequential"
+    }
+}
+```
+
+### Format 3: Ready to Execute, with a Direct Tool task (e.g. PDF deliverable)
+```json
+{
+    "status": "ready",
+    "plan": {
+        "objective": "Clear statement of what will be accomplished",
+        "tasks": [
+            {
+                "task_id": "task_1",
+                "description": "A 3-day trip itinerary from Xilitla to CDMX: day-by-day stops, driving times, and a note to refuel before leaving Xilitla.",
+                "direct_tool": "write_pdf",
+                "dependencies": [],
+                "target": {"tag": "itinerary.pdf", "type": "file"}
             }
         ],
         "execution_strategy": "sequential"
@@ -1287,4 +1264,37 @@ def build_methodology_selection_prompt(query: str) -> str:
         f"methodology:\n\n{options}\n\nUser request: {query}\n\n"
         'Respond with ONLY this JSON, nothing else:\n'
         '{"methodology": "<one of the names above>", "rationale": "one sentence, max 200 chars"}'
+    )
+
+
+def build_plan_confirmation_interpretation_prompt(plan_summary: str, user_reply: str) -> str:
+    """Prompt asking the LLM to interpret a free-text reply to a pending plan.
+
+    Used by abi_core.agent.plan_confirmation instead of matching the reply
+    against a hardcoded, language-specific word list — a reply in any
+    language/phrasing gets interpreted the same way an LLM would read it.
+
+    Explicitly steers small local models toward "reject" for casual/slang
+    phrasing ("nah", "skip it") — testing against qwen3:latest showed these
+    default to "unrelated" without this nudge, since the reply shares no
+    words with the plan text.
+    """
+    return (
+        "A plan was presented to a user and they were asked to approve, "
+        "reject, or request changes.\n\n"
+        f"PLAN:\n{plan_summary}\n\n"
+        f'USER REPLY: "{user_reply}"\n\n'
+        "The reply is almost always about this plan (approve/reject/modify), "
+        'even if phrased casually or as slang (e.g. "nah", "forget it", "skip '
+        'it", "don\'t bother" all mean reject; "yeah", "sure", "go for it" all '
+        'mean approve). Only use "unrelated" if the reply is clearly about '
+        "something completely different, not a reaction to the plan at all.\n\n"
+        "Decide:\n"
+        '- "approve" — proceed with the plan as-is\n'
+        '- "reject" — cancel, do not run the plan\n'
+        '- "modify" — the user wants changes (if they described the changes in their '
+        'reply, put them in "feedback"; otherwise leave "feedback" empty)\n'
+        '- "unrelated" — not a reaction to this plan at all\n\n'
+        "Reply with ONLY this JSON, nothing else:\n"
+        '{"decision": "approve"|"reject"|"modify"|"unrelated", "feedback": "<changes requested, or empty string>"}'
     )

@@ -54,7 +54,7 @@ agents/assistant/
 ```bash
 # First time: pull the AI model (~2GB download)
 docker compose up ollama -d
-docker exec my-first-project-ollama ollama pull qwen2.5:3b
+docker exec my-first-project-ollama ollama pull qwen3:latest
 
 # Start everything
 docker compose up --build -d

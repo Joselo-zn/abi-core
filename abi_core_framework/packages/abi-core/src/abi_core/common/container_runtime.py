@@ -26,6 +26,22 @@ from typing import Any, Dict, List, Optional
 
 from abi_core.common.utils import abi_logging
 
+# Docker SDK calls are sync, dispatched via asyncio.to_thread — the only
+# real I/O in the framework with no timeout of its own (unlike e.g.
+# subprocess.run(timeout=...) in library_tools.py's run_shell, which really
+# kills its child process). wait_for here bounds how long a caller waits on
+# that thread; it does NOT stop the thread itself — Python can't force-kill
+# a running thread, so a cancelled/expired call may still complete its
+# Docker operation in the background after this function has already
+# returned an error. See .abi/specs/heartbeat-timeout-redesign.md.
+#
+# containers.run() may need to pull the image first if it isn't cached
+# locally (first spawn of a given ephemeral image, or after an update) —
+# generous budget for that. get()/remove() only talk to the already-running
+# daemon about a container that already exists, so they stay tight.
+_DOCKER_RUN_TIMEOUT = 300
+_DOCKER_TEARDOWN_TIMEOUT = 30
+
 _docker_client = None
 
 
@@ -96,16 +112,19 @@ async def run_container(
         # Build environment list
         environment = [f"{k}={v}" for k, v in (env_vars or {}).items()]
 
-        container = await asyncio.to_thread(
-            client.containers.run,
-            image,
-            command=command,
-            name=name,
-            detach=True,
-            environment=environment,
-            network=network,
-            ports=ports,
-            entrypoint=entrypoint,
+        container = await asyncio.wait_for(
+            asyncio.to_thread(
+                client.containers.run,
+                image,
+                command=command,
+                name=name,
+                detach=True,
+                environment=environment,
+                network=network,
+                ports=ports,
+                entrypoint=entrypoint,
+            ),
+            timeout=_DOCKER_RUN_TIMEOUT,
         )
 
         container_id = container.short_id
@@ -143,8 +162,12 @@ async def destroy_container(name: str) -> bool:
 
     try:
         client = _get_docker_client()
-        container = await asyncio.to_thread(client.containers.get, name)
-        await asyncio.to_thread(container.remove, force=True)
+        container = await asyncio.wait_for(
+            asyncio.to_thread(client.containers.get, name), timeout=_DOCKER_TEARDOWN_TIMEOUT,
+        )
+        await asyncio.wait_for(
+            asyncio.to_thread(container.remove, force=True), timeout=_DOCKER_TEARDOWN_TIMEOUT,
+        )
         abi_logging(f"[✅] Container '{name}' destroyed")
         return True
     except Exception as e:

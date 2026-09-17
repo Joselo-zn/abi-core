@@ -46,6 +46,16 @@ environment:
   - ARTIFACT_BUCKET=abi-artifacts
 ```
 
+`ARTIFACT_ENDPOINT` is for internal service-to-service I/O — inside Docker, that's usually a hostname like `my-app-minio` that only other containers can resolve. If you also hand download links to a human (a browser, a QR code), set `ARTIFACT_PUBLIC_ENDPOINT` to a host they can actually reach:
+
+```yaml
+environment:
+  - ARTIFACT_PUBLIC_ENDPOINT=http://localhost:9000   # local dev
+  # or your real public hostname / reverse proxy in production
+```
+
+It falls back to `ARTIFACT_ENDPOINT` when unset, so this is opt-in — only needed once you start generating links for people, not just other services. Must point at MinIO's S3 API port (9000-style), not the Console UI port (9001) — the Console doesn't validate presigned URLs, it just serves its own app shell.
+
 For execution logs:
 
 ```yaml
@@ -84,6 +94,8 @@ await generate_download_urls(artifacts)
 links = format_artifact_links(artifacts)
 # "📎 quarterly-report.pdf: https://minio.../presigned-url"
 ```
+
+Want to hand that link to the user as a scannable QR instead of (or in addition to) text? See [Rich Elements](../single-agent/10-rich-elements.md#qr-codes).
 
 ## Access the web console
 

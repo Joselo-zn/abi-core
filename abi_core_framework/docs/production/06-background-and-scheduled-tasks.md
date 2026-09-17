@@ -132,7 +132,7 @@ async def nightly_health_check():
 
 Need concurrency instead? `overlap_policy="allow"` + `max_concurrent=N`.
 
-**It asks permission before every firing, not just once.** If your project has a Guardian/OPA setup (`abi-core add abi-swarm` or `--with-guardian`), every firing is gated by an OPA policy check — `abi/scheduled_task/allow` by default. No Guardian provisioned? It fails **open** (runs anyway, with a logged warning) — this is opt-in governance, not a hard requirement:
+**It asks permission before every firing, not just once.** If your project has a Guardian/OPA setup (`--with-guardian`), every firing is gated by an OPA policy check — `abi/scheduled_task/allow` by default. No Guardian provisioned? It fails **open** (runs anyway, with a logged warning) — this is opt-in governance, not a hard requirement:
 
 ```python
 @agent.task_schedule(

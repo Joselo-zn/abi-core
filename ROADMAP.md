@@ -68,7 +68,7 @@
 
 - Ephemeral containers remain as `Exited (0)` — `docker rm` not automatic yet
 - Webapp polling fix only in template — existing projects need to regenerate
-- LLM (qwen2.5:3b) occasionally misinterprets zombie prompts — may need prompt tuning or larger model
+- LLM (qwen3:latest) occasionally misinterprets zombie prompts — may need prompt tuning or larger model
 
 ---
 

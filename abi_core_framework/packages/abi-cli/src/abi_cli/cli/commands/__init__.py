@@ -10,5 +10,6 @@ from .status import status
 from .info import info
 from .provision import provision_models
 from .capabilities import capabilities
+from .ui import ui
 
-__all__ = ['create', 'add', 'remove', 'run', 'status', 'info', 'provision_models', 'capabilities']
+__all__ = ['create', 'add', 'remove', 'run', 'status', 'info', 'provision_models', 'capabilities', 'ui']

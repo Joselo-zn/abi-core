@@ -112,9 +112,65 @@ def list_files() -> str:
     return "\n".join(files)
 
 
+# fpdf2's core "Helvetica" font only supports Latin-1 — plenty for Spanish
+# accents (á, é, ñ, ¿, ¡...) but not "smart" typography LLMs commonly
+# produce (curly quotes, en/em dashes, ellipsis character). Normalize those
+# to their closest Latin-1/ASCII equivalent instead of crashing write_pdf.
+_PDF_CHAR_REPLACEMENTS = {
+    "‘": "'", "’": "'",  # ‘ ’
+    "“": '"', "”": '"',  # “ ”
+    "–": "-", "—": "-",  # – —
+    "…": "...",  # …
+    " ": " ",  # non-breaking space
+}
+
+
+def _sanitize_pdf_text(text: str) -> str:
+    for char, replacement in _PDF_CHAR_REPLACEMENTS.items():
+        text = text.replace(char, replacement)
+    # Final safety net: anything still outside Latin-1 becomes "?" instead
+    # of crashing the PDF render.
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+@langchain_tool
+def write_pdf(filename: str, content: str) -> str:
+    """Write text content to a PDF file in the workspace.
+
+    Fixed, audited tool — renders `content` as plain paragraphs via fpdf2.
+    No code execution: the only untrusted input is the text itself, never
+    a command or script. See .abi/specs/planner-direct-tool-pdf.md.
+
+    Args:
+        filename: Name of the PDF file to create (e.g. 'itinerary.pdf').
+        content: The full text content to render into the PDF.
+
+    Returns:
+        Confirmation message with the file path.
+    """
+    try:
+        from fpdf import FPDF
+
+        os.makedirs(WORKSPACE, exist_ok=True)
+        filepath = os.path.join(WORKSPACE, filename)
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Helvetica", size=12)
+        pdf.multi_cell(0, 8, _sanitize_pdf_text(content))
+        pdf.output(filepath)
+
+        abi_logging(f"[📄] PDF written: {filepath} ({len(content)} chars)")
+        return f"PDF written: {filepath}"
+
+    except Exception as e:
+        abi_logging(f"[❌] PDF write error: {str(e)}")
+        return f"Error writing PDF: {e}"
+
+
 # ── Base tools set ─────────────────────────────────────────────
 
-BASE_TOOLS = [write_file, read_file, run_shell, list_files]
+BASE_TOOLS = [write_file, read_file, run_shell, list_files, write_pdf]
 
 
 # ── Dynamic tool resolution ────────────────────────────────────

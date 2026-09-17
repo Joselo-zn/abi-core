@@ -41,7 +41,7 @@ class MyAgent(AbiAgent):
         super().__init__(
             agent_name="my-agent",
             description="What it does",
-            llm_config={"provider": "ollama", "model": "qwen2.5:3b"},
+            llm_config={"provider": "ollama", "model": "qwen3:latest"},
             tools=[],
             system_prompt="You are...",
         )
@@ -52,8 +52,11 @@ class MyAgent(AbiAgent):
 | Method | Description |
 |--------|-------------|
 | `stream(query, context_id, task_id)` | Main execution — async generator of responses |
-| `_run_with_heartbeat(coro, ...)` | Run coroutine with SSE heartbeat |
+| `_run_with_heartbeat(coro, ...)` | Async generator — runs a coroutine, yielding live SSE heartbeats then a final `_HeartbeatDone(result)` |
 | `process_answer(session_id, query)` | Session context management |
+| `get_session_context`/`update_session_context(context_id, ...)` | Read/merge the session's context dict — see [Sessions & Multi-turn](../single-agent/07-sessions-multi-turn.md) |
+| `record_conversation_turn(context_id, query, response_text, window=5)` | Append a turn to a rolling conversation window; oldest turn promotes to long-term memory past `window` — see [Sessions & Multi-turn](../single-agent/07-sessions-multi-turn.md#conversation-memory) |
+| `record_error`/`record_pending_plan`/`clear_pending_plan` | Generic cross-turn bookkeeping, session-backed |
 | `check_health(url, name)` | Static — ping an agent's health endpoint |
 
 ---
@@ -154,9 +157,11 @@ async for chunk in flow.run_workflow():
 
 ```python
 from abi_core.common.utils import (
-    abi_logging,           # Log with ABI format
-    clean_llm_json,        # Parse JSON from LLM output (handles markdown fences)
-    get_mcp_server_config, # Get MCP host/port/transport from env
-    yield_chunk_data,      # Convert AgentResponse to SSE bytes
+    abi_logging,                 # Log with ABI format
+    clean_llm_json,              # Parse JSON from LLM output (handles markdown fences)
+    get_mcp_server_config,       # Get MCP host/port/transport from env
+    yield_chunk_data,            # Convert AgentResponse to SSE bytes
+    format_plan_summary,         # Render a plan dict as a markdown summary
+    format_conversation_summary, # Render a recorded conversation window as prompt text
 )
 ```

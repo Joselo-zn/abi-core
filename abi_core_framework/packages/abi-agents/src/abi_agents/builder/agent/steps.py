@@ -228,7 +228,7 @@ async def build_container(config):
             "TOOLS": tools_json,
             "LIBRARY_TOOLS": json.dumps(config.get("library_tools_resolved", [])),
             "ARTIFACT_KEYS": artifact_keys_json,
-            "MODEL_NAME": os.getenv("EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "devstral:24b")),
+            "MODEL_NAME": os.getenv("EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "qwen3:latest")),
             "OLLAMA_HOST": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
             "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "ollama"),
             "MCP_HOST": os.getenv("MCP_HOST", "localhost"),

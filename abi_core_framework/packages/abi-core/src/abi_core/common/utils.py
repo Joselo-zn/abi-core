@@ -5,7 +5,7 @@ import json
 import threading
 from datetime import datetime, timezone
 
-from typing import Any
+from typing import Any, Optional
 from abi_core.common.types import ServerConfig
 
 # ── ABI Logging Configuration ──────────────────────────────────
@@ -341,6 +341,21 @@ def format_plan_summary(plan: dict, model_status: dict = None) -> str:
 
     lines.append("\n**Reply to approve, reject, or request changes.**")
     return "\n".join(lines)
+
+
+def format_conversation_summary(turns: Optional[list]) -> Optional[str]:
+    """Render a recorded conversation window as injectable prompt text.
+
+    Pairs with ``AbiAgent.record_conversation_turn`` — ``turns`` is the
+    ``conversation_summary`` list it writes to session context (each item
+    ``{"user": ..., "assistant": ...}``). ``None``/empty → ``None`` (nothing
+    to inject), same convention as the other contract fields it sits
+    alongside (e.g. ``pending_plan_summary``). See
+    .abi/specs/orchestrator-conversation-memory.md.
+    """
+    if not turns:
+        return None
+    return "\n\n".join(f"User: {t['user']}\nAssistant: {t['assistant']}" for t in turns)
 
 
 async def yield_chunk_data(chunk: str) -> str:

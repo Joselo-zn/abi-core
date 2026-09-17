@@ -27,7 +27,7 @@ services:
     environment:
       - ABI_ROLE={{ project_name }}
       - ABI_NODE=ABI Node
-      - MODEL_NAME={{ model_name | default('qwen2.5:3b') }}
+      - MODEL_NAME={{ model_name | default('qwen3:latest') }}
       - OLLAMA_HOST=http://ollama:11434
       - LOG_LEVEL={{ log_level | default('INFO') }}
       {% if with_semantic_layer %}
@@ -160,7 +160,7 @@ services:
       - GUARDIAL_DASHBOARD_PORT={{ dashboard_port | default('8080') }}
       - GUARDIAL_DASHBOARD_HOST=0.0.0.0
       - OLLAMA_HOST=http://ollama:11434
-      - MODEL_NAME={{ model_name | default('qwen2.5:3b') }}
+      - MODEL_NAME={{ model_name | default('qwen3:latest') }}
       {% if domain == 'finance' %}
       - COMPLIANCE_REQUIRED=true
       - AUDIT_ALL_TRANSACTIONS=true

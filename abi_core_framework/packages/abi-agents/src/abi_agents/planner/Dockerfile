@@ -32,7 +32,7 @@ ENV SERVICE_MODULE=main
 ENV AGENT_PORT=11437
 ENV SERVICE_PORT=11437
 ENV AGENT_CARD=./agent_cards/planner_agent.json
-ENV MODEL_NAME=qwen2.5:3b
+ENV MODEL_NAME=qwen3:latest
 
 # Create non-root user but keep root for model access
 RUN useradd -m -u 1000 planner && \

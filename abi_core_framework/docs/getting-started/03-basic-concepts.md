@@ -48,7 +48,7 @@ class MyAgent(AbiAgent):
         super().__init__(
             agent_name="my-agent",
             description="Does useful things",
-            llm_config={"provider": "ollama", "model": "qwen2.5:3b"},
+            llm_config={"provider": "ollama", "model": "qwen3:latest"},
             system_prompt="You are a helpful assistant.",
         )
 ```
@@ -86,7 +86,7 @@ ABI-Core supports multiple AI model providers through one config dict:
 
 | Provider | Config |
 |----------|--------|
-| Ollama (local) | `{"provider": "ollama", "model": "qwen2.5:3b"}` |
+| Ollama (local) | `{"provider": "ollama", "model": "qwen3:latest"}` |
 | OpenAI | `{"provider": "openai", "model": "gpt-4o", "api_key": "..."}` |
 | Gemini | `{"provider": "gemini", "model": "gemini-pro", "api_key": "..."}` |
 | Grok | `{"provider": "grok", "model": "grok-1", "api_key": "..."}` |

@@ -7,10 +7,11 @@ framework-managed session so multi-turn conversations stay coherent.
 
 ## Run it
 
-```bash
-pip install -r requirements.txt
-chainlit run app.py
-```
+This UI has no app code of its own — it runs `abi_core.ui.chainlit_app`,
+the framework's canonical Chainlit client (see the `Dockerfile`, or run it
+directly outside Docker):
 
-Point it at your agent with the `ABI_AGENT_URL` environment variable
-(defaults to `{{ agent_url | default('http://localhost:8083') }}`).
+```bash
+pip install "abi-core-ai[ui]"
+abi-core ui chainlit --url {{ agent_url | default('http://localhost:8083') }} --title "{{ ui_title | default('ABI') }}"
+```

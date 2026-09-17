@@ -28,6 +28,7 @@ single-agent/06-builtin-memory
 single-agent/07-sessions-multi-turn
 single-agent/08-plan-and-execute
 single-agent/09-plan-confirmation
+single-agent/10-rich-elements
 single-agent/05-testing-agents
 ```
 
@@ -140,7 +141,6 @@ ABI-Core is a Python framework for creating AI agent systems. You write agents a
 - **They talk to each other** — A standard protocol so any agent can call any other agent. Like HTTP for AI agents.
 - **Security built in** — Every action can be checked against rules before it runs. Not an afterthought — it's part of the system.
 - **Agents that appear and disappear** — Need a specialist for one task? The system creates one, it does the job, delivers the result, and cleans up after itself. *(alpha)*
-- **One command to start** — `abi-core create swarm` gives you a complete multi-agent system ready to run. No manual wiring. *(alpha)*
 
 ## Quick Start
 

@@ -157,7 +157,7 @@ async def route_to_task(query):
 
 ```bash
 docker compose up ollama -d
-docker exec multi-demo-ollama ollama pull qwen2.5:3b
+docker exec multi-demo-ollama ollama pull qwen3:latest
 docker exec multi-demo-ollama ollama pull nomic-embed-text:v1.5
 docker compose up --build -d
 ```

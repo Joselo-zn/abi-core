@@ -31,6 +31,37 @@ class AgentResponse:
         }
 
     @staticmethod
+    def element(element_type: str, props: dict, name: str | None = None, *args, **kwargs) -> dict:
+        """Emit a rich element (image, file, dataframe, qr, a custom .jsx
+        name, ...) to render alongside the response.
+
+        A turn may emit zero, one, or several of these before its final
+        response (text/result) — the renderer collects them and attaches
+        them to the message they belong with, the same way Chainlit expects
+        (``cl.Message(content=..., elements=[...])``) rather than treating
+        each element as a standalone response on its own. See
+        .abi/specs/agent-rich-elements.md.
+
+        Args:
+            element_type: One of the built-in renderer types ("image",
+                "file", "pdf", "audio", "video", "text", "dataframe", "qr")
+                or the name of a custom .jsx element (see
+                .abi/specs/agent-custom-elements.md).
+            props: Type-specific payload. For url-based types (image, file,
+                pdf, audio, video), prefer a "url" prop pointing at an
+                already-uploaded artifact (e.g. via ArtifactStore.get_url())
+                over inlining large binary content in this message.
+            name: Display name for the element. Defaults to element_type.
+        """
+        return {
+            "response_type": "element",
+            "content": {"element_type": element_type, "name": name or element_type, "props": props},
+            "is_task_completed": False,
+            "require_user_input": False,
+            "meta": kwargs,
+        }
+
+    @staticmethod
     def result(data: Any) -> dict:
         """Emit the final result of the task."""
         return {

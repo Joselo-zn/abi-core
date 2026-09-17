@@ -23,7 +23,7 @@ Create a `.env` file in your project root:
 
 ```bash
 # LLM
-MODEL_NAME=qwen2.5:3b
+MODEL_NAME=qwen3:latest
 OLLAMA_HOST=http://ollama:11434
 
 # Cloud LLM (if using)

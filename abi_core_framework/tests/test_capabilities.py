@@ -105,14 +105,14 @@ class TestSelection:
             structured_output=0.8,
             reasoning=0.4,
         ))
-        big = ModelProfile("devstral:24b", CapabilityProfile(
+        big = ModelProfile("qwen3:latest", CapabilityProfile(
             reasoning=0.9, code_generation=0.9, instruction_following=0.35, structured_output=0.85,
         ))
-        small = ModelProfile("qwen2.5:3b", CapabilityProfile(
+        small = ModelProfile("qwen3:latest", CapabilityProfile(
             reasoning=0.45, instruction_following=0.75, structured_output=0.70,
         ))
         result = select_model(orchestration, [big, small])
-        assert result.model_name == "qwen2.5:3b"
+        assert result.model_name == "qwen3:latest"
 
     def test_empty_catalog_returns_none(self):
         task = TaskProfile(capabilities=CapabilityProfile(reasoning=0.5))
@@ -141,21 +141,21 @@ class TestSeedCatalog:
             assert mp.samples == 0
 
     def test_seed_encodes_big_model_low_adherence(self):
-        devstral = get_seed_profile("devstral:24b")
-        qwen = get_seed_profile("qwen2.5:3b")
+        devstral = get_seed_profile("qwen3:latest")
+        qwen = get_seed_profile("qwen3:latest")
         assert devstral is not None and qwen is not None
         # big model: high code, low instruction_following
         assert devstral.capability("code_generation") > 0.8
         assert devstral.capability("instruction_following") < qwen.capability("instruction_following")
 
     def test_seed_catalog_filter(self):
-        subset = seed_catalog(["qwen2.5:3b", "does-not-exist"])
-        assert [m.model for m in subset] == ["qwen2.5:3b"]
+        subset = seed_catalog(["qwen3:latest", "does-not-exist"])
+        assert [m.model for m in subset] == ["qwen3:latest"]
 
 
 class TestObservationRefinement:
     def test_observation_updates_score_and_marks_measured(self):
-        mp = get_seed_profile("devstral:24b")
+        mp = get_seed_profile("qwen3:latest")
         # observe a strong tool_usage once
         updated = mp.with_observation("tool_usage", 0.9)
         assert updated.source == SOURCE_MEASURED
@@ -210,8 +210,8 @@ class TestIO:
         path = tmp_path / "profiles.json"
         save_profiles(seed_catalog(), path)
         catalog = load_catalog(path)
-        assert "qwen2.5:3b" in catalog
-        assert catalog["qwen2.5:3b"].model == "qwen2.5:3b"
+        assert "qwen3:latest" in catalog
+        assert catalog["qwen3:latest"].model == "qwen3:latest"
 
     def test_missing_dimensions_default_zero(self, tmp_path):
         import json
@@ -231,7 +231,7 @@ class TestViz:
     def test_render_bars_has_row_per_dimension(self):
         from abi_core.capabilities import render_bars, get_seed_profile
 
-        out = render_bars(get_seed_profile("qwen2.5:3b").capabilities, primary_label="qwen")
+        out = render_bars(get_seed_profile("qwen3:latest").capabilities, primary_label="qwen")
         # one line per dimension (no legend line when secondary is None)
         assert out.count("\n") == len(CAPABILITY_DIMENSIONS) - 1
 

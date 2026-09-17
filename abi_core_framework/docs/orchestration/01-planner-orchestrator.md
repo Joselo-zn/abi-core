@@ -111,6 +111,27 @@ Output:
 
 If the Planner needs more info, it returns `{"status": "needs_clarification", "clarification": "..."}` and the Orchestrator forwards it to the user.
 
+### Direct tool tasks
+
+Most tasks need a real, generated agent — the Builder spins up an ephemeral container, the model writes code or content, the result comes back. That round-trip (Orchestrator → Builder → container → Orchestrator) is the right cost for a task that genuinely needs bespoke logic, but it's wasteful for a deliverable that's just "this content, rendered as a fixed, well-known format" — nothing to generate beyond content the Planner already has.
+
+For that case, a task can set `"direct_tool"` on itself instead of getting an `agents`/`builder_spec`. Today the only fixed tool is `write_pdf` (`abi_core.common.library_tools.write_pdf`, a `fpdf2`-backed tool — no LLM-generated code, the only untrusted input is the text itself):
+
+```json
+{
+  "task_id": "task-2",
+  "description": "3-day itinerary from Xilitla to CDMX with daily stops and a refueling reminder",
+  "direct_tool": "write_pdf",
+  "target": {"tag": "itinerary.pdf", "type": "file"}
+}
+```
+
+The Planner itself executes this — no Builder call, no ephemeral container. It generates the content, calls `write_pdf(filename, content)` directly, uploads the result to MinIO, and reports back exactly like an ephemeral agent's own result would. It still goes through the same plan confirmation as every other task (see below) — the user can reject or ask to modify a plan that includes one.
+
+```{note}
+`direct_tool` is a fixed whitelist checked in code (`PlanTask.direct_tool: Optional[Literal["write_pdf"]]`), never something the LLM can invoke freely — see .abi/specs/planner-direct-tool-pdf.md for why the alternative (letting an ephemeral agent generate-and-run code) was rejected.
+```
+
 ## Plan confirmation
 
 The Orchestrator never executes a plan the moment it's produced — the user always confirms it first ("the system proposes, the user disposes"). After `check_model_availability` runs, the Orchestrator:
@@ -134,8 +155,8 @@ If the pending plan expired (session backend restarted, or too much time passed)
 ```python
 from abi_core.common.model_tools import list_available_models, find_model, pull_model
 
-registry = await list_available_models()      # {"qwen2.5:3b": "http://ollama:11434", ...}
-location = await find_model("qwen2.5:3b")     # host url, or None
+registry = await list_available_models()      # {"qwen3:latest": "http://ollama:11434", ...}
+location = await find_model("qwen3:latest")     # host url, or None
 ```
 
 - The **Orchestrator** wraps `find_model`/`list_available_models` in a read-only `@agent.tool` (`check_model_availability`) used only to build the confirmation summary — it never mutates anything.
@@ -147,11 +168,9 @@ location = await find_model("qwen2.5:3b")     # host url, or None
 
 ## Get orchestration in your project
 
-```bash
-abi-core create swarm --name my-system
-```
+There's no single CLI command that scaffolds the full Orchestrator + Planner + Builder bundle — that combined system (ABI Swarm) graduated into its own product, built and maintained separately from this framework.
 
-This creates a complete project with Orchestrator, Planner, Builder, Semantic Layer, Guardian, and all infrastructure ready to run.
+The reference implementations themselves are still here, in `abi_agents` (`abi_agents.planner`, `abi_agents.orchestrator`, `abi_agents.builder`), and stay the canonical example of everything on this page — `depends_on`, plan confirmation, methodology selection, ephemeral agent creation. If you want this pattern in your own project, use them as a starting point: `abi-core create project --with-semantic-layer --with-guardian` for the base infrastructure, then wire each agent by hand — copy the agent source, generate its agent card, register it with the Semantic Layer, add its service to `compose.yaml`.
 
 ## Next step
 

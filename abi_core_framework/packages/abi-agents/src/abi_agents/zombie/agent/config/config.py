@@ -20,6 +20,13 @@ class ZombieConfig:
     SYSTEM_PROMPT: str = os.getenv("SYSTEM_PROMPT", "You are a generic ABI agent.")
     WORKSPACE: str = "/app/workspace"
 
+    # Wall-clock cap for the analyze_and_execute step (the LLM tool-calling
+    # turn that actually does the work). Separate from the DAG-wide cap
+    # (ABI_DAG_MAX_WAIT) — this is per-attempt, tunable per deployment since
+    # it depends on the model/hardware doing the real work (e.g. a large
+    # model on CPU needs much longer than the previous shared 180s default).
+    EXECUTION_TIMEOUT: float = float(os.getenv("EXECUTION_TIMEOUT", "600"))
+
     # Tools (JSON list of MCP tool names)
     _TOOLS_JSON: str = os.getenv("TOOLS", "[]")
     try:
@@ -42,15 +49,35 @@ class ZombieConfig:
         LIBRARY_TOOL_NAMES: list = []
 
     # LLM
-    MODEL_NAME: str = os.getenv("MODEL_NAME", "qwen2.5:3b")
+    MODEL_NAME: str = os.getenv("MODEL_NAME", "qwen3:latest")
     OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")
     LLM_CONFIG: dict = {
         "provider": LLM_PROVIDER,
         "model": MODEL_NAME,
-        "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
+        # None (unset) lets create_llm() omit temperature entirely, so the
+        # provider uses its own default — required for e.g. Claude models
+        # with extended thinking, which reject any explicit temperature
+        # other than 1. Set LLM_TEMPERATURE explicitly to override.
+        "temperature": float(os.environ["LLM_TEMPERATURE"]) if os.getenv("LLM_TEMPERATURE") else None,
         "base_url": os.getenv("LLM_BASE_URL", OLLAMA_HOST),
         "api_key": os.getenv("LLM_API_KEY", ""),
+        # Provider- or model-generation-specific kwargs forwarded as-is to
+        # the LangChain chat model constructor (e.g. Claude's `thinking`,
+        # Gemini's `thinking_budget`/`thinking_level`, Azure's
+        # `api_version`). Edit this dict directly for your deployment.
+        #
+        # reasoning=False when on Ollama: qwen3 has "thinking" mode ON by
+        # default — measured elsewhere in this framework at ~277s/call vs
+        # ~13s with it off, for a MUCH shorter structured-output call than
+        # real code generation. Confirmed live: an EPHEMERAL_MODEL_NAME=
+        # qwen3:latest agent hit its own EXECUTION_TIMEOUT (600s) on
+        # analyze_and_execute without this — not a timeout-value problem,
+        # a thinking-mode-left-on problem. Only valid for ChatOllama; gated
+        # on the provider so it's a no-op for other providers. See
+        # .abi/tsd/2026-09-09-routing-decision-model-profiling.md
+        # (abi-core repo).
+        "extra_params": {"reasoning": False} if LLM_PROVIDER == "ollama" else {},
     }
 
     # Logging

@@ -3,7 +3,7 @@ abi_core.capabilities.model_profiles — Seed catalog of model capability profil
 
 These are **seeds**: honest qualitative estimates (``source="seed"``,
 ``samples=0``), not measurements. They come from observed behavior in the swarm
-(e.g. ``devstral:24b`` generates strong code but rarely emits tool_calls;
+(e.g. ``qwen3:latest`` generates strong code but rarely emits tool_calls;
 smaller ``qwen2.5`` models follow instructions more reliably). They exist so the
 system can start matching *today*; measured executions refine them over time
 (``ModelProfile.with_observation`` → Plan Learning).
@@ -37,8 +37,8 @@ def _seed(model: str, **scores: float) -> ModelProfile:
 # Seed catalog. Scores are estimates in [0,1]; refine by measurement.
 SEED_MODEL_PROFILES: Dict[str, ModelProfile] = {
     # Large coder: excellent code, weak at obeying the tool_calls contract.
-    "devstral:24b": _seed(
-        "devstral:24b",
+    "qwen3:latest": _seed(
+        "qwen3:latest",
         code_generation=0.90,
         tool_usage=0.30,
         reasoning=0.70,
@@ -60,8 +60,8 @@ SEED_MODEL_PROFILES: Dict[str, ModelProfile] = {
     ),
     # Small, obedient model: modest raw capability, high adherence — a good
     # orchestrator/planner despite being small.
-    "qwen2.5:3b": _seed(
-        "qwen2.5:3b",
+    "qwen3:latest": _seed(
+        "qwen3:latest",
         code_generation=0.50,
         tool_usage=0.60,
         reasoning=0.45,

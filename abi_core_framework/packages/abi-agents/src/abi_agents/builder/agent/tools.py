@@ -31,7 +31,7 @@ async def ensure_model_available(config: dict) -> dict:
     import os
 
     model = config.get("llm_config_override", {}).get("model") or os.getenv(
-        "EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "devstral:24b")
+        "EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "qwen3:latest")
     )
 
     location = await find_model(model)

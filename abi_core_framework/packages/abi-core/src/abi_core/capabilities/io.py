@@ -14,7 +14,7 @@ File format (versioned so it can evolve):
       "generator": "abi-core capabilities profile",   # optional, provenance
       "models": [
         {
-          "model": "qwen2.5:3b",
+          "model": "qwen3:latest",
           "capabilities": {"code_generation": 0.5, ... all 7 dims ...},
           "source": "measured",
           "samples": 30,

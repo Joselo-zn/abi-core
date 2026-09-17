@@ -2,7 +2,7 @@
 
 In [Plan and Execute](../single-agent/08-plan-and-execute.md) one agent planned and ran every action itself, in-process. Here we split that in two: a **Planner** that turns a request into a list of actions, and an **Executor** that actually carries each one out — connected by a real agent-to-agent (A2A) call. This is the same mechanism the Orchestrator uses to call the Planner in the full swarm (see [Planner & Orchestrator](../orchestration/01-planner-orchestrator.md)), stripped down to its essentials.
 
-We'll write both agents by hand — no `abi-core create project`, no Docker, no Semantic Layer — so every moving part is visible. `abi-core add agent` / `abi-core create swarm` generate the same shapes for you, wired for production (Guardian, OPA, Semantic Layer discovery, containers). Once this clicks, go back to [Your First Multi-Agent System](04-first-multi-agent-system.md) and use the CLI.
+We'll write both agents by hand — no `abi-core create project`, no Docker, no Semantic Layer — so every moving part is visible. `abi-core add agent` generates the same shape for you, wired for production (Guardian, OPA, Semantic Layer discovery, containers). Once this clicks, go back to [Your First Multi-Agent System](04-first-multi-agent-system.md) and use the CLI.
 
 ## What you'll build
 
@@ -58,7 +58,7 @@ class AgentConfig:
     AGENT_DESCRIPTION = "Carries out a single, concrete action"
     AGENT_PORT = int(os.getenv("AGENT_PORT", "8101"))
     AGENT_CARD = os.path.join(_HERE, "agent_card.json")
-    MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:3b")
+    MODEL_NAME = os.getenv("MODEL_NAME", "qwen3:latest")
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     LLM_CONFIG = {
         "provider": "ollama",
@@ -172,7 +172,7 @@ class AgentConfig:
     AGENT_PORT = int(os.getenv("AGENT_PORT", "8100"))
     WEB_INTERFACE_PORT = int(os.getenv("WEB_INTERFACE_PORT", "8103"))
     AGENT_CARD = os.path.join(_HERE, "agent_card.json")
-    MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:3b")
+    MODEL_NAME = os.getenv("MODEL_NAME", "qwen3:latest")
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     LLM_CONFIG = {
         "provider": "ollama",
@@ -337,7 +337,7 @@ agent.run(PlannerAgent())
 
 ## Step 3: Run both agents
 
-Ollama needs to be running locally (`ollama serve`) with a model pulled (`ollama pull qwen2.5:3b`). Then, two terminals:
+Ollama needs to be running locally (`ollama serve`) with a model pulled (`ollama pull qwen3:latest`). Then, two terminals:
 
 ```bash
 # Terminal 1

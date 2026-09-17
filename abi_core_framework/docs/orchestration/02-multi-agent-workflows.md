@@ -107,16 +107,27 @@ Each node also has its own state. The workflow tracks which nodes have completed
 
 ## Heartbeat
 
-Long-running workflows send heartbeat events to keep the SSE connection alive:
+Long-running workflows send heartbeat events to keep the SSE connection alive.
+`_run_with_heartbeat` is an async generator — it yields each heartbeat live,
+the instant it occurs, then a final `_HeartbeatDone` wrapping the
+coroutine's result:
 
 ```python
 # In the Orchestrator's stream()
-dag_result, heartbeats = await self._run_with_heartbeat(
-    dag_coro, context_id, task_id, "Processing..."
-)
-for hb in heartbeats:
-    yield hb  # Keeps the client connection alive
+from abi_core.agent.agent import _HeartbeatDone
+
+dag_result = None
+async for item in self._run_with_heartbeat(dag_coro, context_id, task_id, "Processing..."):
+    if isinstance(item, _HeartbeatDone):
+        dag_result = item.value
+    else:
+        yield item  # Forwarded immediately — keeps the client connection alive
 ```
+
+`max_wait` defaults to `None` (no external cap) — the coroutine is expected
+to bound its own real work internally (a DAG step's own `timeout=`, an LLM
+call's own per-call bound). Pass `max_wait` explicitly only for a coroutine
+you know isn't bounded internally yet, as a temporary safety net.
 
 ## Next step
 

@@ -24,20 +24,6 @@ abi-core create project my-app \
   --model-serving centralized
 ```
 
-### `abi-core create swarm`
-
-```{warning}
-**Alpha.** The ABI Swarm (Orchestrator + Planner + Builder + ephemeral agents) is
-under active development. APIs, generated structure, and behavior may change between
-releases. Not recommended for production yet.
-```
-
-Creates a full project + Orchestrator + Planner + Builder in one command.
-
-```bash
-abi-core create swarm --name my-swarm
-```
-
 ---
 
 ## Add
@@ -52,13 +38,13 @@ abi-core add agent --name <name> [OPTIONS]
 |--------|-------------|
 | `--name, -n` | Agent name (required) |
 | `--description, -d` | What the agent does |
-| `--model` | LLM model (default: `qwen2.5:3b`) |
+| `--model` | LLM model (default: `qwen3:latest`) |
 | `--with-web-interface` | Add HTTP/SSE endpoints |
 
 ```bash
 abi-core add agent analyst \
   --description "Analyzes financial data" \
-  --model qwen2.5:3b \
+  --model qwen3:latest \
   --with-web-interface
 ```
 

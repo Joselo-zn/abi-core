@@ -13,7 +13,7 @@ from datetime import datetime
 
 from abi_core.common.utils import abi_logging
 from abi_core.common import prompts
-from abi_core.agent.agent import AbiAgent
+from abi_core.agent.agent import AbiAgent, _HeartbeatDone
 from abi_core.agent.agent_response import AgentResponse
 
 from config import config
@@ -113,14 +113,14 @@ class AbiGuardianAgent(AbiAgent):
         if self.tool_graph is not None:
             input_data = {"query": query, "context_id": session_id, "task_id": task_id}
 
-            dag_result, heartbeats = await self._run_with_heartbeat(
-                self.tool_graph.execute(input_data),
-                session_id,
-                task_id,
-                "Evaluating policies...",
-            )
-            for hb in heartbeats:
-                yield hb
+            dag_result = None
+            async for item in self._run_with_heartbeat(
+                self.tool_graph.execute(input_data), session_id, task_id, "Evaluating policies...",
+            ):
+                if isinstance(item, _HeartbeatDone):
+                    dag_result = item.value
+                else:
+                    yield item
 
             if dag_result.get("failed_node"):
                 yield AgentResponse.error(dag_result.get("error", "Policy evaluation failed"))
@@ -129,12 +129,7 @@ class AbiGuardianAgent(AbiAgent):
             outputs = dag_result.get("node_outputs", {})
             decision = outputs.get("format_decision", {})
 
-            yield AgentResponse.success(
-                decision,
-                agent=self.agent_name,
-                context_id=session_id,
-                task_id=task_id,
-            )
+            yield AgentResponse.result(decision)
         else:
             yield AgentResponse.error("Guardian DAG not initialized")
 

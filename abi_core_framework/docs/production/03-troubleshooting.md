@@ -20,7 +20,7 @@ docker compose restart my-agent
 The LLM model isn't pulled yet:
 
 ```bash
-docker exec <ollama-container> ollama pull qwen2.5:3b
+docker exec <ollama-container> ollama pull qwen3:latest
 ```
 
 Or check which models are available:
@@ -41,6 +41,38 @@ LLM_CONFIG = {"provider": "ollama", "model": "qwen2.5:1.5b"}  # Smaller, faster
 ```
 
 Or check RAM usage: `docker stats`
+
+If a specific step consistently needs more time than the default budget
+(`ABI_REASONING_TIMEOUT`, 180s for a single reasoning turn; `ABI_DAG_MAX_WAIT`,
+900s for a full DAG) rather than being genuinely stuck, raise the relevant one
+instead of just switching models — see
+[Environment Variables → Agent configuration](../reference/environment-variables.md#agent-configuration).
+
+## Timeout reported but the work finished anyway
+
+Symptoms: the user gets "Esto está tardando más de lo esperado... Intentá de
+nuevo", but the file/container/side effect the request was supposed to
+produce shows up moments later anyway.
+
+**Cause:** this isn't a bug in the timeout message — it's a real limit of how
+Python's asyncio cancellation works. When a timeout fires, the framework asks
+the in-flight work to cancel, but that's a cooperative request, not a kill
+switch. If the actual work at that moment is a synchronous call running in a
+background thread (e.g. the Docker SDK calls in ephemeral-agent lifecycle
+management), cancelling the `asyncio` task that's waiting on it does **not**
+stop the thread — Python has no way to force-kill a running thread. The
+thread keeps going and can still complete the operation after the user has
+already been told it timed out.
+
+**What to do:** treat the timeout message as "the framework stopped waiting",
+not as "the operation was undone". Check whether the expected result (file,
+container, artifact) actually appeared before retrying — a retry on top of
+one that quietly succeeded can duplicate work (e.g. a second container with
+the same effect). If this happens often for the same operation, it usually
+means its timeout budget is too tight for what it actually costs (see
+"Slow responses" above), not that something is broken.
+
+See `.abi/specs/heartbeat-timeout-redesign.md` for the full mechanism.
 
 ## Semantic Layer not finding agents
 

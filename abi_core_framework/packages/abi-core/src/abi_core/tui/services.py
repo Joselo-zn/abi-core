@@ -9,11 +9,11 @@ Atomic service classes that can be used independently:
 
 from __future__ import annotations
 
-import json
-import time
 from typing import AsyncIterator
 
 import httpx
+
+from abi_core.client.agent_stream_client import AgentStreamClient
 
 try:
     import docker
@@ -225,49 +225,21 @@ class OllamaService:
 # ── Orchestrator SSE client ──────────────────────────────────────
 
 class OrchestratorClient:
-    """Stream queries to an orchestrator's /stream SSE endpoint."""
+    """Stream queries to an orchestrator's /stream SSE endpoint.
+
+    Thin wrapper over abi_core.client.AgentStreamClient — one instance per
+    TUI app run, so the session token it opens on the first query persists
+    across every later one (previously this sent no token at all, so every
+    query landed in a fresh anonymous session with no multi-turn memory —
+    the same session-continuity bug the Chainlit UI had).
+    """
 
     def __init__(self, url: str = "http://localhost:8000"):
         self.url = url.rstrip("/")
+        self._client = AgentStreamClient(url)
 
-    async def ask(
-        self, query: str, context_id: str = "cli-session"
-    ) -> AsyncIterator[dict]:
-        task_id = f"task-{int(time.time())}"
-        payload = {"query": query, "context_id": context_id, "task_id": task_id}
-        try:
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(300.0, connect=10.0)
-            ) as client:
-                async with client.stream(
-                    "POST", f"{self.url}/stream", json=payload
-                ) as resp:
-                    buf = ""
-                    async for chunk in resp.aiter_text():
-                        buf += chunk
-                        while "\n\n" in buf:
-                            raw, buf = buf.split("\n\n", 1)
-                            raw = raw.strip()
-                            if not raw:
-                                continue
-                            evt, data = "message", ""
-                            for ln in raw.split("\n"):
-                                if ln.startswith("event:"):
-                                    evt = ln[6:].strip()
-                                elif ln.startswith("data:"):
-                                    data = ln[5:].strip()
-                            if evt == "done":
-                                yield {"event": "done"}
-                                return
-                            if evt == "error":
-                                yield {"event": "error", "data": data}
-                                return
-                            if data:
-                                try:
-                                    yield {"event": evt, "data": json.loads(data)}
-                                except json.JSONDecodeError:
-                                    yield {"event": evt, "data": data}
-        except httpx.ConnectError:
-            yield {"event": "error", "data": "Cannot connect to orchestrator"}
-        except Exception as exc:
-            yield {"event": "error", "data": str(exc)}
+    async def ask(self, query: str) -> AsyncIterator[dict]:
+        """Yield decoded AgentResponse-shaped events:
+        {"response_type": ..., "content": ..., "meta": {...}}."""
+        async for event in self._client.stream(query):
+            yield event

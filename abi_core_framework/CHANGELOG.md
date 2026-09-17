@@ -8,6 +8,302 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`AgentResponse.element(element_type, props, name)`** — agents can now
+  send rich elements (image/file/pdf/audio/video/text/dataframe/qr) alongside
+  their response, rendered inline by a Chainlit-based UI. Binary content
+  should ride as a `url` (e.g. from `ArtifactStore.get_url()`) rather than
+  inline bytes. `element_type="qr"` renders a QR server-side from a
+  `data` string (URL, typically) — agents never need the `qrcode` package
+  themselves, only the rendering process does (new `qrcode[pil]` dependency,
+  `ui` extra only). See `.abi/specs/agent-rich-elements.md` and
+  [Rich Elements](docs/single-agent/10-rich-elements.md).
+- **Custom `.jsx` elements**, bundled and auto-installed. `abi_core.ui.chainlit_app`
+  now ships `InfoCard` and `MapEmbed` as reference components and copies
+  them into `public/elements/` on import — no per-project Dockerfile step
+  needed, same "no project needs its own copy" principle the module already
+  followed. Any `element_type` that isn't a built-in type is treated as a
+  custom element name. See `.abi/specs/agent-custom-elements.md`.
+- **Orchestrator "recent error" awareness** — the last error recorded for a
+  session (`AbiAgent.record_error`) now surfaces once, as
+  `recent_error_summary` in the reasoning turn's routing contract, on the
+  very next request in that session, then is consumed (cleared) — no TTL,
+  no timestamp; it shows up exactly once, never repeats. See
+  `.abi/specs/orchestrator-last-error-awareness.md`.
+- The Orchestrator's per-task chat step now shows an actual QR + download
+  link for generated artifacts, using the two features above together.
+- **`write_pdf` fixed tool + `direct_tool` plan tasks** — fixes the Planner
+  getting stuck in an infinite clarification loop when asked for a PDF
+  deliverable (it could only recognize "write a file" tasks, and its own
+  rules forbade any task that executes code, with no fallback). Rather than
+  loosening that rule (rejected — it would let the Planner ask an ephemeral
+  agent to generate-and-run code, reopening a prompt-injection surface), a
+  `PlanTask` can now carry `direct_tool: "write_pdf"`: a fixed, audited
+  tool (`abi_core.common.library_tools.write_pdf`, via `fpdf2`) that the
+  **Planner itself** executes directly — no ephemeral agent, no Builder
+  round-trip — then uploads to MinIO and reports the link, same as an
+  ephemeral agent's own flow. It still goes through the same plan
+  confirmation (approve/reject/modify) as any other task. See
+  `.abi/specs/planner-direct-tool-pdf.md`.
+- **`AbiAgent.record_conversation_turn` / `format_conversation_summary`** —
+  fixes a context-loss bug where a plain conversational turn (e.g. "I'm in
+  Xilitla, staying 3 days") was completely forgotten by the very next
+  request ("make me an itinerary"), forcing the Orchestrator to re-ask for
+  details the user had just given. Root cause: nothing outside
+  `pending_plan`/`pending_clarification` was ever persisted across turns —
+  `_reasoning_turn`'s only discretionary memory path (`MEMORY_TOOLS`
+  tool-calling) is separately documented as broken
+  (`.abi/issues/2026-09-09-fase1-memory-tools-lento.md`). Every resolved
+  turn is now deterministically appended to a rolling session window
+  (`session_backend`, LB/multi-pod safe — the Orchestrator also switched
+  from the in-memory session backend to Redis, `SESSION_BACKEND=redis`,
+  fixing the same restart-loses-everything exposure for `pending_plan`/
+  `last_error` as a side effect); the oldest turn is promoted to AMS
+  long-term memory before being dropped once the window (`CONVERSATION_WINDOW`,
+  default 5) overflows. Generic capability, lives in `AbiAgent`/`AbiCore`
+  per `WORKING_RULES.md` → *Perspectiva Local vs Global*, not swarm-specific.
+  Getting the data into the prompt wasn't sufficient on its own — the
+  routing decision's LLM call had no system prompt at all, so it kept
+  pattern-matching only the literal current message; a targeted
+  `SystemMessage` explaining *why* the recent-conversation block matters
+  fixed that. See `.abi/specs/orchestrator-conversation-memory.md`.
+
+### Changed
+- **`record_error`/`record_pending_plan`/`clear_pending_plan` moved from
+  Orchestrator-private methods to `AbiAgent` (generic, inherited by any
+  agent) with matching `AbiCore` passthroughs** — same pattern already used
+  for `get_session_context`/`update_session_context`. The Orchestrator's
+  swarm-specific piece (persisting a plan's methodology to AMS) stays local,
+  renamed `_record_plan_methodology`, now called alongside the inherited
+  `record_pending_plan`. No behavior change — pure relocation/delegation.
+  See `.abi/specs/agent-session-bookkeeping-methods.md`.
+- **`AbiAgent._run_with_heartbeat()`/`_run_llm_turn()` are now async
+  generators** that yield each heartbeat live as it occurs, ending with a
+  `_HeartbeatDone(result)` sentinel — not a batched list handed back after
+  the wait finishes, which defeated the point of a heartbeat (see Fixed,
+  below). `max_wait` is `Optional[float] = None` — no default cap. Guessing
+  one global timeout for every call site was the actual bug (measured live:
+  the same call site, same code path, needed 164s one run and 179s — timed
+  out — the next); *coro* is now expected to bound its own real work
+  internally (a DAG step's own `timeout`, a subprocess's own `timeout=`, an
+  LLM call's own bound) instead. `max_wait` remains available as an opt-in
+  safety net for a specific coroutine known not to self-bound yet
+  (`HeartbeatTimeoutError`, no longer needs to carry `.heartbeats` — nothing
+  is generated before a cutoff that wasn't already streamed live). All 9
+  call sites, the scaffolding template used by `abi-core add service
+  guardian`, and downstream example projects updated to the new
+  `async for item: isinstance(item, _HeartbeatDone)` pattern. Breaking for
+  any subclass calling `_run_with_heartbeat` directly with the old
+  `await ... -> (result, heartbeats)` shape. See
+  `.abi/specs/heartbeat-timeout-redesign.md` ("Revisión 2026-09-11").
+- Chainlit UI (`abi_core.ui.chainlit_app`): the single "Working" step is now
+  a "Processing" parent with one child step opened per plan task
+  (`meta.task_key`/`task_label`), so each task stays visible in the chat
+  instead of being overwritten by the next one. The parent step's name
+  reflects the active agent while no task is running yet (routing/planning/
+  synthesis) instead of staying fixed. See
+  `.abi/specs/chainlit-active-agent-label.md`,
+  `.abi/specs/chainlit-per-step-ui.md`.
+
+### Fixed
+- **`container_runtime.py`'s Docker SDK calls had no timeout of their own**
+  — the only real I/O in the framework without one (`run_shell`'s
+  `subprocess.run(timeout=60)` already kills its child process for real;
+  Docker's sync SDK, dispatched via `asyncio.to_thread`, had nothing).
+  `run_container`/`destroy_container` now wrap those calls in
+  `asyncio.wait_for` (300s for `containers.run`, which may need to pull the
+  image; 30s for `get`/`remove`). Documented explicitly that this bounds the
+  *wait*, not the thread itself — asyncio cancellation is cooperative and
+  can't force-stop a thread already running a blocking Docker SDK call. See
+  `.abi/specs/heartbeat-timeout-redesign.md`.
+- **Heartbeat progress was never actually live.** `_run_with_heartbeat`
+  batched every `AgentResponse.status(...)` into a list only handed back
+  once the wait was over — the whole point of a heartbeat (keeping an SSE
+  connection alive under a proxy's idle timeout, see `_HEARTBEAT_INTERVAL`'s
+  own comment) was defeated for any call taking longer than that timeout.
+  Fixed as part of the generator rewrite above — heartbeats now reach the
+  client the instant they occur. See `.abi/specs/heartbeat-timeout-redesign.md`.
+- **Artifact download links (and QR codes of them) used an internal
+  Docker-network hostname the user's browser can't resolve.**
+  `ArtifactStore` used one `endpoint` for both internal I/O and the
+  presigned URLs handed to a human. New `ARTIFACT_PUBLIC_ENDPOINT` (falls
+  back to `ARTIFACT_ENDPOINT` when unset) is used only for the latter.
+  Verified empirically that MinIO's Console UI port (9001, `/browser/...`)
+  does *not* validate presigned URLs — it just serves the Console's own app
+  shell — so this must point at the actual S3 API port (9000-style), not
+  the Console. See [Artifact Store](docs/production/05-artifact-store.md).
+
+### Removed
+- **`abi-core add abi-swarm`, `abi-core create swarm`, `abi-core remove abi-swarm`** —
+  the combined Orchestrator+Planner+Builder scaffolding graduated into its own
+  product (ABI Swarm), built and maintained separately from this framework now
+  that it's earned enough standalone value. The reference agent implementations
+  themselves (`abi_agents.planner`/`.orchestrator`/`.builder`) are untouched —
+  still the canonical example for `depends_on`, plan confirmation, methodology
+  selection, and ephemeral agent creation (see
+  [Planner & Orchestrator](docs/orchestration/01-planner-orchestrator.md)).
+  Replicating the combined system is now a manual wiring exercise (`abi-core
+  create project` + `abi-core add agent`/`add service` for each piece), not a
+  single command. See `.abi/specs/remove-abi-swarm-cli-scaffolding.md`.
+
+## [1.13.31] - 2026-09-11
+
+### Changed
+- **Orchestrator routing decision unified into a single deterministic contract**
+  — the reasoning turn used to branch into three separately-coded paths
+  (delegate/don't, plan-pending, clarification-pending), each with its own
+  drifting criteria for "what's the LLM allowed to choose" and "what happens
+  if it doesn't choose anything". Replaced with one deterministic step
+  (`steps.py::build_routing_contract`) that always produces the same
+  `{query, pending_plan_summary, pending_clarification_question,
+  valid_actions}` shape, and one structured-output call
+  (`with_structured_output(method="json_schema")`, not tool-calling — Ollama
+  ignores `tool_choice`, verified against the installed langchain-ollama
+  source) forced to a dynamic `Literal[*valid_actions]` schema. Removes
+  `_should_have_delegated`/`_enforce_create_plan`, the probabilistic
+  "did-you-mean-to-delegate" retry that broke production (forced a
+  nonsensical `create_plan` call for "Hola como te llamas", crashing the
+  Planner's `parse_plan` on the malformed result). See
+  `.abi/specs/orchestrator-unified-routing-contract.md`.
+- **`resolve_pending_plan` (the only decision that triggers real
+  `build_workflow`/Docker execution) uses a separately-profiled model**
+  — `qwen3:latest` (the routing default) got the approve/reject/modify
+  sub-decision wrong ~60% of the time regardless of schema shape (tested:
+  nested+optional, nested+required, flattened, few-shot prompting) or model
+  size (tested up to 24B — bigger didn't help, one 8B model did worse).
+  `qwen3:latest` with `reasoning` disabled closed the gap (9/10 on approve
+  phrasings) at practical latency (13s/call, 21x faster than with its
+  "thinking" mode on) — capability profile, not size, was the variable that
+  mattered. New `config.ROUTING_DECISION_LLM_CONFIG`, used only for this
+  decision. See `.abi/tsd/2026-09-09-routing-decision-model-profiling.md`.
+- **Dependency floors bumped to latest for packages with no reported breaking
+  changes** — `cryptography`, `starlette`, `redis`, `a2a-sdk`, `langchain`,
+  `langgraph`, `langchain-ollama`, `langchain-community`, `fastapi`,
+  `uvicorn`, `click`, `rich`, `docker`, `boto3`, `tinydb`, `requests`,
+  `numpy`, `textual`, `chainlit`, `langchain-openai`, `aiohttp`. Verified
+  after install: core module imports, `Part.data`/`new_data_part` round-trip
+  against `a2a-sdk` 1.1.2, and `RedisSessionBackend` create/resolve/destroy
+  against a real Redis instance (redis-py 8.1.0, RESP3 default). `numpy`
+  floor is `2.4.6`, not `2.5.x` — `2.5.0` dropped Python 3.11 wheels, and
+  this project's `requires-python` is `>=3.11`; `2.4.6` is the latest
+  release that still ships one.
+- **`mcp`/`fastmcp` deliberately NOT bumped past 1.x/3.x** — `mcp` 2.0 is a
+  protocol-level rewrite (drops the streamable-HTTP `initialize` handshake
+  this framework relies on, `ctx.elicit()` raises `NoBackChannelError` on
+  modern connections, new hard `opentelemetry-api` dependency); `fastmcp`
+  4.x tracks it. Pinned `mcp>=1.26.0,<2` and `fastmcp>=3.2.0,<4` explicitly
+  so a routine `pip install -U` can't pull them in by accident. v1.x/3.x
+  remain on security-fix-only maintenance upstream. See
+  `.abi/tsd/2026-09-10-dependency-upgrade-audit.md`.
+
+### Fixed
+- **Ephemeral (zombie) agents left `qwen3`'s "thinking" mode on by default**,
+  same root cause already fixed everywhere else in the framework
+  (`orchestrator`/`guardian`/`planner`/`builder` config, above) but missed
+  here because ephemeral agents use a separate, dynamically-generated config
+  template never touched by that fix. Confirmed live: an
+  `EPHEMERAL_MODEL_NAME=qwen3:latest` agent hit its own `EXECUTION_TIMEOUT`
+  (600s, `analyze_and_execute`) — not because the timeout was too short, but
+  because thinking-mode-on inflates even simple calls ~20x (measured
+  elsewhere in this framework: ~277s vs ~13s). `zombie/agent/config/config.py`
+  now sets `extra_params={"reasoning": False}` when `LLM_PROVIDER=ollama`,
+  matching the other 4 services. See
+  `.abi/tsd/2026-09-09-routing-decision-model-profiling.md`.
+
+## [1.13.21] - 2026-09-08
+
+### Fixed
+- **Orchestrator leaked raw A2A protocol objects into the client SSE stream**,
+  crashing the UI with `'str' object has no attribute 'get'` after approving a
+  plan. `orchestrator.py`'s execution loop yielded each `workflow.run_workflow()`
+  chunk directly instead of through `AgentResponse` — those chunks are raw
+  `a2a_pb2.StreamResponse` protobuf instances, and `yield_chunk_data()`'s
+  `.__dict__` fallback serializes the wrong thing for that type (the *class's*
+  dict, not the message fields), producing an unparseable string instead of
+  JSON. Now parsed with `A2AResponse.parse()` before yielding, same as the
+  artifact-extraction code right below it. See
+  `.abi/tsd/2026-09-06-leak-protobuf-crudo-sse.md`.
+- **A single global 180s timeout (`ABI_REASONING_TIMEOUT`) capped both routing
+  decisions and real DAG/tool-calling work**, cutting off ephemeral agents
+  before they finished legitimate long-running tasks (e.g. generating a full
+  game with a 24B-parameter model on CPU). `@agent.step()` now accepts a
+  per-step `timeout`; DAG-wide execution uses its own, more generous cap
+  (`ABI_DAG_MAX_WAIT`, default 900s) instead of sharing `ABI_REASONING_TIMEOUT`.
+  The zombie/ephemeral agent's `analyze_and_execute` step now uses
+  `timeout=EXECUTION_TIMEOUT` (env var, default 600s) and `max_retries=1` —
+  verified in production that a failed attempt at this timeout rarely
+  succeeds on retry with the same prompt/model, so retrying 3x just burns
+  time. See `.abi/tsd/2026-09-06-timeout-por-step-dag.md`.
+
+## [1.13.17] - 2026-09-05
+
+### Fixed
+- **Orchestrator no longer treats every message as the answer to whatever's pending**
+  — a message arriving while a plan or clarification is pending (e.g. a language
+  complaint instead of an actual answer) used to get shoved into the pending slot
+  verbatim, with zero verification, producing nonsense plans. Routing (new request?
+  reply to a pending plan/clarification? just chat?) is now decided by the LLM's own
+  reasoning turn via tool-calling (`abi_core.agent.routing_tools`), not a deterministic
+  gate — sentinels (button clicks) and Guardian stay fully deterministic ahead of it.
+  Includes a `ToolTracker`-based enforcement retry so a missed `create_plan` call
+  doesn't silently degrade to the LLM writing the plan inline instead of delegating.
+  Fixed along the way: reusing the LLM's own conversation memory (`thread_id=context_id`)
+  across turns let a stale exchange from an earlier turn (with a different tool set
+  bound) corrupt a later turn's tool-calling reliability — each reasoning turn now
+  gets its own thread, since all cross-turn state already flows through explicit
+  session context, not implicit LLM memory. See
+  `.abi/tsd/2026-08-23-orchestrator-tool-call-routing.md`.
+- **`@agent.tool()` functions never actually reached the LLM** — `AbiCore.run()` collected
+  them into `agent_instance.extra_tools`, but nothing ever read that list, `self.agent`
+  was already built (with an empty tool list) before `extra_tools` got populated, and
+  registering ANY `@agent.tool()`/`@agent.step()` put the agent in DAG-only mode, which
+  returns before the LLM's own tool-calling loop is ever reached. A tool declared
+  without `depends_on` was also silently auto-executed on every single request as an
+  unconditional DAG entry point — not just unreachable, actively wrong. Now: a tool WITH
+  `depends_on` stays DAG-only (unchanged); one WITHOUT is excluded from the DAG and
+  becomes LLM-callable instead, and `stream()`'s DAG path continues into an LLM turn
+  (instead of returning immediately) when standalone tools are registered — zero
+  behavior change for the agents that don't use this. Also fixed along the way:
+  `StructuredTool.from_function(func=<async fn>)` silently never awaited async tools
+  (the overwhelming majority of them), and `AgentResponse.error(msg, agent=...)` doesn't
+  accept `agent=`, masking real DAG failures behind a `TypeError` instead. See
+  `.abi/tsd/2026-08-23-agent-tool-dag-llm-coexist.md`.
+- **Guardian never actually evaluated policies** — `evaluate_policy` and `format_decision`'s
+  `input_map` referenced `$node.result.key`, but a node's output is stored raw, never
+  wrapped in a `"result"` key (`tool_graph.py`) — `$node.result.key` was never valid
+  syntax anywhere in this framework, and the same wrong pattern was documented as
+  correct in the framework's own docstrings. The reference always failed to resolve,
+  the node fails gracefully (not an exception) so it went unnoticed, and Guardian's
+  actual OPA policy check silently never ran. Fixed in Guardian's real code, both
+  scaffolding templates, and the framework's own misleading docstring examples. See
+  `.abi/tsd/2026-08-23-guardian-input-map-result-bug.md`.
+
+### Changed
+- **`abi_core.agent.llm_provider` rebuilt on `langchain.chat_models.init_chat_model()`**
+  — replaces 8 hand-rolled per-provider constructor calls with LangChain's own
+  actively-maintained universal dispatch. `temperature` no longer defaults to
+  `0.1` on every request — it's optional and now defaults to `None` (omitted),
+  matching what every current provider's own LangChain integration already
+  defaults to (verified against langchain-anthropic 1.7.1, langchain-openai
+  1.6.0, langchain-xai 1.3.0, langchain-aws 1.7.5). This was a real breaking
+  bug: Claude's extended `thinking` mode rejects any explicit `temperature`
+  other than 1, so forcing 0.1 broke every reasoning-enabled Claude call.
+  This isn't limited to extended-`thinking` calls: Anthropic's own API docs
+  confirm Claude 4.7+ (and Claude Mythos Preview) reject any non-default
+  `temperature`/`top_p`/`top_k` unconditionally, full stop.
+  New `extra_params` key on `LLM_CONFIG` forwards arbitrary kwargs straight
+  to the underlying model constructor (`thinking`, `thinking_budget` /
+  `thinking_level`, `max_tokens`, Azure's required `api_version`, etc.) — no
+  framework code change needed for the next model generation's new
+  parameter. Verified the values actually land on the constructed model
+  (not just that construction doesn't error). `grok` now uses the native `langchain-xai` integration
+  instead of the OpenAI-compatibility shim. `create_llm()`'s public
+  signature (config dict in, `BaseChatModel` out) is unchanged — existing
+  `LLM_CONFIG` dicts that set `temperature` explicitly keep working exactly
+  as before. New optional extras: `anthropic`, `openai`, `gemini`, `grok`,
+  `bedrock`, `vertex`, or all of them via `providers`. See
+  `.abi/tsd/2026-09-04-llm-provider-redesign.md`.
+
+### Added
 - **`abi-core add chainlit`** — add a Chainlit chat UI **as a Docker service** for any
   agent with a web interface (not just the swarm). Wired into `compose.yaml` + the
   project network and started by `abi-core run` (no manual `chainlit run`); the target
@@ -28,8 +324,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     plus `with_observation()` to refine scores from executions).
   - `capability_gaps()`, `match_score()` (scalar ranking; penalizes deficit only —
     surplus capability doesn't reward), `select_model()` / `rank_models()`.
-  - `seed_catalog()` — initial qualitative model profiles (`devstral:24b`,
-    `dolphin:70b`, `qwen2.5:3b/1.5b`) to bootstrap matching before measurement.
+  - `seed_catalog()` — initial qualitative model profiles (`qwen3:latest`,
+    `dolphin:70b`, `qwen3:latest/1.5b`) to bootstrap matching before measurement.
   - JSON load/save (`load_profiles`, `save_profiles`, `load_catalog`) — model
     profiling is a dev-time step: profile candidates, export JSON, load into the
     system, refine at runtime.
@@ -87,7 +383,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The Builder injects `AGENT_MEMORY_URL=http://<project>-agent-memory:8000` into
     ephemeral agents so they can recall/store context.
   - AMS runs fully local via Ollama (LiteLLM): `GENERATION_MODEL`/`FAST_MODEL`/`SLOW_MODEL`
-    = `ollama/qwen2.5:3b`, `EMBEDDING_MODEL` = `ollama/nomic-embed-text:v1.5` (768 dims).
+    = `ollama/qwen3:latest`, `EMBEDDING_MODEL` = `ollama/nomic-embed-text:v1.5` (768 dims).
 
 ### Fixed
 - `AgentResponse.input_required(prompt, **kwargs)` — now accepts optional metadata
@@ -381,7 +677,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Weaviate service tracking in `runtime.yaml` with configuration details
 
 ### Changed
-- **Default LLM Model**: Changed from `llama3.2:3b` to `qwen2.5:3b` for better tool calling support
+- **Default LLM Model**: Changed from `llama3.2:3b` to `qwen3:latest` for better tool calling support
   - Excellent function/tool calling capabilities (required for agents)
   - Similar size (~2 GB)
   - Better performance for agent workflows

@@ -114,7 +114,7 @@ from abi_core.capabilities import get_seed_profile, load_profiles, save_profiles
 profiles = load_profiles("model_profiles.json")
 
 # Refine from an observed execution (running mean; marks the profile "measured")
-mp = get_seed_profile("devstral:24b")
+mp = get_seed_profile("qwen3:latest")
 mp = mp.with_observation("tool_usage", 0.9)
 
 # Persist a catalog back to JSON
@@ -135,10 +135,10 @@ abi-core capabilities list
 abi-core capabilities list --source model_profiles.json
 
 # Show one model's profile as terminal bars
-abi-core capabilities show devstral:24b
+abi-core capabilities show qwen3:latest
 
 # Also write a radar (spider) chart PNG (requires the optional 'viz' extra)
-abi-core capabilities show devstral:24b --radar devstral.png
+abi-core capabilities show qwen3:latest --radar devstral.png
 ```
 
 The radar chart requires matplotlib (`pip install "abi-core-ai[viz]"`); the
@@ -151,7 +151,7 @@ dimension: the highest complexity level it sustains reliably before breaking. It
 not "how good is the model?" but "up to which level is this capability reliable?".
 
 ```bash
-abi-core capabilities profile qwen2.5:3b \
+abi-core capabilities profile qwen3:latest \
   --host http://localhost:11434 \
   --output qwen_profile.json \
   --reps 10

@@ -33,7 +33,7 @@ ENV AGENT_PORT=8002
 ENV SERVICE_PORT=8002
 ENV AGENT_CARD=./agent_cards/orchestrator_agent.json
 ENV WEB_INTERFACE_PORT=8083
-ENV MODEL_NAME=qwen2.5:3b
+ENV MODEL_NAME=qwen3:latest
 
 # Create non-root user but keep root for model access
 RUN useradd -m -u 1000 orchestrator && \

@@ -8,7 +8,7 @@ set -euo pipefail
 
 # Configuration
 PROJECT_DIR="{{ project_dir }}"
-MODEL_NAME="{{ model_name | default('qwen2.5:3b') }}"
+MODEL_NAME="{{ model_name | default('qwen3:latest') }}"
 EMBEDDING_MODEL="{{ embedding_model | default('nomic-embed-text:v1.5') }}"
 MODEL_SERVING="{{ model_serving | default('distributed') }}"
 

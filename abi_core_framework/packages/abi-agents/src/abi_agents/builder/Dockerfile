@@ -24,7 +24,7 @@ ENV SERVICE_MODULE=main
 ENV AGENT_PORT=11439
 ENV SERVICE_PORT=11439
 ENV AGENT_CARD=./agent_cards/builder_agent.json
-ENV MODEL_NAME=qwen2.5:3b
+ENV MODEL_NAME=qwen3:latest
 
 RUN useradd -m -u 1000 builder && \
     chown -R builder:builder /app && \

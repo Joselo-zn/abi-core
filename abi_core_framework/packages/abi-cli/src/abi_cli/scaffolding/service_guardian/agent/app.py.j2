@@ -46,12 +46,12 @@ async def parse_request(query: str) -> dict:
     name="evaluate_policy",
     depends_on=["parse_request"],
     input_map={
-        "action": "$parse_request.result.action",
-        "resource_type": "$parse_request.result.resource_type",
-        "source_agent": "$parse_request.result.source_agent",
-        "target_agent": "$parse_request.result.target_agent",
-        "content": "$parse_request.result.content",
-        "metadata": "$parse_request.result.metadata",
+        "action": "$parse_request.action",
+        "resource_type": "$parse_request.resource_type",
+        "source_agent": "$parse_request.source_agent",
+        "target_agent": "$parse_request.target_agent",
+        "content": "$parse_request.content",
+        "metadata": "$parse_request.metadata",
     },
 )
 async def evaluate_policy(
@@ -98,7 +98,7 @@ async def evaluate_policy(
 @agent.step(
     name="format_decision",
     depends_on=["evaluate_policy"],
-    input_map={"decision": "$evaluate_policy.result"},
+    input_map={"decision": "$evaluate_policy"},
 )
 async def format_decision(decision: dict) -> dict:
     """Format the policy decision for the caller."""

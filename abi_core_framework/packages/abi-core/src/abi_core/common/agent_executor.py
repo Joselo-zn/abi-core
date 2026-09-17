@@ -13,6 +13,7 @@ from a2a.types import (
     TaskState,
     UnsupportedOperationError,
 )
+from a2a.helpers.proto_helpers import new_data_part
 
 
 class ABIAgentExecutor(AgentExecutor):
@@ -58,14 +59,27 @@ class ABIAgentExecutor(AgentExecutor):
                 if is_task_completed:
                     content = item["content"]
                     if isinstance(content, dict):
-                        part = Part(text=json.dumps(content))
+                        # `text` and `data` are mutually exclusive fields on
+                        # the same protobuf Part (verified: assigning one
+                        # clears the other) — a single Part can't carry both.
+                        # Send two Parts in the same artifact instead: one
+                        # with .data as a real protobuf Value (via
+                        # new_data_part()/ParseDict) so structured content
+                        # survives the wire — plain Part(text=json.dumps(...))
+                        # only ever set .text, leaving .data permanently empty
+                        # on the receiving end (A2AResponse._extract_part) —
+                        # and one with .text for any consumer already parsing
+                        # it as JSON (e.g. A2AResponse.find_plan's fallback).
+                        # _extract_part already loops over every part in an
+                        # artifact, so both land correctly.
+                        parts = [new_data_part(content), Part(text=json.dumps(content))]
                     elif isinstance(content, str):
-                        part = Part(text=content)
+                        parts = [Part(text=content)]
                     else:
-                        part = Part(text=str(content))
+                        parts = [Part(text=str(content))]
 
                     await updater.add_artifact(
-                        [part],
+                        parts,
                         name=f"{self.agent.agent_name}-result",
                     )
                     await updater.complete()
@@ -73,9 +87,20 @@ class ABIAgentExecutor(AgentExecutor):
 
                 if require_user_input:
                     content = item["content"]
+                    meta = item.get("meta") or {}
                     text_content = content if isinstance(content, str) else json.dumps(content)
                     abi_logging(f"REQUIERE INPUT {text_content[:200]}")
-                    msg = updater.new_agent_message([Part(text=text_content)])
+                    parts = [Part(text=text_content)]
+                    if meta:
+                        # Same reasoning as the is_task_completed branch
+                        # above: structured meta (e.g. clarification
+                        # `questions`) needs its own Part with .data as a
+                        # real protobuf Value, or it never survives the
+                        # wire — plain Part(text=...) never populates
+                        # .data on the receiving end. See
+                        # .abi/specs/deterministic-clarification-answers.md.
+                        parts.append(new_data_part(meta))
+                    msg = updater.new_agent_message(parts)
                     await updater.requires_input(msg)
                     break
 

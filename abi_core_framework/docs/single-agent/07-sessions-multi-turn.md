@@ -147,6 +147,40 @@ class MyAgent(AbiAgent):
         ...
 ```
 
+## Conversation memory
+
+Session context (above) is a plain key/value dict — great for flags like `{"seen": true}`, but nothing accumulates a *conversation* out of it automatically. Without that, a purely conversational turn ("I'm in Xilitla, staying 3 days") that doesn't trigger a plan or a clarification is invisible to the very next request — the agent has no way to know the user already said it.
+
+`AbiAgent.record_conversation_turn` fixes that: a rolling, capped window of recent turns, kept in the session backend (so it's LB/multi-pod-safe like everything else on this page) and readable synchronously — no extra network round-trip beyond what session context already costs.
+
+```python
+class MyAgent(AbiAgent):
+    async def stream(self, query, context_id, task_id):
+        session_ctx = await self.get_session_context(context_id)
+        recent = session_ctx.get("conversation_summary")  # [{"user": ..., "assistant": ...}, ...]
+
+        response_text = await answer(query, recent)
+
+        # Record every resolved turn — call this once you know the final
+        # response text, right before returning it to the caller.
+        await self.record_conversation_turn(context_id, query, response_text, window=5)
+        return response_text
+```
+
+- `window` (default 5) caps how many turns stay in the active session — past that, the **oldest** turn is promoted to long-term memory (`add_long_term_memory`, if `AGENT_MEMORY_URL` is configured — see [Built-in Memory](06-builtin-memory.md)) before being dropped, not just discarded.
+- Format it for a prompt with `format_conversation_summary`:
+
+```python
+from abi_core.common.utils import format_conversation_summary
+
+recent_text = format_conversation_summary(session_ctx.get("conversation_summary"))
+# → "User: ...\nAssistant: ...\n\nUser: ...\nAssistant: ..." or None if empty
+```
+
+```{note}
+Availability isn't the same as correct use — putting the recent-conversation text in front of a model doesn't guarantee it merges relevant details instead of just pattern-matching the latest message. If you see that happen, add a short `SystemMessage` explaining *why* the block matters (a downstream call that only sees the field you write, nothing else) — that's what fixed it for the reference Orchestrator. See `.abi/specs/orchestrator-conversation-memory.md`.
+```
+
 ## Concurrency & latency (know the trade-offs)
 
 - **Concurrency.** Two requests for the same session hitting two pods can race on

@@ -1,22 +1,20 @@
 """Orchestrator Agent — Tools.
 
-Real @agent.tool usage: read-only check of which model each ephemeral task
-would use and where it lives, so the plan-confirmation summary can show the
-user "installed" vs "will be downloaded" before anything is built. Wraps the
-framework-level abi_core.common.model_tools (available to any agent).
+Read-only check of which model each ephemeral task would use and where it
+lives, so the plan-confirmation summary can show the user "installed" vs
+"will be downloaded" before anything is built. Wraps the framework-level
+abi_core.common.model_tools (available to any agent).
+
+Not a DAG node (no @agent.tool) since the 2026-08 tool-call routing
+redesign — called directly by orchestrator.py::_call_planner_and_respond,
+same reasoning as call_planner/extract_plan (steps.py).
 """
 
 import os
 
-from app import agent
 from abi_core.common.model_tools import list_available_models
 
 
-@agent.tool(
-    name="check_model_availability",
-    depends_on=["extract_plan"],
-    input_map={"plan_result": "$extract_plan"},
-)
 async def check_model_availability(plan_result: dict) -> dict:
     """Read-only — never mutates anything, safe to run unconditionally.
 
@@ -25,9 +23,9 @@ async def check_model_availability(plan_result: dict) -> dict:
     plan-confirmation summary.
     """
     if not isinstance(plan_result, dict) or "plan" not in plan_result:
-        return plan_result  # passthrough: gate_passthrough/clarification/error
+        return plan_result  # passthrough: clarification/error
 
-    default_model = os.getenv("EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "devstral:24b"))
+    default_model = os.getenv("EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "qwen3:latest"))
     plan = plan_result.get("plan") or {}
     registry = await list_available_models()
 

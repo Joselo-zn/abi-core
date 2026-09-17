@@ -117,7 +117,7 @@ def _check_ollama_model(model: str, host: str) -> None:
         )
 
     available = [m.get("name", "") for m in resp.json().get("models", [])]
-    # Ollama tags are like "qwen2.5:3b"; accept an exact match or a bare name.
+    # Ollama tags are like "qwen3:latest"; accept an exact match or a bare name.
     if model not in available and f"{model}:latest" not in available:
         listing = "\n     ".join(available) if available else "(none pulled)"
         raise ProfilingError(

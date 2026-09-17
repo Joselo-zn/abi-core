@@ -17,21 +17,21 @@ Apache 2.0.
 No. Works on CPU. GPU makes inference faster but isn't required.
 
 **How much RAM?**
-4 GB minimum for `qwen2.5:3b`. 8 GB recommended if running multiple agents + Weaviate.
+4 GB minimum for `qwen3:latest`. 8 GB recommended if running multiple agents + Weaviate.
 
 **Can I use cloud LLMs instead of Ollama?**
 Yes. Set `LLM_CONFIG` to `{"provider": "openai", "model": "gpt-4o", "api_key": "..."}`. Supports OpenAI, Gemini, Grok, Anthropic, Bedrock, Azure, Vertex.
 
 ## Models
 
-**Why qwen2.5:3b as default?**
+**Why qwen3:latest as default?**
 Good tool-calling support, small size (~2 GB), fast inference. Best balance for agent workloads.
 
 **Can different agents use different models?**
 Yes. Each agent has its own `LLM_CONFIG` in `config/config.py`. One can use Ollama, another OpenAI.
 
 **Which models support tool calling?**
-- qwen2.5:3b ✅ (excellent)
+- qwen3:latest ✅ (excellent)
 - mistral:7b ✅
 - llama3.1:8b ✅
 - qwen3:8b ✅
@@ -53,7 +53,7 @@ A2A protocol — JSON-RPC over HTTP with streaming. Use `agent_connection()` fro
 
 **"Model not found"**
 ```bash
-docker exec <ollama-container> ollama pull qwen2.5:3b
+docker exec <ollama-container> ollama pull qwen3:latest
 ```
 
 **"Port already in use"**

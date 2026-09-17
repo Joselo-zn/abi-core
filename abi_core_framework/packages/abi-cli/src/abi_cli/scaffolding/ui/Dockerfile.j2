@@ -1,14 +1,21 @@
 # {{ ui_title | default('ABI') }} — Chainlit chat UI
+#
+# Runs abi_core.ui.chainlit_app (the framework's canonical Chainlit client) —
+# no app code is generated into this project, so fixes to the UI ship with
+# an abi-core-ai upgrade instead of going stale in every generated copy.
 FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir "abi-core-ai[ui]"
 
-COPY . .
+# Branding only — chainlit reads these from the working directory.
+COPY chainlit.md .
+COPY .chainlit/ .chainlit/
 
 # Chainlit serves on 8000 inside the container; the host port is mapped in compose.
 EXPOSE 8000
 
-CMD ["chainlit", "run", "app.py", "--host", "0.0.0.0", "--port", "8000", "--headless"]
+# ABI_AGENT_URL / ABI_UI_TITLE come from compose's `environment:` — shell
+# form so they're expanded at container start, not build time.
+CMD ["sh", "-c", "abi-core ui chainlit --url \"$ABI_AGENT_URL\" --title \"$ABI_UI_TITLE\" --port 8000 --headless"]

@@ -96,6 +96,18 @@ def _update_compose_with_agent(context: dict):
         if any('agent-memory' in svc for svc in compose_data['services'].keys()):
             agent_env.append(f'AGENT_MEMORY_URL=http://{project_name}-agent-memory:8000')
 
+        # Orchestrator specifically holds cross-turn session state (pending
+        # plan/clarification) — the default in-memory SessionBackend loses
+        # all of it on any container restart. If Redis is already part of
+        # this project, point the Orchestrator at it instead of the default;
+        # every other agent role is effectively single-turn and doesn't need
+        # this (see .abi/issues/2026-09-06-sesion-estado-perdido-plan-huerfano.md).
+        if agent_name == 'orchestrator' and any('redis-stack' in svc for svc in compose_data['services'].keys()):
+            agent_env.extend([
+                'SESSION_BACKEND=redis',
+                f'SESSION_REDIS_URL=redis://{project_name}-redis-stack:6379',
+            ])
+
         agent_volumes = [
             './logs:/app/logs',
             f'./agents/{agent_name}/agent_cards:/app/agent_cards:ro'
@@ -392,10 +404,7 @@ def _update_compose_with_agent_card(agent_name: str, agent_card_filename: str):
 def _build_agent_memory_services(project_dir: str, network_name: str) -> dict:
     """Return the {redis-stack, agent-memory} compose service definitions.
 
-    Single source of truth reused by both `add service agent-memory`
-    (standalone) and `add abi-swarm` (which needs the same infra as part of
-    its orchestration bundle) — previously these were duplicated inline in
-    abi_swarm.py.
+    Single source of truth for `add service agent-memory`.
     """
     return {
         f'{project_dir}-redis-stack': {
@@ -423,9 +432,9 @@ def _build_agent_memory_services(project_dir: str, network_name: str) -> dict:
                 'PORT=8000',
                 'DISABLE_AUTH=true',
                 'LONG_TERM_MEMORY=true',
-                'GENERATION_MODEL=ollama/qwen2.5:3b',
-                'FAST_MODEL=ollama/qwen2.5:3b',
-                'SLOW_MODEL=ollama/qwen2.5:3b',
+                'GENERATION_MODEL=ollama/qwen3:latest',
+                'FAST_MODEL=ollama/qwen3:latest',
+                'SLOW_MODEL=ollama/qwen3:latest',
                 'EMBEDDING_MODEL=ollama/nomic-embed-text:v1.5',
                 'OLLAMA_API_BASE=http://ollama:11434',
                 'REDISVL_VECTOR_DIMENSIONS=768',
@@ -527,6 +536,18 @@ def _update_compose_with_agent_memory(compose_file, runtime_config: dict):
             if memory_service_name not in depends:
                 depends.append(memory_service_name)
             wired.append(svc_key)
+
+            # Orchestrator specifically needs durable cross-turn session
+            # state (pending plan/clarification) — the in-memory
+            # SessionBackend default loses it on any restart. Redis is now
+            # available (this function just added it), so point the
+            # Orchestrator at it. See
+            # .abi/issues/2026-09-06-sesion-estado-perdido-plan-huerfano.md.
+            if agent_name == 'orchestrator':
+                if not any(isinstance(e, str) and e.startswith('SESSION_BACKEND=') for e in env_list):
+                    env_list.append('SESSION_BACKEND=redis')
+                if not any(isinstance(e, str) and e.startswith('SESSION_REDIS_URL=') for e in env_list):
+                    env_list.append(f'SESSION_REDIS_URL=redis://{project_dir}-redis-stack:6379')
 
         with open(compose_file, 'w') as f:
             yaml.dump(compose_data, f, default_flow_style=False, indent=2, sort_keys=False)

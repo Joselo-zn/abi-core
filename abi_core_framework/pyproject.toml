@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "abi-core-ai"
-version = "1.13.11"
+version = "1.13.33"
 description = "Agent-Based Infrastructure Core - Runtime and CLI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,35 +25,49 @@ classifiers = [
 ]
 
 dependencies = [
-    "click>=8.3.0",
-    "rich>=14.0.0",
+    "click>=8.5.0",
+    "rich>=15.0.0",
     "jinja2>=3.1.0",
     "pyyaml>=6.0.0",
     "pydantic>=2.12.0",
-    "langchain>=1.2.0",
+    "langchain>=1.4.0",
     "langchain-core>=1.2.0",
-    "langchain-ollama>=1.0.0",
-    "langchain-community>=0.4.0",
-    "langgraph>=1.1.0",
-    "fastapi>=0.135.0",
-    "uvicorn>=0.42.0",
-    "starlette>=1.0.0",
-    "requests>=2.32.0",
+    "langchain-ollama>=1.1.0",
+    "langchain-community>=0.4.2",
+    "langgraph>=1.2.11",
+    "fastapi>=0.141.1",
+    "uvicorn>=0.52.4",
+    "starlette>=1.6.0",
+    "requests>=2.34.2",
     "httpx>=0.28.0",
-    "aiohttp>=3.13.0",
-    "a2a-sdk>=1.0.0",
-    "mcp>=1.26.0",
-    "fastmcp>=3.2.0",
+    "aiohttp>=3.14.3",
+    "a2a-sdk>=1.1.2",
+    # mcp/fastmcp: DO NOT bump past 1.x/3.x without a deliberate migration.
+    # mcp 2.0 is a protocol-level rewrite (drops the streamable-HTTP
+    # `initialize` handshake we rely on, ctx.elicit() raises
+    # NoBackChannelError on modern connections, new hard opentelemetry-api
+    # dependency). fastmcp 4.x tracks mcp's v2 SDK, so it's gated on the
+    # same decision. v1.x/3.x remain on security-fix-only maintenance
+    # upstream — that's an acceptable tradeoff until this gets its own
+    # migration pass. See .abi/tsd/2026-09-10-dependency-upgrade-audit.md.
+    "mcp>=1.26.0,<2",
+    "fastmcp>=3.2.0,<4",
     "mcp-toolbox>=0.1.7",
     "networkx>=3.6.0",
-    "numpy>=2.4.0",
-    "redis>=7.4.0",
+    # 2.4.6, not 2.5.x — numpy dropped Python 3.11 wheels at 2.5.0, and this
+    # project's requires-python is >=3.11 (see the block above). 2.4.6 is
+    # the latest release that still ships a cp311 wheel.
+    "numpy>=2.4.6",
+    "redis>=8.1.0",
     "agent-memory-client>=0.3.0",
-    "tinydb>=4.8.0",
+    "tinydb>=4.9.0",
     "psutil>=7.2.0",
-    "boto3>=1.35.0",
-    "docker>=7.0.0",
-    "textual>=1.0.0",
+    "boto3>=1.43.91",
+    "docker>=7.2.0",
+    "textual>=8.2.8",
+    # write_pdf (BASE_TOOLS, library_tools.py) — fixed, audited PDF
+    # generation tool. See .abi/specs/planner-direct-tool-pdf.md.
+    "fpdf2>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -72,7 +86,7 @@ semantic = [
 
 security = [
     "opa-python-client>=1.0.0",
-    "cryptography>=41.0.0",
+    "cryptography>=50.0.1",
 ]
 
 # Capability profile visualization (radar/spider charts). The terminal bar
@@ -88,8 +102,40 @@ scheduler = [
     "apscheduler>=3.10,<4",
 ]
 
+# Chainlit chat UI (abi_core.ui.chainlit_app, `abi-core ui chainlit`). Only
+# needed by whatever process actually serves the UI — httpx is already a
+# base dependency, so this is the only extra a thin UI container needs.
+ui = [
+    "chainlit>=2.12.0",
+    # element_type="qr" in AgentResponse.element() — renders a QR PNG from a
+    # URL/string server-side so agents never need this dependency
+    # themselves, only the process that renders (see
+    # .abi/specs/agent-rich-elements.md).
+    "qrcode[pil]>=8.0",
+]
+
+# LLM providers other than Ollama (the only hard dependency — see
+# abi_core.agent.llm_provider). Imported lazily via langchain's
+# init_chat_model(), so an agent only needs the extra for the provider(s) it
+# actually configures — install individually (e.g. `pip install
+# abi-core-ai[anthropic]`) or all at once with `providers`.
+anthropic = ["langchain-anthropic>=1.7.0"]
+openai = ["langchain-openai>=1.6.2"]
+gemini = ["langchain-google-genai>=4.4.0"]
+grok = ["langchain-xai>=1.3.0"]
+bedrock = ["langchain-aws>=1.7.0"]
+vertex = ["langchain-google-vertexai>=3.2.0"]
+providers = [
+    "langchain-anthropic>=1.7.0",
+    "langchain-openai>=1.6.0",
+    "langchain-google-genai>=4.4.0",
+    "langchain-xai>=1.3.0",
+    "langchain-aws>=1.7.0",
+    "langchain-google-vertexai>=3.2.0",
+]
+
 [project.urls]
-Homepage = "https://github.com/Joselo-zn/abi-core"
+Homepage = "https://abi-core.dev/"
 Documentation = "https://abi-core.readthedocs.io"
 Repository = "https://github.com/Joselo-zn/abi-core"
 Issues = "https://github.com/Joselo-zn/abi-core/issues"
@@ -111,13 +157,14 @@ where = [
 [tool.setuptools.package-data]
 abi_core = [
     "**/*.j2",
-    "**/*.json", 
+    "**/*.json",
     "**/*.yaml",
     "**/*.yml",
     "**/*.rego",
     "**/*.sh",
     "**/*.md",
     "**/*.tcss",
+    "**/*.jsx",
     "**/Dockerfile",
     "**/requirements.txt"
 ]

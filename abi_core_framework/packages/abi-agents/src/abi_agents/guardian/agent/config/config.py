@@ -27,13 +27,13 @@ class AgentConfig:
     OPA_URL: str = os.getenv("OPA_URL", f"http://{OPA_HOST}:{OPA_PORT}")
 
     # Model Configuration
-    MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen2.5:3b')
+    MODEL_NAME: str = os.getenv('MODEL_NAME', 'qwen3:latest')
     OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 
     # LLM Configuration
     LLM_CONFIG: dict = {
         "provider": os.getenv("LLM_PROVIDER", "ollama"),
-        "model": os.getenv("MODEL_NAME", "qwen2.5:3b"),
+        "model": os.getenv("MODEL_NAME", "qwen3:latest"),
         "temperature": 0.0,
         "base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
     }

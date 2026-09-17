@@ -98,9 +98,6 @@ def add_chainlit(url, title, ui_dir):
     }
 
     files = [
-        ('ui/app.py', 'app.py'),
-        ('ui/config.py', 'config.py'),
-        ('ui/requirements.txt', 'requirements.txt'),
         ('ui/chainlit.md', 'chainlit.md'),
         ('ui/Dockerfile', 'Dockerfile'),
         ('ui/.chainlit/config.toml', '.chainlit/config.toml'),
@@ -115,7 +112,7 @@ def add_chainlit(url, title, ui_dir):
             f.write(content)
 
     # Register as a Docker service so 'abi-core run' starts it.
-    _update_compose_with_chainlit(project_dir, url, ui_host_port, ui_dir)
+    _update_compose_with_chainlit(project_dir, url, ui_title, ui_host_port, ui_dir)
 
     # Track in runtime.yaml
     update_runtime_config('services', {
@@ -137,7 +134,7 @@ def add_chainlit(url, title, ui_dir):
     console.print("  abi-core run    # builds and starts the UI with the rest of the stack", style="dim")
 
 
-def _update_compose_with_chainlit(project_dir: str, agent_url: str, host_port: int, ui_dir: str):
+def _update_compose_with_chainlit(project_dir: str, agent_url: str, ui_title: str, host_port: int, ui_dir: str):
     """Add the Chainlit UI as a service in compose.yaml."""
     import yaml
 
@@ -166,7 +163,7 @@ def _update_compose_with_chainlit(project_dir: str, agent_url: str, host_port: i
             'build': f'./{ui_dir}',
             'container_name': service_name,
             'ports': [f'{host_port}:8000'],
-            'environment': [f'ABI_AGENT_URL={agent_url}'],
+            'environment': [f'ABI_AGENT_URL={agent_url}', f'ABI_UI_TITLE={ui_title}'],
             'networks': [network_name],
         }
 

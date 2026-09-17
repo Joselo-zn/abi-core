@@ -160,7 +160,7 @@ abi-core add agent-card --name "AgentName" [OPTIONS]
 **Options:**
 - `--name, -n` *(required)* - Agent name
 - `--description, -d` - Agent description
-- `--model` - LLM model (default: qwen2.5:3b)
+- `--model` - LLM model (default: qwen3:latest)
 - `--url` - Agent URL (default: http://localhost:8000)
 - `--tasks` - Supported tasks separated by commas
 

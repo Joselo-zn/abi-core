@@ -333,31 +333,22 @@ class AbiConsoleApp(App):
     ) -> None:
         conv.add_system_message("⏳ Sending to orchestrator...")
         async for event in self.orchestrator.ask(query):
-            evt_type = event.get("event", "")
-            data = event.get("data", "")
+            response_type = event.get("response_type", "")
+            content = event.get("content", "")
 
-            if evt_type == "done":
-                conv.add_system_message("✅ Done")
+            if response_type == "error":
+                conv.add_system_message(f"[red]❌ {content}[/]")
                 break
-            elif evt_type == "error":
-                conv.add_system_message(f"[red]❌ {data}[/]")
-                break
-            else:
-                if isinstance(data, dict):
-                    # Show meaningful fields in conversation
-                    msg = (
-                        data.get("message", "")
-                        or data.get("text", "")
-                        or data.get("result", "")
-                    )
-                    if msg:
-                        conv.add_event(str(msg))
-                    else:
-                        # Show the full dict if no known field
-                        conv.add_event(str(data))
-                    log.append_log(f"[dim]{data}[/]")
-                elif data:
-                    conv.add_event(str(data))
+            elif response_type == "status":
+                log.append_log(f"[dim]{content}[/]")
+            elif response_type in ("text", "input_required") and content:
+                conv.add_event(str(content))
+            elif response_type == "data" and content:
+                result = content.get("result", content) if isinstance(content, dict) else content
+                conv.add_event(str(result))
+                log.append_log(f"[dim]{content}[/]")
+        else:
+            conv.add_system_message("✅ Done")
 
 
 # ── Standalone entry point ───────────────────────────────────────

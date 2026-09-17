@@ -36,29 +36,61 @@ class ArtifactStore:
         secret_key: str = None,
         bucket: str = "abi-artifacts",
         region: str = "us-east-1",
+        public_endpoint: str = None,
     ):
         self.endpoint = endpoint or os.getenv("ARTIFACT_ENDPOINT", "http://minio:9000")
         self.access_key = access_key or os.getenv("ARTIFACT_ACCESS_KEY", "minioadmin")
         self.secret_key = secret_key or os.getenv("ARTIFACT_SECRET_KEY", "minioadmin")
         self.bucket = bucket or os.getenv("ARTIFACT_BUCKET", "abi-artifacts")
         self.region = region
+        # Endpoint used only for presigned URLs handed to a human (e.g. a
+        # download link in a chat response) — separate from `endpoint`
+        # (used for actual upload/download I/O between services). Inside
+        # Docker, `endpoint` is typically an internal service DNS name
+        # (e.g. http://abi-swarm-minio:9000) that a browser outside the
+        # network can't resolve; `public_endpoint` should be whatever host
+        # the browser can actually reach (e.g. http://localhost:9000 in
+        # local dev, or a real public hostname/reverse-proxy in
+        # production). Falls back to `endpoint` when unset, so deployments
+        # where MinIO is already reachable as-is need no change. Presigned
+        # URL generation is a local computation (no network call), so
+        # using a different endpoint here is safe — but it must still be
+        # the actual S3 API endpoint (port 9000-style), not e.g. MinIO
+        # Console's UI port: verified empirically that a presigned query
+        # string on the Console's /browser/ route returns the Console's
+        # own HTML shell, not the object — the Console doesn't validate
+        # S3 signatures on that path.
+        self.public_endpoint = public_endpoint or os.getenv("ARTIFACT_PUBLIC_ENDPOINT", self.endpoint)
         self._client = None
+        self._public_client = None
+
+    def _build_client(self, endpoint: str):
+        import boto3
+        from botocore.config import Config
+
+        return boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=self.access_key,
+            aws_secret_access_key=self.secret_key,
+            region_name=self.region,
+            config=Config(signature_version="s3v4"),
+        )
 
     def _get_client(self):
-        """Lazy-init boto3 S3 client."""
+        """Lazy-init boto3 S3 client for internal I/O (upload/download/list/...)."""
         if self._client is None:
-            import boto3
-            from botocore.config import Config
-
-            self._client = boto3.client(
-                "s3",
-                endpoint_url=self.endpoint,
-                aws_access_key_id=self.access_key,
-                aws_secret_access_key=self.secret_key,
-                region_name=self.region,
-                config=Config(signature_version="s3v4"),
-            )
+            self._client = self._build_client(self.endpoint)
         return self._client
+
+    def _get_public_client(self):
+        """Lazy-init the boto3 S3 client used for presigned URLs a human will
+        open directly — see `public_endpoint` in ``__init__``."""
+        if self.public_endpoint == self.endpoint:
+            return self._get_client()
+        if self._public_client is None:
+            self._public_client = self._build_client(self.public_endpoint)
+        return self._public_client
 
     async def ensure_bucket(self) -> None:
         """Create the bucket if it doesn't exist."""
@@ -160,10 +192,15 @@ class ArtifactStore:
             return False
 
     async def get_url(self, key: str, expires: int = 3600) -> str:
-        """Generate a pre-signed URL for temporary access."""
+        """Generate a pre-signed URL for temporary access.
+
+        Uses the public-facing endpoint (see ``public_endpoint`` in
+        ``__init__``) — this URL is meant to be opened directly by a human,
+        not called by another service inside the Docker network.
+        """
         import asyncio
 
-        client = self._get_client()
+        client = self._get_public_client()
         url = await asyncio.to_thread(
             client.generate_presigned_url,
             "get_object",

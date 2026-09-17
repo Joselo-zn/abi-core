@@ -7,11 +7,13 @@
 
 **Build AI agents that work together, find each other, and follow the rules.**
 
-ABI-Core is a Python framework for creating AI agents. You write the logic as simple functions, ABI packages them into services, connects them to each other, and makes sure they play by the rules. One `pip install`, one CLI command, and you have a running agent system.
+ABI-Core is a Python framework for creating AI agents. You write the logic as simple functions, ABI packages them into services, connects them to each other, and makes sure they play by the rules. One `pip install`, a couple of CLI commands, and you have a running agent system.
 
 ```bash
 pip install abi-core-ai
-abi-core create swarm --name my-system  # beta
+abi-core create project --name my-system --with-semantic-layer --with-guardian
+cd my-system
+abi-core add agent --name my-agent --description "What it does"
 abi-core run
 ```
 
@@ -181,8 +183,8 @@ Measure your own models with a deterministic probe battery (Wilson confidence
 intervals, no LLM judge) and export to JSON:
 
 ```bash
-abi-core capabilities profile qwen2.5:3b --output profiles.json
-abi-core capabilities show qwen2.5:3b --source profiles.json   # radar in the terminal
+abi-core capabilities profile qwen3:latest --output profiles.json
+abi-core capabilities show qwen3:latest --source profiles.json   # radar in the terminal
 ```
 
 See the [capability matching guide](https://abi-core.readthedocs.io/en/latest/reference/capability-matching.html).
@@ -202,12 +204,11 @@ async for chunk in agent_connection(my_card, target_card, payload):
 
 ```bash
 # Create
-abi-core create swarm --name <name>          # Full system: agents + services + compose (beta)
-abi-core create project <name>               # Project only
-abi-core add agent <name> --description "…"  # Add agent to existing project
-abi-core add semantic-layer                  # Add agent discovery service
-abi-core add service guardian-native         # Add security gate
-abi-core add chainlit                        # Add a Chainlit chat UI as a Docker service (SSE + sessions)
+abi-core create project --name <name>          # Project scaffolding + compose
+abi-core add agent --name <name> --description "…"  # Add agent to existing project
+abi-core add semantic-layer                    # Add agent discovery service
+abi-core add service guardian-native           # Add security gate
+abi-core add chainlit                          # Add a Chainlit chat UI as a Docker service (SSE + sessions)
 
 # Run
 abi-core run                # Start everything
@@ -217,9 +218,9 @@ abi-core run --build        # Rebuild first
 
 ---
 
-## Built-in Agents
+## Reference Multi-Agent Pattern
 
-When you `create swarm`, you get these out of the box:
+`abi_agents` ships reference implementations of the Orchestrator/Planner/Builder pattern — the canonical example of everything this framework enables (plan confirmation, methodology selection, ephemeral agent creation). They're not auto-scaffolded into a new project; use them as a starting point and wire each one by hand with `abi-core add agent`/`add service`, the same way you would your own agents.
 
 | Agent | What it does |
 |-------|-------------|
@@ -267,8 +268,10 @@ Switch providers by changing one config dict. Same code, any model:
 
 ## Project Structure
 
+A multi-agent project assembled by hand from `abi_agents` plus your own agents looks like this — nothing here is generated automatically in one shot, each `agents/*` directory is its own `abi-core add agent`:
+
 ```
-my-swarm/
+my-system/
 ├── agents/
 │   ├── orchestrator/     # Receives and routes requests
 │   ├── planner/          # Breaks tasks into pieces

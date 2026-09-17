@@ -1,34 +1,82 @@
 """
 LLM Provider — Unified factory for creating LangChain chat models.
 
+Built on ``langchain.chat_models.init_chat_model()`` — LangChain's own
+actively-maintained universal provider dispatch + kwarg passthrough — instead
+of hand-rolling a direct constructor call per provider. The old design forced
+``temperature`` to a float (0.1 default) on every single call and needed a
+framework code change for every new provider-specific parameter. That broke
+down as models evolved: **as of Claude 4.7 and later (and Claude Mythos
+Preview), Anthropic's own Messages API no longer supports ``temperature``,
+``top_p``, or ``top_k`` at all — sending any non-default value returns an
+HTTP 400** (confirmed directly against Anthropic's current API docs,
+platform.claude.com/docs/en/build-with-claude/working-with-messages: "Omit
+them from request payloads and use prompting to guide the model's behavior
+instead"). This isn't limited to extended-``thinking`` calls — it's
+unconditional for the whole 4.7+ model family. Gemini's reasoning knob is
+``thinking_budget`` on 2.5 models and ``thinking_level`` on 3+. Every current
+provider's own LangChain integration already defaults ``temperature`` to
+``None`` (verified against the installed langchain-anthropic 1.7.1,
+langchain-openai 1.6.0, langchain-xai 1.3.0, langchain-aws 1.7.5) — this
+module now follows that lead instead of fighting it. See
+.abi/tsd/2026-09-04-llm-provider-redesign.md for the full investigation.
+
 Supports three scenarios:
 1. Cloud managed: Bedrock, Azure OpenAI, Vertex AI
 2. Self-hosted: Ollama (local or remote)
-3. Direct APIs: OpenAI, Anthropic, Google Gemini, Grok (xAI)
+3. Direct APIs: OpenAI, Anthropic, Google Gemini, Grok (xAI, native
+   langchain-xai integration — no longer the OpenAI-compatibility shim)
 
-All providers are imported lazily to avoid forcing unnecessary dependencies.
+All provider integration packages are imported lazily (via init_chat_model)
+to avoid forcing unnecessary dependencies — only langchain-ollama is a hard
+dependency of this package; everything else is pip-installed by whoever
+actually uses that provider.
 
-Usage:
+Usage — same shape as before, still just a config dict in, BaseChatModel out:
+
     from abi_core.agent.llm_provider import create_llm
 
     llm = create_llm({
         "provider": "ollama",
-        "model": "qwen2.5:3b",
+        "model": "qwen3:latest",
         "temperature": 0.1,
         "base_url": "http://localhost:11434",
     })
 
+``temperature`` is now optional — omit it (or leave it ``None``) to let the
+provider use its own default, which current providers already default to
+``None`` themselves (Gemini defaults to 0.7 instead — still fine to omit).
+Use ``extra_params`` for anything provider- or model-generation-specific that
+isn't one of the common keys below — passed straight through to the
+underlying LangChain chat model constructor, so a new reasoning parameter
+never needs a framework code change again:
+
     llm = create_llm({
-        "provider": "bedrock",
-        "model": "anthropic.claude-3-sonnet-20240229-v1:0",
-        "aws_region": "us-east-1",
-        "temperature": 0.1,
+        "provider": "anthropic",
+        "model": "claude-opus-4-6-20260115",
+        "extra_params": {
+            "thinking": {"type": "enabled", "budget_tokens": 4000},
+        },
     })
 """
 
 from typing import Any, Dict
 
 from abi_core.common.utils import abi_logging
+
+# Our provider names -> (langchain's model_provider identifier, package to
+# suggest installing if it's missing). See init_chat_model's own docstring
+# for the full canonical list this is drawn from.
+_PROVIDER_MAP = {
+    "ollama": ("ollama", "langchain-ollama"),
+    "openai": ("openai", "langchain-openai"),
+    "anthropic": ("anthropic", "langchain-anthropic"),
+    "gemini": ("google_genai", "langchain-google-genai"),
+    "grok": ("xai", "langchain-xai"),
+    "bedrock": ("bedrock_converse", "langchain-aws"),
+    "azure": ("azure_openai", "langchain-openai"),
+    "vertex": ("google_vertexai", "langchain-google-vertexai"),
+}
 
 
 def create_llm(llm_config: Dict[str, Any]):
@@ -41,153 +89,106 @@ def create_llm(llm_config: Dict[str, Any]):
         model: str — model name/id
 
     Common optional keys:
-        temperature: float (default 0.1)
-        api_key: str (for API-based providers)
-        base_url: str (for ollama or custom endpoints)
+        temperature: float | None — omitted (or ``None``, the default) lets
+            the provider use its own default. Claude 4.7+ (and Claude Mythos
+            Preview) REJECT any non-default `temperature`/`top_p`/`top_k`
+            outright (HTTP 400) — not just with extended thinking, always.
+            If you have an older config that sets this explicitly and you
+            move to a 4.7+ model, remove the key rather than relying on a
+            "safe" value; there isn't one anymore.
+        api_key: str (for API-based providers — falls back to each
+            provider's own standard env var, e.g. ANTHROPIC_API_KEY, if unset)
+        base_url: str — custom/self-hosted endpoint. Required in practice
+            for ollama (defaults to http://localhost:11434 if omitted);
+            optional override for every other provider.
+        extra_params: dict — forwarded as-is to the underlying LangChain
+            chat model constructor. Use this for anything provider- or
+            model-generation-specific: `thinking`, `thinking_budget`,
+            `thinking_level`, `max_tokens`, `top_p`, `reasoning_effort`,
+            `api_version` (azure), etc. — whatever this model needs that
+            isn't one of the keys above. See the provider's own LangChain
+            integration reference for the exact field names it accepts:
+            https://reference.langchain.com/python/integrations/
 
     Cloud-specific keys:
-        aws_region: str (bedrock)
+        aws_region: str (bedrock) — passed through as region_name
         azure_deployment: str (azure)
         azure_endpoint: str (azure)
-        vertex_project: str (vertex)
-        vertex_location: str (vertex)
+        vertex_project: str (vertex) — passed through as project
+        vertex_location: str (vertex) — passed through as location
+
+    Azure gotcha (verified against the installed AzureChatOpenAI): it
+    ALWAYS requires an api version — either the OPENAI_API_VERSION env var,
+    or extra_params={"api_version": "2024-10-01"} (or whatever date your
+    deployment needs). Construction raises a clear pydantic ValidationError
+    if neither is set — this module doesn't default one for you, since the
+    correct value depends entirely on your Azure deployment.
 
     Returns:
         A LangChain BaseChatModel instance.
 
     Raises:
-        ValueError: If provider is unknown or required deps are missing.
+        ValueError: If provider is unknown, or its integration package
+            isn't installed (surfaced with an actionable pip-install message).
     """
     provider = llm_config.get("provider", "ollama").lower().strip()
-    model = llm_config.get("model", "qwen2.5:3b")
-    temperature = float(llm_config.get("temperature", 0.1))
-    api_key = llm_config.get("api_key", "")
-    base_url = llm_config.get("base_url", "")
+    model = llm_config.get("model", "qwen3:latest")
+
+    if provider not in _PROVIDER_MAP:
+        raise ValueError(
+            f"Unknown LLM provider: '{provider}'. "
+            f"Supported: {', '.join(_PROVIDER_MAP)}"
+        )
+    model_provider, package = _PROVIDER_MAP[provider]
+
+    # extra_params first so the explicit common keys below can't be
+    # silently shadowed by a stray entry in there.
+    kwargs: Dict[str, Any] = dict(llm_config.get("extra_params") or {})
+
+    temperature = llm_config.get("temperature")
+    if temperature is not None:
+        kwargs["temperature"] = float(temperature)
+
+    api_key = llm_config.get("api_key")
+    if api_key:
+        kwargs["api_key"] = api_key
+
+    # `base_url` is a real field (or alias) on every provider's LangChain
+    # integration class — verified directly against the installed packages,
+    # not assumed. Ollama is the one provider where omitting it entirely
+    # isn't viable (self-hosted, no server-side default makes sense).
+    base_url = llm_config.get("base_url")
+    if provider == "ollama":
+        kwargs["base_url"] = base_url or "http://localhost:11434"
+    elif base_url:
+        kwargs["base_url"] = base_url
+
+    if provider == "bedrock":
+        kwargs.setdefault("region_name", llm_config.get("aws_region", "us-east-1"))
+    elif provider == "azure":
+        kwargs.setdefault("azure_deployment", llm_config.get("azure_deployment", model))
+        endpoint = llm_config.get("azure_endpoint")
+        if endpoint:
+            kwargs.setdefault("azure_endpoint", endpoint)
+    elif provider == "vertex":
+        kwargs.setdefault("location", llm_config.get("vertex_location", "us-central1"))
+        project = llm_config.get("vertex_project")
+        if project:
+            kwargs.setdefault("project", project)
 
     abi_logging(f"[🤖] Creating LLM: provider={provider}, model={model}")
 
-    # ── Ollama (self-hosted) ────────────────────────────────────
-    if provider == "ollama":
-        try:
-            from langchain_ollama import ChatOllama
-        except ImportError:
-            raise ValueError("langchain-ollama is required for provider 'ollama'. pip install langchain-ollama")
-        url = base_url or "http://localhost:11434"
-        llm = ChatOllama(model=model, base_url=url, temperature=temperature)
-        abi_logging(f"[✅] Ollama LLM ready: {model} at {url}")
-        return llm
+    from langchain.chat_models import init_chat_model
 
-    # ── OpenAI (direct API) ─────────────────────────────────────
-    if provider == "openai":
-        try:
-            from langchain_openai import ChatOpenAI
-        except ImportError:
-            raise ValueError("langchain-openai is required for provider 'openai'. pip install langchain-openai")
-        kwargs = {"model": model, "temperature": temperature}
-        if api_key:
-            kwargs["api_key"] = api_key
-        if base_url:
-            kwargs["base_url"] = base_url
-        llm = ChatOpenAI(**kwargs)
-        abi_logging(f"[✅] OpenAI LLM ready: {model}")
-        return llm
+    try:
+        llm = init_chat_model(model, model_provider=model_provider, **kwargs)
+    except ImportError as e:
+        raise ValueError(
+            f"{package} is required for provider '{provider}'. pip install {package}"
+        ) from e
 
-    # ── Anthropic (direct API) ──────────────────────────────────
-    if provider == "anthropic":
-        try:
-            from langchain_anthropic import ChatAnthropic
-        except ImportError:
-            raise ValueError("langchain-anthropic is required for provider 'anthropic'. pip install langchain-anthropic")
-        kwargs = {"model": model, "temperature": temperature}
-        if api_key:
-            kwargs["api_key"] = api_key
-        if base_url:
-            kwargs["base_url"] = base_url
-        llm = ChatAnthropic(**kwargs)
-        abi_logging(f"[✅] Anthropic LLM ready: {model}")
-        return llm
-
-    # ── Google Gemini (direct API) ──────────────────────────────
-    if provider == "gemini":
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-        except ImportError:
-            raise ValueError("langchain-google-genai is required for provider 'gemini'. pip install langchain-google-genai")
-        kwargs = {"model": model, "temperature": temperature}
-        if api_key:
-            kwargs["google_api_key"] = api_key
-        llm = ChatGoogleGenerativeAI(**kwargs)
-        abi_logging(f"[✅] Gemini LLM ready: {model}")
-        return llm
-
-    # ── Grok / xAI (OpenAI-compatible API) ──────────────────────
-    if provider == "grok":
-        try:
-            from langchain_openai import ChatOpenAI
-        except ImportError:
-            raise ValueError("langchain-openai is required for provider 'grok'. pip install langchain-openai")
-        url = base_url or "https://api.x.ai/v1"
-        kwargs = {"model": model, "temperature": temperature, "base_url": url}
-        if api_key:
-            kwargs["api_key"] = api_key
-        llm = ChatOpenAI(**kwargs)
-        abi_logging(f"[✅] Grok/xAI LLM ready: {model} at {url}")
-        return llm
-
-    # ── AWS Bedrock (cloud managed) ─────────────────────────────
-    if provider == "bedrock":
-        try:
-            from langchain_aws import ChatBedrock
-        except ImportError:
-            raise ValueError("langchain-aws is required for provider 'bedrock'. pip install langchain-aws")
-        region = llm_config.get("aws_region", "us-east-1")
-        llm = ChatBedrock(
-            model_id=model,
-            region_name=region,
-            model_kwargs={"temperature": temperature},
-        )
-        abi_logging(f"[✅] Bedrock LLM ready: {model} in {region}")
-        return llm
-
-    # ── Azure OpenAI (cloud managed) ────────────────────────────
-    if provider == "azure":
-        try:
-            from langchain_openai import AzureChatOpenAI
-        except ImportError:
-            raise ValueError("langchain-openai is required for provider 'azure'. pip install langchain-openai")
-        deployment = llm_config.get("azure_deployment", model)
-        endpoint = llm_config.get("azure_endpoint", "")
-        kwargs = {
-            "azure_deployment": deployment,
-            "temperature": temperature,
-        }
-        if endpoint:
-            kwargs["azure_endpoint"] = endpoint
-        if api_key:
-            kwargs["api_key"] = api_key
-        llm = AzureChatOpenAI(**kwargs)
-        abi_logging(f"[✅] Azure OpenAI LLM ready: {deployment}")
-        return llm
-
-    # ── Google Vertex AI (cloud managed) ────────────────────────
-    if provider == "vertex":
-        try:
-            from langchain_google_vertexai import ChatVertexAI
-        except ImportError:
-            raise ValueError("langchain-google-vertexai is required for provider 'vertex'. pip install langchain-google-vertexai")
-        project = llm_config.get("vertex_project", "")
-        location = llm_config.get("vertex_location", "us-central1")
-        kwargs = {"model_name": model, "temperature": temperature, "location": location}
-        if project:
-            kwargs["project"] = project
-        llm = ChatVertexAI(**kwargs)
-        abi_logging(f"[✅] Vertex AI LLM ready: {model} in {location}")
-        return llm
-
-    raise ValueError(
-        f"Unknown LLM provider: '{provider}'. "
-        f"Supported: ollama, openai, anthropic, gemini, grok, bedrock, azure, vertex"
-    )
+    abi_logging(f"[✅] {provider.capitalize()} LLM ready: {model}")
+    return llm
 
 
 async def invoke(

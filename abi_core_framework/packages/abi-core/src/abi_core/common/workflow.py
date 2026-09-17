@@ -4,7 +4,7 @@ import operator
 
 from collections.abc import AsyncIterable
 from enum import Enum
-from typing import TypedDict, Annotated, Sequence
+from typing import TypedDict, Annotated, Optional, Sequence
 from uuid import uuid4
 
 import httpx
@@ -158,6 +158,21 @@ class AgentInteractionFlow:
         self.paused_node_id = None
         self.compiled_graph = None
         self._node_attributes = {}  # Store node attributes
+        # Display name of the agent behind whichever node's chunks
+        # run_workflow() is currently yielding — set right before each
+        # node's chunks, read by callers that want to show the user which
+        # agent is actually working right now (see
+        # .abi/specs/chainlit-active-agent-label.md). Safe as instance
+        # state: a fresh AgentInteractionFlow is built per plan execution
+        # (steps.py's build_workflow()), never shared across requests.
+        self.current_agent_name: Optional[str] = None
+        # node_key/node_label of that same currently-yielding node — e.g.
+        # "task_1" / "task_1: Write a text file...". Lets a UI (Chainlit)
+        # render one visible step per plan task instead of one generic
+        # step for the whole execution. See
+        # .abi/specs/chainlit-per-step-ui.md.
+        self.current_node_key: Optional[str] = None
+        self.current_node_label: Optional[str] = None
 
     def add_node(self, node) -> None:
         """Add a node to the workflow graph"""
@@ -302,6 +317,13 @@ class AgentInteractionFlow:
             # Extract node results and yield chunks
             for node_id, node_state in event.items():
                 if node_id in self.nodes and 'results' in node_state:
+                    node = self.nodes[node_id]
+                    self.current_agent_name = (
+                        node.target_agent_card.name
+                        if getattr(node, 'target_agent_card', None) else None
+                    )
+                    self.current_node_key = node.node_key
+                    self.current_node_label = node.node_label
                     node_results = node_state['results'].get(node_id, [])
                     for chunk in node_results:
                         yield chunk
