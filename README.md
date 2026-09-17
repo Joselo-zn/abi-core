@@ -447,4 +447,4 @@ I first saw a computer in 1995. My dad had received a Windows 3.11 machine as pa
 **José Luis Martínez** is a systems engineer, AI infrastructure strategist, and creator of the ABI (Agent-Based Infrastructure) paradigm.  
 This project is part of an ongoing research effort to democratize intelligent systems and create shared cognition frameworks for open innovation.
 
-Connect on [LinkedIn](https://www.linkedin.com/in/jose-luis-martinez-71195425/) | [Blog](https://designednotmagic.hashnode.dev)
+Connect on [LinkedIn](https://www.linkedin.com/in/jose-luis-martinez-71195425/) | [Blog](https://designednotmagic.hashnode.dev) | [abi-core.dev](https://abi-core.dev/)
