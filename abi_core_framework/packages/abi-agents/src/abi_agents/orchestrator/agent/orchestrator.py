@@ -204,37 +204,56 @@ class AbiOrchestratorAgent(AbiAgent):
 
         # This call has NO system prompt otherwise (decision_llm is the bare
         # model, not self.agent — ORCHESTRATOR_TOT_INSTRUCTIONS never reaches
-        # it). Experiment (2026-09-15, see
-        # .abi/specs/orchestrator-conversation-memory.md): with zero framing,
-        # the model was observed pattern-matching only the literal current
-        # message into `objective`, ignoring a correctly-injected
-        # [SYSTEM STATE] Recent conversation block sitting right above it in
-        # the same prompt — verified by reconstructing the exact prompt by
-        # hand and comparing it to `decision.objective` in the logs. Only
-        # added when there's an actual system_state block to point at.
-        messages = prompt
+        # it). Two separate failure modes observed live, both from the same
+        # root cause (zero framing on what `objective` is FOR):
+        # 1. (2026-09-15) With a [SYSTEM STATE] Recent conversation block
+        #    present, the model pattern-matched only the literal current
+        #    message into `objective`, ignoring relevant detail sitting right
+        #    above it in the same prompt.
+        # 2. (2026-09-17) On a first message in a fresh session (no
+        #    [SYSTEM STATE] block at all — the case below never even ran),
+        #    the model collapsed `objective` to a short topic-label
+        #    ("plan_trip") instead of the actual request — treating the
+        #    field like a title to summarize, not content to transfer. The
+        #    existing `decision.objective or query` fallback (below) doesn't
+        #    catch this: the field wasn't empty, just useless. See
+        #    .abi/specs/orchestrator-conversation-memory.md.
+        # Always send framing now — case 2 needs it exactly as much as case 1,
+        # and it has nothing to do with [SYSTEM STATE] being present.
+        from langchain_core.messages import SystemMessage, HumanMessage
+
+        system_message = (
+            "First decide the right action on its own merits — greetings, "
+            "questions about you, and anything you can answer yourself in "
+            "one reply are action=answer_directly, not action=create_plan. "
+            "Do not let the paragraph below pull you toward create_plan; it "
+            "only tells you how to fill `objective` *after* you've already "
+            "decided create_plan is correct for an unrelated reason (the "
+            "user is asking for real work to be done).\n\n"
+            "When action=create_plan, `objective` is NOT a title, category, "
+            "or short label for the request (e.g. 'plan_trip', "
+            "'itinerary_and_budget') — a downstream planner will see ONLY "
+            "the text you write into `objective`, nothing else from this "
+            "conversation. Treat it as a full transfer of the request: "
+            "preserve every concrete detail from the user's message — "
+            "places, dates, quantities, specific things they asked for — "
+            "even if that means writing several sentences. If you write "
+            "something short enough to fit a chat title, you have almost "
+            "certainly dropped information the planner needs and cannot "
+            "recover."
+        )
         if system_state:
-            from langchain_core.messages import SystemMessage, HumanMessage
-            messages = [
-                SystemMessage(content=(
-                    "Before answering, read the full prompt carefully, "
-                    "including the [SYSTEM STATE] block, and use anything "
-                    "relevant from it — do not just pattern-match the "
-                    "current message in isolation.\n\n"
-                    "This matters most for `objective` (action=create_plan): "
-                    "a downstream planner will see ONLY the text you write "
-                    "into `objective` — nothing else from this conversation, "
-                    "no [SYSTEM STATE] block, nothing. If you copy the "
-                    "current message verbatim and it omits a detail already "
-                    "given in [SYSTEM STATE] Recent conversation (place, "
-                    "dates, constraints, etc.), the planner has no way to "
-                    "know it and will ask the user to repeat information "
-                    "they already gave. Merge the relevant detail into "
-                    "`objective` yourself first — do not leave that "
-                    "merging for later."
-                )),
-                HumanMessage(content=prompt),
-            ]
+            system_message += (
+                "\n\nAlso read the [SYSTEM STATE] block below carefully and "
+                "merge in anything relevant to the current message — place, "
+                "dates, constraints already given — instead of just "
+                "pattern-matching the current message in isolation. If you "
+                "copy the current message verbatim and it omits a detail "
+                "already given in [SYSTEM STATE] Recent conversation, the "
+                "planner has no way to know it and will ask the user to "
+                "repeat information they already gave."
+            )
+        messages = [SystemMessage(content=system_message), HumanMessage(content=prompt)]
 
         try:
             result_holder["decision"] = await structured_llm.ainvoke(messages)
@@ -614,8 +633,18 @@ class AbiOrchestratorAgent(AbiAgent):
                 from abi_core.agent.llm_provider import invoke as llm_invoke
 
                 async def _synthesize():
+                    # call_timeout: see llm_provider.invoke()'s "Path A
+                    # timeout" comment — this exact call hung indefinitely,
+                    # reproduced twice live, right after a long ephemeral
+                    # generation on the same Ollama instance. 300s (the
+                    # longest legitimate single-call time observed this
+                    # session was ~4min for a full code-generation task;
+                    # synthesis is lighter) per attempt, one retry with a
+                    # fresh client before surfacing an error instead of
+                    # hanging forever.
                     return await llm_invoke(
                         config.LLM_CONFIG, synthesis_query, thread_id=context_id,
+                        call_timeout=300,
                     )
 
                 synthesis = None

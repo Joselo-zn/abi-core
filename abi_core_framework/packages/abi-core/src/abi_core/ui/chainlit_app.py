@@ -31,6 +31,16 @@ from abi_core.client.agent_stream_client import AgentStreamClient
 # Suppress httpcore async generator cleanup warnings (cosmetic, non-blocking)
 warnings.filterwarnings("ignore", message=".*async generator ignored GeneratorExit.*")
 
+# Opt-in OAuth login + invite-link registration — imported only when a
+# provider is actually configured, because `@cl.oauth_callback` raises at
+# decoration time if no OAuth provider env vars are set (chainlit's own
+# validation, not ours) — importing this unconditionally would break every
+# abi-core deployment that doesn't use OAuth. See
+# .abi/specs/not-implemented/chainlit-oauth-login-session-continuity.md and
+# .abi/specs/not-implemented/chainlit-invite-link-registration.md.
+if os.getenv("OAUTH_GOOGLE_CLIENT_ID"):
+    import abi_core.ui.auth  # noqa: F401 — side effects only
+
 
 def _install_bundled_elements() -> None:
     """Copy abi_core's bundled .jsx custom elements into ./public/elements/

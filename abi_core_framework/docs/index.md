@@ -102,6 +102,7 @@ production/03-troubleshooting
 production/04-deployment
 production/05-artifact-store
 production/06-background-and-scheduled-tasks
+production/07-authentication
 ```
 
 ```{toctree}

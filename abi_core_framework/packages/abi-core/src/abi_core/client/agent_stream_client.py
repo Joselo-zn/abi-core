@@ -47,9 +47,12 @@ class AgentStreamClient:
     optional meta — the same shape AgentResponse produces server-side).
     """
 
-    def __init__(self, agent_url: str):
+    def __init__(self, agent_url: str, token: Optional[str] = None):
         self.agent_url = agent_url.rstrip("/")
-        self._token: Optional[str] = None
+        # Preloaded from persisted thread metadata (chainlit-oauth-login-
+        # session-continuity.md's on_chat_resume bridge) so a returning,
+        # logged-in user keeps their context_id instead of starting anonymous.
+        self._token: Optional[str] = token
 
     async def ensure_session(self) -> Optional[str]:
         """Start a session once and cache its token for this instance.
@@ -95,6 +98,21 @@ class AgentStreamClient:
                         json={"query": query},
                         headers=headers,
                     ) as response:
+                        if token and response.headers.get("X-Session-Resolved") == "false":
+                            # The token we sent didn't resolve server-side
+                            # (expired past SESSION_TTL with no activity, or
+                            # the backend restarted without persistence) —
+                            # this request already got silently downgraded
+                            # to an anonymous session, but clearing it here
+                            # means the NEXT message fetches a fresh token
+                            # instead of repeating this forever. See
+                            # .abi/specs/not-implemented/chainlit-oauth-login-session-continuity.md.
+                            abi_logging(
+                                "[⚠️] Session token did not resolve server-side — "
+                                "will fetch a fresh one on the next message",
+                                level="warning",
+                            )
+                            self._token = None
                         async for line in response.aiter_lines():
                             if not line.startswith("data: "):
                                 continue

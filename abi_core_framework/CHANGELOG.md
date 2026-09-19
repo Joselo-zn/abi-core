@@ -8,6 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Google OAuth login + Postgres-backed persistent threads + invite-only
+  registration for the bundled Chainlit UI** (`abi_core.ui.chainlit_app`,
+  opt-in — set `OAUTH_GOOGLE_CLIENT_ID` to activate, otherwise the UI stays
+  anonymous exactly as before). Adds `@cl.oauth_callback` (Google, via
+  Chainlit's native provider support), a `SQLAlchemyDataLayer` on Postgres
+  (persisted users/threads/steps, resumable across logins and devices), and
+  an invite/waiting-list system: the first user to register becomes admin
+  automatically, every registered user gets one invite to hand out, and
+  anyone without an available invite lands on a real `/waiting-list` form
+  (not Chainlit's generic error page — done via a custom exception handler
+  reordering Chainlit's own catch-all route, since a route added the normal
+  way is otherwise shadowed by it). New dependencies (`sqlalchemy[asyncio]`,
+  `asyncpg`, `boto3` — `ui` extra only, reuses the swarm's existing MinIO for
+  thread element storage). See
+  `.abi/specs/not-implemented/chainlit-oauth-login-session-continuity.md`,
+  `.abi/specs/not-implemented/chainlit-invite-link-registration.md`, and
+  [Authentication](docs/production/07-authentication.md).
+- **`SessionStore`'s TTL is now a sliding window, not a fixed deadline.**
+  `resolve()` (both `InMemorySessionBackend` and `RedisSessionBackend`) now
+  renews the token/session expiry on every successful call — a session in
+  active use never expires, only one genuinely idle for the full
+  `SESSION_TTL` does. Previously the TTL was set once at `create_session()`
+  and never touched again, so a conversation spanning more than `SESSION_TTL`
+  wall-clock time (even with constant activity) silently lost its token,
+  manifesting as "I approved the plan and it said there was no plan" —
+  reproduced live, root-caused by comparing two real sessions (one that
+  survived a 37-minute gap, one that didn't survive 19 minutes) and finding
+  the actual token was over 3.5 hours old in the failing case. Also: `/stream`
+  now sets `X-Session-Resolved: false` when a supplied token didn't resolve
+  (silently fell back to an anonymous session before), and
+  `AgentStreamClient` clears its cached token on that signal so the *next*
+  message fetches a fresh one instead of repeating a dead token forever. See
+  `.abi/specs/session-token-ttl-not-refreshed.md` and
+  [Sessions & Multi-turn → Token expiry](docs/single-agent/07-sessions-multi-turn.md#token-expiry-is-a-sliding-window-not-a-fixed-deadline).
 - **`AgentResponse.element(element_type, props, name)`** — agents can now
   send rich elements (image/file/pdf/audio/video/text/dataframe/qr) alongside
   their response, rendered inline by a Chainlit-based UI. Binary content

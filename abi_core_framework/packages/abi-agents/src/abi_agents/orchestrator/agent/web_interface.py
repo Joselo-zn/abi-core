@@ -83,10 +83,17 @@ class OrchestratorWebinterface:
             # ── Resolve session → context_id (backend-generated, opaque) ──
             token = _extract_token(authorization)
             context_id = None
+            # Only meaningful when `token` was actually sent — tells the
+            # caller "the token you sent didn't resolve, I fell back to an
+            # anonymous session" so it can call /session/start again for its
+            # NEXT message instead of silently reusing a dead token forever.
+            # See .abi/specs/not-implemented/chainlit-oauth-login-session-continuity.md.
+            token_resolved = False
             if token:
                 session = await self.session_store.resolve(token)
                 if session is not None:
                     context_id = session.context_id
+                    token_resolved = True
                 elif self.session_required:
                     raise HTTPException(status_code=401, detail="Invalid or expired session token")
 
@@ -117,11 +124,15 @@ class OrchestratorWebinterface:
                     yield (f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n").encode()
                     await asyncio.sleep(0.05)
 
+            headers = {
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+            if token and not token_resolved:
+                headers["X-Session-Resolved"] = "false"
+
             return StreamingResponse(
                 generate_response(),
                 media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                },
+                headers=headers,
             )

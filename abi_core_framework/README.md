@@ -164,6 +164,22 @@ Use `SESSION_BACKEND=redis` for multi-pod / load-balanced deployments: state liv
 shared Redis, not per-process RAM, so a follow-up request survives a pod hop. See the
 [sessions guide](https://abi-core.readthedocs.io/en/latest/single-agent/07-sessions-multi-turn.html).
 
+### Authentication — Google login, invite-only
+
+The bundled Chainlit UI runs anonymous by default. Set `OAUTH_GOOGLE_CLIENT_ID` to turn
+on Google login backed by Postgres — persisted, resumable conversations, and an
+invite-only registration system (first user becomes admin, everyone after needs an
+invite):
+
+```bash
+DATABASE_URL=postgresql+asyncpg://user:pass@host/db
+OAUTH_GOOGLE_CLIENT_ID=...
+OAUTH_GOOGLE_CLIENT_SECRET=...
+CHAINLIT_AUTH_SECRET=...   # chainlit create-secret
+```
+
+See the [authentication guide](https://abi-core.readthedocs.io/en/latest/production/07-authentication.html).
+
 ### Capability matching — pick models by what the task needs
 
 Instead of "which model should we use?", ask "what capabilities does the task

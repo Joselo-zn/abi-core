@@ -96,6 +96,33 @@ a unique, isolated `context_id` (no shared `web-session` collision). Set
 `ABI_SESSION_REQUIRED=true` to reject tokenless requests on the orchestrator
 instead.
 
+### Token expiry is a sliding window, not a fixed deadline
+
+`SESSION_TTL` (default `3600` seconds) resets on every successful `resolve()`
+— a session in active use never expires, only one idle for the full TTL does.
+A conversation with gaps shorter than `SESSION_TTL` between messages stays
+alive indefinitely; only real inactivity kills it.
+
+If a token *does* expire (or the backend was restarted/cleared), `/stream`
+still works — it silently falls back to a fresh anonymous session so the
+request never fails outright — but that fresh session has no memory of the
+old `context_id`, so a client holding on to the dead token forever would keep
+losing continuity on every future message without ever finding out. To
+signal this, `/stream` sets a response header when the token it received
+didn't resolve:
+
+```
+X-Session-Resolved: false
+```
+
+`AgentStreamClient` (used by the bundled Chainlit UI and the TUI) checks this
+header and clears its cached token when it sees it, so the *next* message
+fetches a fresh one via `/session/start` instead of repeating the dead token
+forever. If you're driving `/stream` with your own HTTP client, check this
+header the same way — otherwise a client that caches its token past
+`SESSION_TTL` of inactivity will silently keep losing conversation continuity
+after that point, forever, with no error to react to.
+
 ## Using sessions in code
 
 The same capability is available programmatically via `SessionStore`:

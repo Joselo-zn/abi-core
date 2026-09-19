@@ -176,6 +176,13 @@ class InMemorySessionBackend(SessionBackend):
         if session.is_expired():
             await self._destroy_session(session)
             return None
+        # Sliding TTL: a session in active use never expires, only one idle
+        # for `ttl` seconds does — matches the "renovable" TTL the original
+        # design promised (session-management.md) but never implemented.
+        # `session` is the same object stored in `self._sessions`, so this
+        # mutation persists for the next resolve().
+        if self.ttl:
+            session.expires_at = time.time() + self.ttl
         return Session.from_dict(session.to_dict())
 
     async def rotate(self, token: str) -> Optional[str]:
@@ -325,6 +332,22 @@ class RedisSessionBackend(SessionBackend):
             if session.is_expired():
                 await self._destroy_session(session)
                 return None
+            # Sliding TTL: refresh the Redis expiry on every successful
+            # resolve (and rewrite expires_at in the stored JSON, so the
+            # next resolve()'s is_expired() check agrees with the Redis TTL
+            # instead of reading a stale, unrenewed timestamp) — matches
+            # the "renovable" TTL the original design promised
+            # (session-management.md) but never implemented. Refresh every
+            # token on the session (not just the one used), since rotate()
+            # can leave more than one active.
+            if self.ttl:
+                session.expires_at = time.time() + self.ttl
+                async with client.pipeline(transaction=True) as pipe:
+                    pipe.set(self._sk(session.session_id), json.dumps(session.to_dict()))
+                    pipe.expire(self._sk(session.session_id), self.ttl)
+                    for t in session.tokens:
+                        pipe.expire(self._tk(t), self.ttl)
+                    await pipe.execute()
             return session
         except Exception as e:  # noqa: BLE001
             abi_logging(f"[⚠️] Could not resolve session token: {e}", level="warning")

@@ -121,13 +121,37 @@ state, LB/multi-pod safe). See [Sessions & Multi-turn](../single-agent/07-sessio
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SESSION_BACKEND` | `memory` | `memory` (per-pod, in-process) or `redis` (shared, multi-pod safe) |
-| `SESSION_TTL` | `3600` | Session/context lifetime in seconds |
+| `SESSION_TTL` | `3600` | Idle timeout in seconds — resets on every use (sliding window), not a fixed deadline from creation. See [Sessions & Multi-turn → Token expiry](../single-agent/07-sessions-multi-turn.md#token-expiry-is-a-sliding-window-not-a-fixed-deadline). |
 | `SESSION_REDIS_URL` | falls back to `REDIS_URL`, then `redis://localhost:6379/0` | Redis URL for the `redis` backend |
 | `ABI_SESSION_REQUIRED` | `false` | If `true`, the orchestrator rejects `/stream` requests without a valid token |
 
 > **Multi-pod?** Use `SESSION_BACKEND=redis`. With `memory`, each replica keeps
 > its own sessions in RAM, so a request that lands on another pod loses the
 > conversation. Redis shares the state across pods.
+
+## Chainlit UI Authentication (OAuth + invites)
+
+```{note}
+**Alpha.** Only set these on the Chainlit UI service (`chatui`), not the
+agents themselves. See [Authentication & Invites](../production/07-authentication.md).
+```
+
+Unset (default), the bundled Chainlit UI runs anonymous — no login, no
+persisted thread history. Setting `OAUTH_GOOGLE_CLIENT_ID` turns on Google
+login, a Postgres-backed data layer (persisted conversations, resumable
+across logins/devices), and an invite-only registration system.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | — | Postgres connection string (`postgresql+asyncpg://user:pass@host/db`) for the data layer and the invite/waiting-list tables. Required for any of this section to activate. |
+| `OAUTH_GOOGLE_CLIENT_ID` | — | Google OAuth client id. Login only activates once this is set. |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret. |
+| `CHAINLIT_URL` | request's own URL | Chainlit's own var (not ABI-Core's) — the public URL it uses to build the OAuth `redirect_uri` (`<CHAINLIT_URL>/auth/oauth/google/callback`). Must match an Authorized redirect URI on the Google OAuth client. Set explicitly behind a proxy (e.g. Cloud Run) where the request's own URL isn't the public one. |
+| `CHAINLIT_AUTH_SECRET` | — | Signs session JWTs. Generate with `chainlit create-secret`. Changing it logs out every active session. |
+| `ARTIFACT_ENDPOINT` / `ARTIFACT_ACCESS_KEY` / `ARTIFACT_SECRET_KEY` | — | Same MinIO instance as the [Artifact Store](#artifact-store-minio) — reused so thread elements/files (images, attachments) don't error with "No blob_storage_client is configured". |
+| `CHAINLIT_ELEMENTS_BUCKET` | `abi-chainlit-elements` | Separate MinIO bucket from `ARTIFACT_BUCKET` — chat thread elements don't mix with agent-generated artifacts. Create it before first use (`mc mb`). |
+| `ADMIN_NOTIFICATION_EMAIL` | — | Where the "someone joined the waiting list" email goes. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `SMTP_PORT` defaults to `587` | SMTP for the waiting-list notification. Left unset, waiting-list signups still work (recorded in Postgres) — the email is just skipped, logged as a warning. |
 
 ## Ollama control
 

@@ -60,6 +60,7 @@ never needs a framework code change again:
     })
 """
 
+import asyncio
 from typing import Any, Dict
 
 from abi_core.common.utils import abi_logging
@@ -198,6 +199,7 @@ async def invoke(
     thread_id: str = None,
     system_prompt: str = None,
     required_tools: list = None,
+    call_timeout: float = None,
 ) -> str:
     """Unified LLM invocation with optional tool enforcement.
 
@@ -209,6 +211,11 @@ async def invoke(
         system_prompt: Optional system instructions.
         required_tools: List of tool names that MUST be called.
             If declared, the framework enforces usage with retry + fallback.
+        call_timeout: Optional seconds to bound a single no-tools call
+            (Path A only — see below). ``None`` (default) imposes no cap,
+            same as everywhere else in this framework — pass it explicitly
+            only for a call site proven to need it. See "Path A timeout"
+            below for why this exists at all.
 
     Returns:
         The text content of the LLM response.
@@ -222,7 +229,61 @@ async def invoke(
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        response = await llm.ainvoke(messages)
+        # Path A timeout (opt-in via call_timeout, same "prove it's needed
+        # per call site" rule as _run_with_heartbeat's max_wait — see
+        # .abi/specs/heartbeat-timeout-redesign.md). Added after a live,
+        # reproduced-twice hang: the Orchestrator's synthesis call sent
+        # right after a long ephemeral-agent generation just finished on
+        # the same (CPU-only, single-instance) Ollama got stuck
+        # indefinitely — TCP connection ESTABLISHED, zero bytes queued
+        # either direction, Ollama's own container at 0% CPU (not
+        # computing, just wedged).
+        #
+        # First version of this fix wrapped `llm.ainvoke(messages)`
+        # directly in asyncio.wait_for() — verified live that it does NOT
+        # work: 27+ minutes elapsed on a real hang with no timeout ever
+        # firing. Root cause: asyncio.wait_for() only returns once the
+        # cancellation of the wrapped awaitable actually completes — which
+        # requires that awaitable to reach an await checkpoint and raise
+        # CancelledError. If it's stuck inside a genuinely blocking call
+        # that never yields control back to the event loop (suspected
+        # inside ollama.AsyncClient/httpx, not confirmed further), that
+        # checkpoint never comes, cancellation never completes, and
+        # wait_for hangs right along with it — same failure mode one level
+        # deeper, not a fix.
+        #
+        # Using asyncio.to_thread(llm.invoke, ...) (the SYNC method, in a
+        # real OS thread) instead of awaiting `.ainvoke()` directly sidesteps
+        # this: cancelling the asyncio-side wrapper around a to_thread
+        # future can complete without the underlying thread cooperating or
+        # ever finishing — same pattern already proven for Docker SDK calls
+        # in container_runtime.py ("Cancelling the underlying task is a
+        # cooperative request, not a guarantee... that work keeps running
+        # in the background regardless"). One retry with a brand-new client
+        # before giving up. See .abi/specs/llm-call-timeout-ollama-stall.md.
+        if call_timeout is None:
+            response = await llm.ainvoke(messages)
+        else:
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(llm.invoke, messages), timeout=call_timeout
+                )
+            except asyncio.TimeoutError:
+                abi_logging(
+                    f"[⚠️] LLM call timed out after {call_timeout}s — retrying once "
+                    "with a fresh client",
+                    level="warning",
+                )
+                retry_llm = create_llm(llm_config)
+                try:
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(retry_llm.invoke, messages), timeout=call_timeout
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        f"LLM call timed out twice ({call_timeout}s each) — "
+                        "the model server appears stuck, not just slow."
+                    )
         return response.content if hasattr(response, "content") else str(response)
 
     # ── Path B: Agent with tools ────────────────────────────────
