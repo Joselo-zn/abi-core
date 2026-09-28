@@ -1,3 +1,4 @@
+import asyncio
 from typing import AsyncIterable
 from uuid import uuid4
 import httpx
@@ -14,21 +15,33 @@ from abi_core.common.agent_card_loader import get_agent_url
 async def agent_connection(
     source_card: AgentCard,
     target_card: AgentCard,
-    payload: dict[str, any]
+    payload: dict[str, any],
+    grace_period: float = 180.0,
 ) -> AsyncIterable[dict[str, any]]:
     """
     Establish validated A2A connection between agents
-    
+
     Args:
         source_card: Source agent card (caller)
         target_card: Target agent card (callee)
         payload: Message payload
-        
+        grace_period: Max seconds to wait for the NEXT event (heartbeat or
+            real data) before giving up — resets on every event seen, not a
+            fixed budget for the whole call. See
+            .abi/specs/not-implemented/generic-task-heartbeat-artifact.md.
+            Was a hardcoded httpx.Timeout(read=180.0) before — same default
+            value, now a real per-call parameter instead of a constant.
+
     Yields:
         Response chunks from target agent
-        
+
     Raises:
         PermissionError: If A2A validation fails
+        TimeoutError: If no event (heartbeat or real data) arrives from the
+            target agent within `grace_period` — the target genuinely
+            stopped responding, not just slow (a healthy target's own
+            heartbeat, emitted every _HEARTBEAT_INTERVAL seconds by its
+            stream(), keeps resetting this well before grace_period hits).
     """
     # Extract message for logging
     message_text = ""
@@ -59,8 +72,12 @@ async def agent_connection(
     
     abi_logging(f"✅ A2A validated: {source_card.name} -> {target_card.name}")
     
-    # Establish connection
-    timeout_config = httpx.Timeout(timeout=180.0, read=180.0, write=30.0, connect=10.0)
+    # Establish connection. `read=None` — no fixed transport-level cutoff:
+    # the InactivityWatchdog below now owns the "give up" decision, fed by
+    # every event (heartbeat or real data) instead of a constant nothing
+    # could reset. `write`/`connect` stay bounded — those are genuinely
+    # short, fixed operations, not "wait for a long-running task."
+    timeout_config = httpx.Timeout(timeout=None, read=None, write=30.0, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout_config) as httpx_client:
         target_url = get_agent_url(target_card)
         abi_logging(f"Target URL: {target_url or 'No URL'}")
@@ -103,5 +120,31 @@ async def agent_connection(
                 accepted_output_modes=["text/plain"],
             ),
         )
-        async for event in client.send_message(request):
-            yield event
+        from abi_core.agent.heartbeat import InactivityWatchdog
+
+        connection_key = payload.get("message", {}).get("messageId") or str(uuid4())
+        watchdog = InactivityWatchdog(grace_period=grace_period)
+        watchdog.touch(connection_key)
+
+        stream_iter = client.send_message(request).__aiter__()
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(
+                        stream_iter.__anext__(), timeout=grace_period
+                    )
+                except StopAsyncIteration:
+                    break
+                watchdog.touch(connection_key)
+                yield event
+        except asyncio.TimeoutError:
+            abi_logging(
+                f"[⚠️] No activity from {target_card.name} for {grace_period}s "
+                "(no heartbeat, no result) — giving up.",
+                level="warning",
+            )
+            raise TimeoutError(
+                f"{target_card.name} stopped responding — no event for {grace_period}s."
+            )
+        finally:
+            watchdog.forget(connection_key)

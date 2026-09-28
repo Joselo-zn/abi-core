@@ -79,31 +79,59 @@ class OrchestratorWebinterface:
             authorization: str | None = Header(default=None),
         ):
             query = request.get("query")
-
-            # ── Resolve session → context_id (backend-generated, opaque) ──
-            token = _extract_token(authorization)
             context_id = None
-            # Only meaningful when `token` was actually sent — tells the
-            # caller "the token you sent didn't resolve, I fell back to an
-            # anonymous session" so it can call /session/start again for its
-            # NEXT message instead of silently reusing a dead token forever.
-            # See .abi/specs/not-implemented/chainlit-oauth-login-session-continuity.md.
             token_resolved = False
-            if token:
-                session = await self.session_store.resolve(token)
-                if session is not None:
-                    context_id = session.context_id
-                    token_resolved = True
-                elif self.session_required:
-                    raise HTTPException(status_code=401, detail="Invalid or expired session token")
+            token = None
 
+            # ── Identity chain (chatui hop) — see
+            # .abi/specs/not-implemented/identity-chain-hmac-contract.md.
+            # Authoritative when present: verify against the shared hop
+            # secret and derive context_id deterministically from
+            # (user_id, thread_id). No silent fallback on failure — a
+            # present-but-invalid chain is rejected outright, never
+            # downgraded to an anonymous session (that downgrade is exactly
+            # what made the old token flow's failures ambiguous and hard to
+            # trace — reproduced live 2026-09-26, root-caused to two browser
+            # tabs each holding their own independent, individually-valid
+            # opaque token with no shared identity between them).
+            identity_chain = request.get("identity_chain")
+            if identity_chain:
+                from abi_core.security.identity_chain import derive_session_id, get_id, verify_chain
+
+                hop_secret = os.getenv("HOP_SECRET_CHATUI_ORCHESTRATOR", "")
+                if not hop_secret or not verify_chain(hop_secret, identity_chain):
+                    raise HTTPException(status_code=401, detail="Invalid identity chain")
+                user_id = get_id(identity_chain, "user_id")
+                thread_id = get_id(identity_chain, "thread_id")
+                if not user_id or not thread_id:
+                    raise HTTPException(status_code=401, detail="Identity chain missing required ids")
+                context_id = derive_session_id(user_id, thread_id)
+
+            # ── Fallback: opaque session token (unchanged) — still the only
+            # mechanism for callers that don't send an identity chain (the
+            # TUI, or any future client not yet migrated). See
+            # .abi/specs/implemented/session-management.md.
             if context_id is None:
-                if self.session_required:
-                    raise HTTPException(status_code=401, detail="Session token required")
-                # Backward-compat: anonymous session in the SAME backend (unique
-                # context_id per request → no shared "web-session" collision).
-                session = await self.session_store.create_session(metadata={"anonymous": True})
-                context_id = session.context_id
+                token = _extract_token(authorization)
+                # Only meaningful when `token` was actually sent — tells the
+                # caller "the token you sent didn't resolve, I fell back to an
+                # anonymous session" so it can call /session/start again for its
+                # NEXT message instead of silently reusing a dead token forever.
+                if token:
+                    session = await self.session_store.resolve(token)
+                    if session is not None:
+                        context_id = session.context_id
+                        token_resolved = True
+                    elif self.session_required:
+                        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
+                if context_id is None:
+                    if self.session_required:
+                        raise HTTPException(status_code=401, detail="Session token required")
+                    # Backward-compat: anonymous session in the SAME backend (unique
+                    # context_id per request → no shared "web-session" collision).
+                    session = await self.session_store.create_session(metadata={"anonymous": True})
+                    context_id = session.context_id
 
             task_id = request.get("task_id", f"task-{int(time.time())}")
 

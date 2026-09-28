@@ -2,7 +2,6 @@ import asyncio
 import json
 from collections.abc import AsyncIterable
 
-from abi_core.common import prompts
 from abi_core.common.utils import abi_logging, format_plan_summary
 from abi_core.common.workflow import Status
 from abi_core.common.semantic_tools import tool_find_agent
@@ -40,7 +39,7 @@ class AbiOrchestratorAgent(AbiAgent):
             description=config.AGENT_DESCRIPTION,
             llm_config=config.LLM_CONFIG,
             tools=[tool_find_agent, *MEMORY_TOOLS],
-            system_prompt=prompts.ORCHESTRATOR_TOT_INSTRUCTIONS,
+            system_prompt=config.SYSTEM_PROMPT,
             content_types=['text', 'text/plain'],
         )
 
@@ -198,61 +197,15 @@ class AbiOrchestratorAgent(AbiAgent):
             contract.get("pending_clarification_question"),
             contract.get("recent_conversation_summary"),
         )
-        prompt = f"{system_state}\n\nUser message: {query!r}" if system_state else f"User message: {query!r}"
-        if gathered_context:
-            prompt += f"\n\nContext you already gathered this turn: {gathered_context}"
+        prompt = config.build_routing_decision_prompt(system_state, query, gathered_context)
 
         # This call has NO system prompt otherwise (decision_llm is the bare
-        # model, not self.agent — ORCHESTRATOR_TOT_INSTRUCTIONS never reaches
-        # it). Two separate failure modes observed live, both from the same
-        # root cause (zero framing on what `objective` is FOR):
-        # 1. (2026-09-15) With a [SYSTEM STATE] Recent conversation block
-        #    present, the model pattern-matched only the literal current
-        #    message into `objective`, ignoring relevant detail sitting right
-        #    above it in the same prompt.
-        # 2. (2026-09-17) On a first message in a fresh session (no
-        #    [SYSTEM STATE] block at all — the case below never even ran),
-        #    the model collapsed `objective` to a short topic-label
-        #    ("plan_trip") instead of the actual request — treating the
-        #    field like a title to summarize, not content to transfer. The
-        #    existing `decision.objective or query` fallback (below) doesn't
-        #    catch this: the field wasn't empty, just useless. See
-        #    .abi/specs/orchestrator-conversation-memory.md.
-        # Always send framing now — case 2 needs it exactly as much as case 1,
-        # and it has nothing to do with [SYSTEM STATE] being present.
+        # model, not self.agent — config.SYSTEM_PROMPT never reaches it) —
+        # see config.build_routing_decision_system_message's own docstring
+        # (agent/prompts.py) for the failure modes this framing fixes.
         from langchain_core.messages import SystemMessage, HumanMessage
 
-        system_message = (
-            "First decide the right action on its own merits — greetings, "
-            "questions about you, and anything you can answer yourself in "
-            "one reply are action=answer_directly, not action=create_plan. "
-            "Do not let the paragraph below pull you toward create_plan; it "
-            "only tells you how to fill `objective` *after* you've already "
-            "decided create_plan is correct for an unrelated reason (the "
-            "user is asking for real work to be done).\n\n"
-            "When action=create_plan, `objective` is NOT a title, category, "
-            "or short label for the request (e.g. 'plan_trip', "
-            "'itinerary_and_budget') — a downstream planner will see ONLY "
-            "the text you write into `objective`, nothing else from this "
-            "conversation. Treat it as a full transfer of the request: "
-            "preserve every concrete detail from the user's message — "
-            "places, dates, quantities, specific things they asked for — "
-            "even if that means writing several sentences. If you write "
-            "something short enough to fit a chat title, you have almost "
-            "certainly dropped information the planner needs and cannot "
-            "recover."
-        )
-        if system_state:
-            system_message += (
-                "\n\nAlso read the [SYSTEM STATE] block below carefully and "
-                "merge in anything relevant to the current message — place, "
-                "dates, constraints already given — instead of just "
-                "pattern-matching the current message in isolation. If you "
-                "copy the current message verbatim and it omits a detail "
-                "already given in [SYSTEM STATE] Recent conversation, the "
-                "planner has no way to know it and will ask the user to "
-                "repeat information they already gave."
-            )
+        system_message = config.build_routing_decision_system_message()
         messages = [SystemMessage(content=system_message), HumanMessage(content=prompt)]
 
         try:
@@ -478,30 +431,39 @@ class AbiOrchestratorAgent(AbiAgent):
                     yield AgentResponse.text("No pude interpretar tu respuesta. ¿Podés reformularla?")
                     return
 
-                if decision.action == "create_plan":
-                    async for r in self._call_planner_and_respond(decision.objective or query, context_id, task_id):
+                # Discriminated union (see
+                # .abi/specs/routing-decision-discriminated-union.md) —
+                # `decision.outcome` is one of the per-action models, never a
+                # flat bag of every action's fields at once. Whichever
+                # `.action` it is, the OTHER actions' fields don't exist on
+                # it at all (not just empty) — structurally impossible for
+                # the model to write real content into the wrong field.
+                outcome = decision.outcome
+
+                if outcome.action == "create_plan":
+                    async for r in self._call_planner_and_respond(outcome.objective or query, context_id, task_id):
                         yield r
                     return
 
-                if decision.action == "resolve_pending_clarification":
+                if outcome.action == "resolve_pending_clarification":
                     await self._clear_pending_clarification(context_id)
                     original = pending_clarification.get("original_query", "")
-                    answer = decision.answer or query
+                    answer = outcome.answer or query
                     enriched = f"{original}\n\nUser clarification: {answer}" if original else answer
                     async for r in self._call_planner_and_respond(enriched, context_id, task_id):
                         yield r
                     return
 
-                if decision.action == "resolve_pending_plan":
-                    if decision.decision == "approve":
+                if outcome.action == "resolve_pending_plan":
+                    if outcome.decision == "approve":
                         stored_plan = session_ctx.get("pending_plan")
                         run_confirmed_plan = True
-                    elif decision.decision == "reject":
+                    elif outcome.decision == "reject":
                         await self.clear_pending_plan(context_id)
                         yield AgentResponse.text("Plan cancelado. Decime si querés que arme uno nuevo.")
                         return
-                    elif decision.decision == "modify":
-                        feedback = decision.feedback
+                    elif outcome.decision == "modify":
+                        feedback = outcome.feedback
                         if not feedback:
                             await self.update_session_context(context_id, {"awaiting_plan_modification": True})
                             yield AgentResponse.input_required("¿Qué te gustaría cambiar del plan?")
@@ -526,8 +488,8 @@ class AbiOrchestratorAgent(AbiAgent):
                         yield AgentResponse.text("No pude interpretar tu respuesta. ¿Podés reformularla?")
                         return
 
-                if decision.action == "answer_directly":
-                    answer_text = decision.text or "No pude interpretar tu respuesta. ¿Podés reformularla?"
+                if outcome.action == "answer_directly":
+                    answer_text = outcome.text or "No pude interpretar tu respuesta. ¿Podés reformularla?"
                     await self.record_conversation_turn(
                         context_id, query, answer_text, window=config.CONVERSATION_WINDOW
                     )
@@ -621,14 +583,7 @@ class AbiOrchestratorAgent(AbiAgent):
                     for art in artifacts
                 ]
 
-                synthesis_query = (
-                    f"Synthesize the following workflow results:\n"
-                    f"Plan: {json.dumps(plan, indent=2)}\n"
-                    f"Results count: {len(results)}\n"
-                )
-                if artifacts_paths:
-                    synthesis_query += "Generated artifacts:\n" + "\n".join(f"  - {p}" for p in artifacts_paths) + "\n"
-                synthesis_query += "Include download links for any generated files in your response."
+                synthesis_query = config.build_synthesis_prompt(plan, len(results), artifacts_paths)
 
                 from abi_core.agent.llm_provider import invoke as llm_invoke
 
@@ -636,15 +591,17 @@ class AbiOrchestratorAgent(AbiAgent):
                     # call_timeout: see llm_provider.invoke()'s "Path A
                     # timeout" comment — this exact call hung indefinitely,
                     # reproduced twice live, right after a long ephemeral
-                    # generation on the same Ollama instance. 300s (the
-                    # longest legitimate single-call time observed this
-                    # session was ~4min for a full code-generation task;
-                    # synthesis is lighter) per attempt, one retry with a
-                    # fresh client before surfacing an error instead of
-                    # hanging forever.
+                    # generation on the same Ollama instance. Raised from
+                    # 300s to 2000s (2026-09-25) — reproduced live that a
+                    # genuinely-progressing (not stuck) synthesis call missed
+                    # 300s×2 by only 15s under concurrent load from multiple
+                    # ephemeral agents sharing one Ollama instance; 300s was
+                    # too tight for real contention, not just a stuck call.
+                    # One retry with a fresh client before surfacing an error
+                    # instead of hanging forever.
                     return await llm_invoke(
                         config.LLM_CONFIG, synthesis_query, thread_id=context_id,
-                        call_timeout=300,
+                        call_timeout=2000,
                     )
 
                 synthesis = None
@@ -657,7 +614,21 @@ class AbiOrchestratorAgent(AbiAgent):
                         yield item
 
                 final_response = synthesis or "Workflow completed successfully"
-                if artifacts and "download" not in final_response.lower():
+                # Reproduced live 2026-09-27: checking for the word "download"
+                # anywhere in the LLM's own text is not the same as checking
+                # that every artifact's REAL url is actually in there — the
+                # synthesis model wrote "Download Link:" under all 3 tasks
+                # (satisfying the word check) but only filled in the actual
+                # URL for the first one, leaving the other two as bare
+                # filenames with no working link. Check each artifact's own
+                # url instead of a single word — append the full list
+                # whenever even one is missing, since a partial list would
+                # be just as misleading as none.
+                missing_a_link = any(
+                    (art.get("download_url") or art.get("url", "")) not in final_response
+                    for art in artifacts
+                )
+                if artifacts and missing_a_link:
                     final_response += format_artifact_links(artifacts)
 
                 # QR of each artifact's download link, so the user can grab

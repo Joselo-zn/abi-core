@@ -10,6 +10,13 @@ from typing import Optional
 
 from a2a.types import AgentCard
 from abi_core.common.agent_card_loader import load_agent_card
+from abi_core.common.prompts import ORCHESTRATOR_TOT_INSTRUCTIONS
+
+from prompts import (
+    build_routing_decision_system_message,
+    build_routing_decision_prompt,
+    build_synthesis_prompt,
+)
 
 
 class AgentConfig:
@@ -132,7 +139,15 @@ class AgentConfig:
     # recent turns stay in the active session window before the oldest is
     # promoted to AMS long-term memory. See
     # .abi/specs/orchestrator-conversation-memory.md.
-    CONVERSATION_WINDOW: int = int(os.getenv('CONVERSATION_WINDOW', '5'))
+    CONVERSATION_WINDOW: int = int(os.getenv('CONVERSATION_WINDOW', '100'))
+
+    # Prompts (see agent/prompts.py) — centralized here so orchestrator.py
+    # reads all prompt content through config instead of importing prompt
+    # modules directly.
+    SYSTEM_PROMPT: str = ORCHESTRATOR_TOT_INSTRUCTIONS
+    build_routing_decision_system_message = staticmethod(build_routing_decision_system_message)
+    build_routing_decision_prompt = staticmethod(build_routing_decision_prompt)
+    build_synthesis_prompt = staticmethod(build_synthesis_prompt)
 
     # Ollama Configuration (for distributed mode)
     START_OLLAMA: bool = os.getenv('START_OLLAMA', 'false').lower() == 'true'

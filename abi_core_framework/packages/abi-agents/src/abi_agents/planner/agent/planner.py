@@ -10,7 +10,6 @@ import json
 import os
 from collections.abc import AsyncIterable
 
-from abi_core.common import prompts
 from abi_core.common.utils import abi_logging, clean_llm_json, format_plan_summary
 from abi_core.agent.agent import AbiAgent, _HeartbeatDone
 from abi_core.agent.agent_response import AgentResponse
@@ -42,28 +41,57 @@ class AbiPlannerAgent(AbiAgent):
             description=config.AGENT_DESCRIPTION,
             llm_config=config.LLM_CONFIG,
             tools=[],  # Planner only decomposes — no tool calls during LLM phase
-            system_prompt=prompts.PLANNER_COT_INSTRUCTIONS,
+            system_prompt=config.SYSTEM_PROMPT,
             content_types=['text', 'text/plain'],
         )
 
-    async def _call_llm(self, query, context, session_id, methodology_block: str = ""):
-        """Call the LLM to decompose the query. Returns raw text.
+    async def _call_llm(self, query, context, session_id):
+        """Call the LLM to decompose the query. Returns a validated
+        PlannerOutput, not raw text.
 
-        No tools — the planner only reasons and produces structured JSON.
-        Tool resolution is handled by assign_agents (find_agent) and the builder.
+        No tools — the planner only reasons. Tool resolution is handled by
+        assign_agents (find_agent) and the builder.
+
+        Uses `invoke_structured` (schema-constrained decoding via
+        `with_structured_output`), not plain-text `invoke()` — a
+        prompt-only "respond in JSON" instruction turned out to be
+        model-dependent (devstral:24b ignored it outright, answering in
+        plain prose; see invoke_structured()'s own docstring for the full
+        story). Forcing the schema means this no longer depends on a given
+        model choosing to comply.
         """
-        from abi_core.agent.llm_provider import invoke
+        from abi_core.agent.llm_provider import invoke_structured
+        from abi_core.common.plan_models import PlannerOutput
 
-        planning_query = (
-            f"User request: {query}\nContext: {json.dumps(context, indent=2)}"
-            f"{methodology_block}"
-        )
-        return await invoke(
+        planning_query = config.build_planning_query(query, context)
+        result = await invoke_structured(
             config.LLM_CONFIG,
             planning_query,
+            schema=PlannerOutput,
             thread_id=session_id,
-            system_prompt=prompts.PLANNER_COT_INSTRUCTIONS,
+            system_prompt=config.SYSTEM_PROMPT,
         )
+
+        # `Plan.methodology`/`methodology_rationale` are still real schema
+        # fields (PlannerOutput -> Plan) — the model fills them in on its
+        # own initiative even with no explicit instruction to, because the
+        # field's own description ("Decomposition methodology applied")
+        # reads as a request for one. Verified live: with select_methodology
+        # removed, the model started citing "Polya" from its own general
+        # knowledge instead — an unprompted, ungoverned choice, not this
+        # framework's. The methodology is no longer a per-request decision
+        # (that was the whole point of replacing it with the fixed Agile
+        # persona above) — overwrite deterministically instead of trusting
+        # the model to self-report the framing we already gave it.
+        if result.status == "ready" and result.plan:
+            result.plan.methodology = "Agile (Scrum/Kanban)"
+            result.plan.methodology_rationale = (
+                "Fixed framing for every plan — see PLANNER_COT_INSTRUCTIONS: "
+                "the Planner acts as a Technical Lead breaking the request "
+                "into a prioritized backlog of User Stories, not a "
+                "per-request methodology choice."
+            )
+        return result
 
     async def _execute_direct_tool(
         self, payload: dict, session_id: str, task_id: str
@@ -98,12 +126,26 @@ class AbiPlannerAgent(AbiAgent):
         )
 
         try:
-            content = await invoke(
-                config.LLM_CONFIG,
-                f"Write the full content for this deliverable:\n\n{description}\n\n"
-                f"Respond with ONLY the content itself — no preamble, no markdown code fences.",
-                thread_id=session_id,
-            )
+            # Wrapped in the same heartbeat mechanism stream()'s Phase 1 uses
+            # for _call_llm — without it, a slow content generation (a large
+            # deliverable on a CPU-bound local model) runs with no status
+            # pings at all, silently outliving the UI/orchestrator's patience
+            # while the LLM call itself keeps running server-side with
+            # nothing to show for it. See .abi/specs/direct-tool-fixes.md.
+            content = None
+            async for item in self._run_with_heartbeat(
+                invoke(
+                    config.LLM_CONFIG,
+                    config.build_direct_tool_content_prompt(description),
+                    thread_id=session_id,
+                ),
+                session_id, task_id, f"Generating {target_tag}...",
+            ):
+                if isinstance(item, _HeartbeatDone):
+                    content = item.value
+                else:
+                    yield item
+
             result = tool_fn.func(filename=target_tag, content=content)
             abi_logging(f"[⚡] direct_tool '{tool_name}': {result}")
 
@@ -168,14 +210,21 @@ class AbiPlannerAgent(AbiAgent):
             # Session context managed by AbiAgent base
             context, _ = await self.process_answer(session_id, query)
 
-            # ── Phase 0: Methodology selection (before decomposition) ──
-            from abi_core.common.methodology_tools import list_methodologies, select_methodology
-
-            methodology_result = await select_methodology(query, config.LLM_CONFIG, session_id=session_id)
-            methodology_block = (
-                f"\n\nMethodology to apply: {methodology_result['methodology']} — "
-                f"{list_methodologies()[methodology_result['methodology']]}"
-            )
+            # Phase 0 (dynamic per-request methodology selection — Polya/WBS/
+            # SMART/etc., via methodology_tools.select_methodology) removed:
+            # the fixed Agile Tech Lead persona now baked directly into
+            # PLANNER_COT_INSTRUCTIONS replaces it — one system prompt, no
+            # extra LLM call before decomposition even starts (that call
+            # alone cost minutes on local models). Also sidesteps a real
+            # failure mode found live: devstral:24b, fine-tuned with its own
+            # "OpenHands" agentic persona baked into its Modelfile, answered
+            # PLANNER_COT_INSTRUCTIONS' plain "decompose into tasks"
+            # framing with "I don't have the tools needed" — refusing to
+            # plan because IT personally has no tools (Planner intentionally
+            # gives it none — see class docstring). Reframing the role as a
+            # Tech Lead writing a backlog for OTHER developers to build
+            # doesn't imply the model itself needs tools, so it stops
+            # triggering that refusal pattern.
 
             # ── Phase 1: LLM decomposition (with heartbeat) ─────
             yield AgentResponse.status(
@@ -187,7 +236,7 @@ class AbiPlannerAgent(AbiAgent):
 
             llm_response = None
             async for item in self._run_with_heartbeat(
-                self._call_llm(query, context, session_id, methodology_block),
+                self._call_llm(query, context, session_id),
                 session_id, task_id, "Analyzing query...",
             ):
                 if isinstance(item, _HeartbeatDone):
@@ -237,9 +286,13 @@ class AbiPlannerAgent(AbiAgent):
                     yield task
 
             elif status == "ready":
+                # methodology/methodology_rationale are already set
+                # deterministically in _call_llm (Agile Tech Lead framing,
+                # not a per-request model choice) — this branch used to
+                # re-set them from a `methodology_result` that no longer
+                # exists since Phase 0's select_methodology call was
+                # removed, crashing every successful plan with a NameError.
                 plan = plan_data.get("plan", {})
-                plan["methodology"] = methodology_result["methodology"]
-                plan["methodology_rationale"] = methodology_result["rationale"]
                 abi_logging(f"[✅] Plan ready with {len(plan.get('tasks', []))} tasks")
 
                 yield AgentResponse.status(format_plan_summary(plan))

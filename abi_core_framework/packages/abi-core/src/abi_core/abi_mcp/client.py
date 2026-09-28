@@ -107,12 +107,17 @@ async def init_session(host, port, transport='streamable-http'):
             # Ensure streams are properly closed
             abi_logging('[🧹] Streamable HTTP connection cleanup complete', level='debug')
 
-async def find_agent(session: ClientSession, query: str, ctx) -> CallToolResult:
+async def find_agent(
+    session: ClientSession, query: str, ctx, exclude_ephemeral: bool = False
+) -> CallToolResult:
     """Call the tool 'find_agent' tool on the connected MCP server.
 
     Args:
         session: The active ClienteSession.
         query: The natural language query to send to the 'find_agent' tool.
+        exclude_ephemeral: pass True for reserved infra-agent lookups
+            (guardian/planner/builder/orchestrator) — see
+            .abi/specs/infra-agent-lookup-ephemeral-collision.md
 
     Returns:
         The result of the tool call.
@@ -122,6 +127,7 @@ async def find_agent(session: ClientSession, query: str, ctx) -> CallToolResult:
         name='find_agent',
         arguments={
             'query': query,
+            'exclude_ephemeral': exclude_ephemeral,
             '_request_context':ctx
         },
     )

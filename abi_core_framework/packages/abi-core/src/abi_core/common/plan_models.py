@@ -50,6 +50,29 @@ class PlanTask(BaseModel):
         ),
     )
 
+    @field_validator("dependencies")
+    @classmethod
+    def dedupe_dependencies(cls, v: List[str]) -> List[str]:
+        """Dedupe while preserving order — reproduced live 2026-09-27: the
+        model (under invoke_structured's schema constraint) repeated a
+        dependency id within this list (e.g. ["task_1", "task_1"] instead of
+        ["task_1"]). Nothing downstream caught it: build_workflow's edge
+        loop iterates dependencies faithfully, so a duplicate id added the
+        SAME edge twice — and LangGraph fires a node once per incoming edge
+        instance, not once per distinct predecessor, so a task with a
+        duplicated dependency ran twice while a sibling task's A2A
+        connection got raced out from under it. Same LLM-repeats-a-list-
+        element failure family as the earlier "5 identical tasks" bug, just
+        one level deeper (inside a field instead of the top-level tasks
+        array) — no schema-level guard existed for either until now."""
+        seen = set()
+        deduped = []
+        for dep in v:
+            if dep not in seen:
+                seen.add(dep)
+                deduped.append(dep)
+        return deduped
+
     @field_validator("description")
     @classmethod
     def clean_description(cls, v: str) -> str:
@@ -85,12 +108,15 @@ class Plan(BaseModel):
     objective: str = Field(..., max_length=300, description="What the plan accomplishes")
     tasks: List[PlanTask] = Field(..., min_length=1)
     execution_strategy: Literal["sequential", "parallel", "mixed"] = "sequential"
-    methodology: Optional[str] = Field(
-        None, description="Decomposition methodology applied (see abi_core.common.methodology_tools)"
-    )
-    methodology_rationale: Optional[str] = Field(
-        None, max_length=300, description="Why this methodology was chosen for this objective"
-    )
+    # Not model-chosen — the Planner overwrites both fields deterministically
+    # after this schema is filled (see AbiPlannerAgent._call_llm). Kept
+    # `Optional`/description-free rather than removed so existing UI code
+    # reading `plan.get("methodology")` keeps working; a field description
+    # here previously read as an implicit instruction and caused the model
+    # to volunteer methodology names on its own (e.g. "Polya") even with no
+    # prompt asking for one — see _call_llm's comment for the live repro.
+    methodology: Optional[str] = None
+    methodology_rationale: Optional[str] = Field(None, max_length=300)
 
 
 class PlannerOutput(BaseModel):

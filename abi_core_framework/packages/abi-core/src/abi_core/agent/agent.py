@@ -337,13 +337,18 @@ class AbiAgent:
         return next(iter(self._registered_tasks.values()))
 
     async def _run_with_heartbeat(
-        self, coro, context_id, task_id, status_msg, max_wait: Optional[float] = None,
+        self, coro, context_id, task_id, status_msg,
+        max_wait: Optional[float] = None, interval: float = _HEARTBEAT_INTERVAL,
     ):
         """Run a coroutine, yielding heartbeats live as they occur.
 
         Async generator. Executes *coro* in a background task and ``yield``s
         each ``AgentResponse.status()`` heartbeat the instant it's detected
-        (every ``_HEARTBEAT_INTERVAL`` seconds of no progress) — not
+        (every ``interval`` seconds of no progress — defaults to
+        ``_HEARTBEAT_INTERVAL``, but every call site can override it; see
+        .abi/specs/not-implemented/generic-task-heartbeat-artifact.md, which
+        this shares its cancellation-safe wait loop with via
+        ``abi_core.agent.heartbeat.emit_heartbeats_while``) — not
         batched into a list handed back after the wait is over, which
         defeated the entire point of a heartbeat (keeping a streaming
         connection alive under a proxy's idle timeout — see
@@ -409,14 +414,15 @@ class AbiAgent:
                     )
                 # Cap each wait at whichever is smaller — the heartbeat interval
                 # or what's left of max_wait — so max_wait values under
-                # _HEARTBEAT_INTERVAL still cut in on time instead of silently
-                # rounding up to the next 15s boundary (verified empirically: a
-                # naive `timeout=_HEARTBEAT_INTERVAL` here never raises at all
-                # for max_wait < 15, since the coroutine would already be done
-                # or the loop exits before elapsed ever gets checked again).
-                wait_chunk = min(_HEARTBEAT_INTERVAL, remaining)
+                # `interval` still cut in on time instead of silently
+                # rounding up to the next interval boundary (verified
+                # empirically: a naive `timeout=interval` here never raises
+                # at all for max_wait < interval, since the coroutine would
+                # already be done or the loop exits before elapsed ever
+                # gets checked again).
+                wait_chunk = min(interval, remaining)
             else:
-                wait_chunk = _HEARTBEAT_INTERVAL
+                wait_chunk = interval
 
             try:
                 await asyncio.wait_for(

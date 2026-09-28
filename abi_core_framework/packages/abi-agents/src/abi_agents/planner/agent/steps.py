@@ -32,11 +32,21 @@ async def analyze_query(query, context):
     input_map={"raw_response": "$input.llm_response"},
 )
 def parse_plan(raw_response):
-    """Clean, parse, and validate the LLM response into a structured plan."""
+    """Clean, parse, and validate the LLM response into a structured plan.
+
+    `raw_response` is a `PlannerOutput` instance now (planner.py's
+    `_call_llm` uses `invoke_structured` — schema-constrained decoding, not
+    prompt-only JSON formatting a model can ignore; see that function's
+    docstring for why). Handles a plain string too, defensively, in case a
+    caller ever bypasses `_call_llm` and still hands this raw text.
+    """
     if not raw_response:
         return {"status": "error", "message": "Empty LLM response"}
 
-    parsed = clean_llm_json(raw_response)
+    if isinstance(raw_response, PlannerOutput):
+        parsed = raw_response.to_dict()
+    else:
+        parsed = clean_llm_json(raw_response)
 
     try:
         validated = PlannerOutput.model_validate(parsed)
@@ -117,6 +127,25 @@ async def assign_agents(plan_data):
     for task in tasks:
         task_desc = task.get("description", "")
         task_id = task.get("task_id", "unknown")
+
+        if task.get("direct_tool") == "write_pdf":
+            # Code-level guard, not just a prompt instruction — reproduced
+            # live 2026-09-25 that the model ignores PLANNER_COT_INSTRUCTIONS'
+            # "direct_tool: write_pdf only for genuine .pdf deliverables" rule
+            # under invoke_structured's schema constraint, marking ALL tasks
+            # (including player.png, shoot.wav) as write_pdf. Since only
+            # "write_pdf" exists as a direct_tool today (Pydantic Literal), a
+            # second direct_tool later needs its own per-tool extension rule
+            # here, not a blanket one. See
+            # .abi/specs/implemented/direct-tool-write-pdf-misrouting-and-heartbeat-fix.md.
+            target_tag = (task.get("target") or {}).get("tag", "")
+            if not target_tag.lower().endswith(".pdf"):
+                abi_logging(
+                    f"[⚠️] Task '{task_id}': direct_tool='write_pdf' but target.tag="
+                    f"'{target_tag}' isn't a .pdf — LLM misclassified this task, "
+                    f"downgrading to normal agent assignment instead of trusting it."
+                )
+                task["direct_tool"] = None
 
         if task.get("direct_tool"):
             # Fixed framework tool (e.g. write_pdf), executed by the Planner

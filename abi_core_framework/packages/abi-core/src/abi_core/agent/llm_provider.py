@@ -63,6 +63,35 @@ never needs a framework code change again:
 import asyncio
 from typing import Any, Dict
 
+
+def _extract_text(content: Any) -> str:
+    """Normalize a LangChain message's `.content` to plain text.
+
+    ChatOllama always returns a plain `str`. ChatGoogleGenerativeAI (Gemini)
+    doesn't — verified live: the same Path A call returned `.content` as a
+    `list` of content blocks instead, breaking every caller downstream that
+    assumed `invoke()`'s return value supports `.strip()` (the Planner's
+    methodology selection and `parse_plan`, both — reproduced with
+    `'list' object has no attribute 'strip'` immediately after switching
+    `LLM_PROVIDER` from ollama to gemini, no other change). `invoke()`'s own
+    docstring promises "the text content of the LLM response" regardless of
+    provider — this is what actually keeps that promise instead of leaking
+    a provider-specific shape to every caller.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if text:
+                    parts.append(text)
+        return "".join(parts)
+    return str(content)
+
 from abi_core.common.utils import abi_logging
 
 # Our provider names -> (langchain's model_provider identifier, package to
@@ -284,7 +313,7 @@ async def invoke(
                         f"LLM call timed out twice ({call_timeout}s each) — "
                         "the model server appears stuck, not just slow."
                     )
-        return response.content if hasattr(response, "content") else str(response)
+        return _extract_text(response.content) if hasattr(response, "content") else str(response)
 
     # ── Path B: Agent with tools ────────────────────────────────
     from langchain.agents import create_agent
@@ -364,3 +393,80 @@ async def invoke(
                 tracker.execute_fallback(final_response or "")
 
     return final_response or ""
+
+
+async def invoke_structured(
+    llm_config: Dict[str, Any],
+    prompt: str,
+    schema: Any,
+    thread_id: str = None,
+    system_prompt: str = None,
+    call_timeout: float = None,
+):
+    """Like ``invoke()``'s Path A, but forces the response to match a
+    Pydantic schema via ``with_structured_output`` instead of hoping a
+    plain-text prompt instruction ("respond only in JSON") gets followed.
+
+    Added after a live, reproduced failure: switching the Planner from
+    qwen3 to devstral:24b (both "tools"-capable per `ollama show`) broke
+    plan generation — devstral answered `PLANNER_COT_INSTRUCTIONS`'
+    "respond only in JSON" instruction with a plain conversational
+    paragraph instead, no JSON at all, silently degrading to
+    `clean_llm_json()`'s single-task fallback (objective="Complete user
+    request", the raw prose as the one task's description). This isn't a
+    parsing bug — `clean_llm_json()` correctly found no JSON to parse — the
+    model just didn't follow that instruction. Different providers/models
+    already showed different failure modes on this same prompt-only
+    contract (qwen3: usable but occasionally under-detailed; Gemini:
+    reliable; devstral: ignored it outright) — that pattern itself is
+    reason enough not to keep depending on any given model choosing to
+    comply on its own.
+
+    `with_structured_output(schema, method="json_schema")` uses Ollama's
+    (and the other providers') grammar-constrained decoding — the schema is
+    enforced at the token-sampling level server-side, not requested via
+    prompt text, so it holds regardless of whether a given model's own
+    training biases it toward conversational replies. Already proven
+    for the Orchestrator's routing decision
+    (`abi_core.agent.routing_tools.build_routing_decision_schema`) — this
+    reuses the same mechanism for the Planner's decomposition call.
+
+    Returns an instance of `schema` (a Pydantic model), not a string —
+    callers get validated data directly, no `clean_llm_json()` step needed.
+    """
+    llm = create_llm(llm_config)
+    structured_llm = llm.with_structured_output(schema, method="json_schema")
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    # Same call_timeout contract as invoke()'s Path A — opt-in per call
+    # site, asyncio.to_thread so a stuck call can actually be abandoned.
+    # See invoke()'s own comment for why a bare asyncio.wait_for doesn't
+    # work here.
+    if call_timeout is None:
+        return await structured_llm.ainvoke(messages)
+
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(structured_llm.invoke, messages), timeout=call_timeout
+        )
+    except asyncio.TimeoutError:
+        abi_logging(
+            f"[⚠️] Structured LLM call timed out after {call_timeout}s — retrying once "
+            "with a fresh client",
+            level="warning",
+        )
+        retry_llm = create_llm(llm_config)
+        retry_structured_llm = retry_llm.with_structured_output(schema, method="json_schema")
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(retry_structured_llm.invoke, messages), timeout=call_timeout
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"Structured LLM call timed out twice ({call_timeout}s each) — "
+                "the model server appears stuck, not just slow."
+            )

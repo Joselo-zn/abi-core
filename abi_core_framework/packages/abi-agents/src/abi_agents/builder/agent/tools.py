@@ -34,6 +34,17 @@ async def ensure_model_available(config: dict) -> dict:
         "EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "qwen3:latest")
     )
 
+    # find_model/pull_model only make sense for Ollama — a hosted API model
+    # (Gemini, Grok, etc.) has nothing to "pull" locally; treating its model
+    # name as an Ollama tag always fails ("pull completed but model still
+    # not found in registry"), live-confirmed 2026-09-22 with
+    # EPHEMERAL_MODEL_NAME=gemini-3.6-flash. Skip straight through for any
+    # non-Ollama provider. See
+    # .abi/specs/ephemeral-model-provider-check.md
+    provider = os.getenv("LLM_PROVIDER", "ollama").lower().strip()
+    if provider != "ollama":
+        return {**config, "model_used": model, "model_location": "api"}
+
     location = await find_model(model)
     if location:
         return {**config, "model_used": model, "model_location": location}

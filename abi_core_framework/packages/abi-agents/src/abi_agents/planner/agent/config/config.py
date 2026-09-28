@@ -10,6 +10,9 @@ from typing import Optional
 
 from a2a.types import AgentCard
 from abi_core.common.agent_card_loader import load_agent_card
+from abi_core.common.prompts import PLANNER_COT_INSTRUCTIONS
+
+from prompts import build_planning_query, build_direct_tool_content_prompt
 
 
 class AgentConfig:
@@ -79,7 +82,14 @@ class AgentConfig:
     
     # Service Module
     SERVICE_MODULE: str = os.getenv('SERVICE_MODULE', 'main')
-    
+
+    # Prompts (see agent/prompts.py) — centralized here so planner.py reads
+    # all prompt content through config instead of importing prompt modules
+    # directly.
+    SYSTEM_PROMPT: str = PLANNER_COT_INSTRUCTIONS
+    build_planning_query = staticmethod(build_planning_query)
+    build_direct_tool_content_prompt = staticmethod(build_direct_tool_content_prompt)
+
     @classmethod
     def get_ollama_url(cls) -> str:
         """Get the complete Ollama URL"""

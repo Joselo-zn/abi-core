@@ -15,6 +15,7 @@ was never a DAG node. They're plain functions now, called directly by
 `orchestrator.py::_call_planner_and_respond`.
 """
 
+import asyncio
 import json
 
 from app import agent
@@ -29,6 +30,136 @@ from config import AGENT_CARD, config
 
 # Agents that must NEVER be deregistered (infrastructure)
 INFRA_AGENTS = {"builder", "planner", "orchestrator", "guardian", "semantic-layer"}
+
+# Background tasks (ephemeral cleanup, see _spawn_background) must be kept
+# referenced or asyncio may garbage-collect them mid-flight.
+_background_tasks: set = set()
+
+
+def _spawn_background(coro) -> None:
+    """Fire-and-forget a coroutine for housekeeping that must never block the
+    caller's critical path (see Paso 3/4 of
+    .abi/specs/infra-agent-lookup-ephemeral-collision.md)."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+def _is_referenced_by_plan(name: str, plan_tasks: list) -> bool:
+    """Paso 2: 'trabajando' = referenced by a task_id in the plan/session
+    currently in flight — NOT liveness (a legitimate ephemeral can take
+    minutes and still be genuinely working). No plan_tasks means there's no
+    plan yet at this call site, so nothing can legitimately reference the
+    agent — vacuously orphaned."""
+    for t in (plan_tasks or []):
+        for a in t.get("agents", []):
+            a_name = a.get("name") if isinstance(a, dict) else getattr(a, "name", None)
+            if a_name == name:
+                return True
+    return False
+
+
+async def _cleanup_orphaned_ephemeral(name: str, role: str, plan_tasks: list = None) -> None:
+    """Paso 3 + 4: housekeeping only — runs in the background, never on the
+    request's critical path (that's guaranteed by the blacklist added before
+    this is spawned, not by this finishing). Unregisters the stale card,
+    destroys the stuck container, then sweeps for siblings from the same
+    batch via recommend_agents."""
+    from abi_core.common.container_runtime import destroy_container
+
+    toolkit = MCPToolkit()
+
+    async def _destroy(agent_name: str) -> None:
+        try:
+            await toolkit.call("unregister_agent", agent_name=agent_name)
+            await destroy_container(agent_name)
+            abi_logging(f"[🧹] Cleaned up orphaned ephemeral: {agent_name}")
+        except Exception as e:
+            abi_logging(f"[⚠️] Cleanup of '{agent_name}' failed (non-critical): {e}")
+
+    await _destroy(name)
+
+    try:
+        candidates = await toolkit.call(
+            "recommend_agents", task_description=f"abi agent {role}", max_agents=5
+        )
+        for c in (candidates or []):
+            candidate_card = c.get("agent", {}) if isinstance(c, dict) else {}
+            c_name = candidate_card.get("name", "")
+            if not c_name or not c_name.lower().startswith("ephemeral") or c_name == name:
+                continue
+            if _is_referenced_by_plan(c_name, plan_tasks):
+                continue
+            await toolkit.call("blacklist_agent", agent_id=f"agent://{c_name}")
+            await _destroy(c_name)
+    except Exception as e:
+        abi_logging(f"[⚠️] Ephemeral sweep for '{role}' failed (non-critical): {e}")
+
+
+async def find_infra_agent(role: str, plan_tasks: list = None):
+    """Resolve a reserved infra agent (guardian/planner/builder) by name, with
+    a safety net against ephemeral/zombie collisions. See
+    .abi/specs/infra-agent-lookup-ephemeral-collision.md
+
+    Primary mechanism: exact, non-semantic lookup by filename stem
+    (`get_agent_card_by_stem`) — the 4 reserved infra agents are known, fixed
+    singletons on disk, never dynamically-registered ephemeral cards, so this
+    is structurally immune to the ephemeral-collision problem, not just
+    resistant to it. Live-verified need for this (not just theoretical):
+    even with ephemeral cards excluded, vector-similarity ranking between a
+    handful of short, topically-similar role descriptions is unstable — "abi
+    agent planner" ranked the Orchestrator's own card above the Planner's,
+    margin under 0.01, well within noise. A known singleton needs a
+    deterministic lookup, not a best-effort one.
+    """
+    # No try/except originally guarded this call — a live incident
+    # (2026-09-21: "planner" resolved to a stuck ephemeral even with this
+    # exact-match path in place) could not be root-caused afterward because
+    # a silent fall-through here leaves zero trace of *why* it fell through.
+    # Logging every non-primary outcome explicitly so this is never a
+    # multi-hour mystery again.
+    try:
+        exact = await MCPToolkit().call("get_agent_card_by_stem", stem=f"{role}_agent")
+    except Exception as e:
+        abi_logging(f"[⚠️] find_infra_agent('{role}'): get_agent_card_by_stem raised {type(e).__name__}: {e} — falling back to vector search")
+        exact = None
+
+    if isinstance(exact, dict) and exact and not exact.get("error"):
+        card, _meta = build_agent_card(exact)
+        return card
+
+    abi_logging(f"[⚠️] find_infra_agent('{role}'): exact-match lookup did not return a usable card ({exact!r}) — falling back to vector search")
+
+    # Fallback below only runs if the static card file is missing/renamed —
+    # kept as defense in depth, still protected by exclude_ephemeral + the
+    # safety net that follows (same protections as before this function had
+    # an exact-match primary path).
+    query = f"abi agent {role}"
+    card = await tool_find_agent.ainvoke({"query": query, "exclude_ephemeral": True})
+    abi_logging(f"[⚠️] find_infra_agent('{role}'): vector-search fallback returned {getattr(card, 'name', card)!r}")
+
+    # a2a.types.AgentCard is a strict schema — build_agent_card() doesn't
+    # preserve a custom `ephemeral` field, so detect via the naming
+    # convention every ephemeral/zombie container is built with
+    # (builder/agent/steps.py: f"ephemeral-{task_id}-{timestamp}"), which
+    # DOES survive as the card's `name`.
+    name = getattr(card, "name", "") or ""
+    if not card or not name.lower().startswith("ephemeral"):
+        return card
+
+    abi_logging(f"[🧟] '{role}' lookup returned an ephemeral card ({name}) — safety net triggered")
+
+    if _is_referenced_by_plan(name, plan_tasks):
+        abi_logging(f"[🧟] '{name}' is referenced by a task in the current plan — leaving it alone")
+        return card
+
+    # Paso 2.5: immediate, local blacklist in the semantic layer — makes the
+    # retry below safe without waiting on the background cleanup.
+    await MCPToolkit().call("blacklist_agent", agent_id=f"agent://{name}")
+
+    _spawn_background(_cleanup_orphaned_ephemeral(name, role, plan_tasks))
+
+    return await tool_find_agent.ainvoke({"query": query, "exclude_ephemeral": True})
 
 # Working-memory topic used to mark a session awaiting a planner clarification
 PENDING_CLARIFICATION_TOPIC = "pending_clarification"
@@ -193,7 +324,7 @@ async def guardian_validate(query, context_id):
     Returns dict with 'allowed', 'reason', and 'status'.
     """
     try:
-        guardian_card = await tool_find_agent.ainvoke({"query": "guardian"})
+        guardian_card = await find_infra_agent("guardian")
         if not guardian_card:
             abi_logging("[⚠️] Guardian agent not found — cannot validate")
             return {
@@ -374,7 +505,7 @@ async def call_planner(query, context_id, task_id):
     """Call Planner agent and return raw A2A results."""
     abi_logging(f"[📞] Calling Planner: {query}")
 
-    planner_card = await tool_find_agent.ainvoke({"query": "planner"})
+    planner_card = await find_infra_agent("planner")
     if not planner_card:
         raise ValueError("Could not find Planner agent")
 
@@ -461,7 +592,7 @@ async def build_workflow(plan_result, context_id, task_id):
         for t in tasks
     )
     if needs_builder:
-        builder_card = await tool_find_agent.ainvoke({"query": "builder"})
+        builder_card = await find_infra_agent("builder", plan_tasks=tasks)
         if not builder_card:
             return {"error": "Builder agent not found — cannot create ephemeral agents"}
         abi_logging(f"[🔧] Builder agent found: {builder_card.name}")
@@ -472,7 +603,7 @@ async def build_workflow(plan_result, context_id, task_id):
     planner_card = None
     needs_planner_direct = any(t.get("type") == "direct_tool" for t in tasks)
     if needs_planner_direct:
-        planner_card = await tool_find_agent.ainvoke({"query": "planner"})
+        planner_card = await find_infra_agent("planner", plan_tasks=tasks)
         if not planner_card:
             return {"error": "Planner agent not found — cannot execute direct_tool tasks"}
         abi_logging(f"[🔧] Planner agent found for direct_tool: {planner_card.name}")

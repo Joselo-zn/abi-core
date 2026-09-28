@@ -306,6 +306,40 @@ async def generate_download_urls(
     return artifacts
 
 
+async def download_artifacts(
+    keys: List[str],
+    workspace: str = "/app/workspace",
+    bucket: str = None,
+) -> List[str]:
+    """Download a list of artifacts by key into a local workspace.
+
+    Reusable by any agent that needs prior tasks' artifacts as local
+    context (see context_loader.load_agent_context).
+
+    Args:
+        keys: MinIO object keys (e.g. "task_1/main.py").
+        workspace: Local directory to download into.
+        bucket: Override bucket (default: from env ARTIFACT_BUCKET).
+
+    Returns:
+        Local file paths of the downloaded artifacts.
+    """
+    if not keys:
+        return []
+
+    store = ArtifactStore(bucket=bucket)
+    paths = []
+    for key in keys:
+        local_path = os.path.join(workspace, os.path.basename(key))
+        try:
+            await store.download_file(key, local_path)
+            paths.append(local_path)
+        except Exception as e:
+            abi_logging(f"[⚠️] Failed to download artifact '{key}': {e}")
+
+    return paths
+
+
 def format_artifact_links(artifacts: List[Dict[str, str]]) -> str:
     """Format artifacts as markdown download links.
 

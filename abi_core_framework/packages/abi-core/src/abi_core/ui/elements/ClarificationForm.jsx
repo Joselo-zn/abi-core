@@ -12,7 +12,7 @@ export default function ClarificationForm() {
   // which remounts the <input> DOM node and drops focus on every
   // keystroke if called from onChange. Only touch updateElement for the
   // final `submitted` flag; the answers themselves travel once, in
-  // handleSubmit's sendUserMessage, not per keystroke.
+  // handleSubmit's callAction, not per keystroke.
   const [answers, setAnswers] = useState(props.answers || {})
 
   const handleChange = (id, value) => {
@@ -20,10 +20,13 @@ export default function ClarificationForm() {
   }
 
   const handleSubmit = () => {
-    sendUserMessage(JSON.stringify({
-      _sentinel: "__clarification_answer__",
-      answers,
-    }))
+    // callAction (not sendUserMessage) — sendUserMessage renders its
+    // argument as a literal visible chat bubble, which leaked the raw
+    // {"_sentinel":...,"answers":{...}} JSON into the conversation.
+    // callAction posts straight to the @cl.action_callback registered in
+    // chainlit_app.py (same mechanism the plan-confirmation buttons use)
+    // with no chat bubble at all.
+    callAction({ name: "clarification_answer", payload: { answers } })
     updateElement(Object.assign(props, { submitted: true }))
   }
 

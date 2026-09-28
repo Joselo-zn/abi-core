@@ -409,9 +409,15 @@ async def custom_call(tool_name: str, payload: Dict[str, Any] = None) -> Dict[st
     return await mcp_toolkit.call(tool_name, **payload)
 
 @tool
-async def tool_find_agent(query: str) -> Optional[AgentCard]:
-    """Find an Angent to complete especific task"""
-    
+async def tool_find_agent(query: str, exclude_ephemeral: bool = False) -> Optional[AgentCard]:
+    """Find an Angent to complete especific task.
+
+    exclude_ephemeral: pass True when looking up a reserved infra agent
+    (guardian/planner/builder/orchestrator) by name — guarantees a stale
+    ephemeral/zombie card can never be returned in its place. See
+    .abi/specs/infra-agent-lookup-ephemeral-collision.md
+    """
+
     async with client.init_session(
         _mcp_config.host,
         _mcp_config.port,
@@ -424,7 +430,7 @@ async def tool_find_agent(query: str) -> Optional[AgentCard]:
             query=query
         )
 
-        mcp_response = await client.find_agent(mcp_session, query, context)
+        mcp_response = await client.find_agent(mcp_session, query, context, exclude_ephemeral)
         if hasattr(mcp_response, 'content') and mcp_response.content:
             try:
                 if isinstance(mcp_response.content, list) and mcp_response.content:

@@ -78,9 +78,19 @@ class AgentStreamClient:
             abi_logging(f"[⚠️] /session/start failed: {e}", level="warning")
         return None
 
-    async def stream(self, query: str) -> AsyncIterator[dict]:
+    async def stream(self, query: str, identity_chain: Optional[list] = None) -> AsyncIterator[dict]:
         """Send `query` to /stream and yield decoded AgentResponse-shaped
         events: {"response_type": ..., "content": ..., "meta": {...}}.
+
+        `identity_chain` — optional, HMAC-sealed chain of ids (see
+        .abi/specs/not-implemented/identity-chain-hmac-contract.md), built
+        fresh per call by the caller (no network round-trip needed, unlike
+        the token — it's a local HMAC computation). When present it's
+        authoritative server-side: the orchestrator derives context_id from
+        it deterministically and never falls back to an anonymous session on
+        failure. Omitted entirely (None) by callers that have no identity to
+        offer (the TUI, or chatui when no user is logged in) — those keep
+        using the opaque Bearer token below, unchanged.
 
         Connection/parse failures are surfaced as a single
         {"response_type": "error", "content": "..."} event rather than
@@ -88,6 +98,9 @@ class AgentStreamClient:
         """
         token = await self.ensure_session()
         headers = {"Authorization": f"Bearer {token}"} if token else {}
+        body: dict = {"query": query}
+        if identity_chain:
+            body["identity_chain"] = identity_chain
 
         try:
             async with httpx.AsyncClient(timeout=600) as client:
@@ -95,7 +108,7 @@ class AgentStreamClient:
                     async with client.stream(
                         "POST",
                         f"{self.agent_url}/stream",
-                        json={"query": query},
+                        json=body,
                         headers=headers,
                     ) as response:
                         if token and response.headers.get("X-Session-Resolved") == "false":

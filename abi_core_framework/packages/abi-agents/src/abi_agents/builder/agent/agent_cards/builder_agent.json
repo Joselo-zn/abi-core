@@ -1,6 +1,6 @@
 {
   "id": "agent://builder",
-  "name": "Builder Agent",
+  "name": "Abi Builder Agent",
   "description": "Builds and deploys ephemeral AI agents on demand. Creates agents with specific tools and system prompts, deploys them as Docker containers, and manages their lifecycle. Can also create new MCP tools when they don't exist in the semantic layer.",
   "url": "http://abi-builder:11439",
   "version": "1.0.0",

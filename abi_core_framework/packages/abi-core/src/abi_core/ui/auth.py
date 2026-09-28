@@ -292,6 +292,20 @@ def _notify_admin_of_waiting_list(email: str) -> None:
 
 if DATABASE_URL:
 
+    @cl.on_app_startup
+    async def _create_schema_on_startup():
+        # Schema creation used to only happen lazily, inside oauth_callback
+        # — fine for a fresh login, but a returning user with a still-valid
+        # JWT (same CHAINLIT_AUTH_SECRET) skips oauth_callback entirely and
+        # goes straight through Chainlit's own authenticate_user ->
+        # data_layer.create_user(), which needs the `users` table to already
+        # exist. Reproduced live: Postgres was reset (fresh volume) but
+        # CHAINLIT_AUTH_SECRET wasn't, so the browser's old session
+        # bypassed oauth_callback and hit "relation users does not exist".
+        # Running this at app startup means the schema exists before any
+        # request, regardless of which path authenticates the user.
+        await _ensure_schema()
+
     @cl.data_layer
     def get_data_layer():
         from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
