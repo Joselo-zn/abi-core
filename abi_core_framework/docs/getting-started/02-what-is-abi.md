@@ -17,9 +17,9 @@ You focus on the logic. ABI handles the rest.
 
 ```bash
 # Create a project with 2 agents
-abi-core create project my-system --with-semantic-layer
-abi-core add agent researcher --description "Finds information"
-abi-core add agent writer --description "Writes reports"
+abi-core create project --name my-system --with-semantic-layer
+abi-core add agent --name researcher --description "Finds information"
+abi-core add agent --name writer --description "Writes reports"
 abi-core run
 ```
 

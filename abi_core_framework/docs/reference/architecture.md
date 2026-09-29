@@ -74,7 +74,8 @@ AbiCore (app runner)
   ├── @agent.step → ToolExecutionGraph (DAG)
   ├── @agent.task → Programmatic orchestration
   ├── @agent.tool → LLM-invocable functions
-  └── @agent.mcp_tool → Remote tools via MCP
+  ├── @agent.mcp_tool → Remote tools via MCP
+  └── @agent.task_async / @agent.task_schedule → Background/recurring work (alpha)
   │
   ▼
 AbiAgent (base class)

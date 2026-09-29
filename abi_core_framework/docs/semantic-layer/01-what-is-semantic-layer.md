@@ -25,10 +25,9 @@ agent = await tool_find_agent.ainvoke("examine revenue data")
 | Component | What it does |
 |-----------|-------------|
 | Weaviate | Database that understands meaning (finds similar descriptions) |
-| MCP Server | Provides tools like find_agent, register_agent, search_tools |
+| MCP Server | Provides tools like find_agent, register_agent, search_tool_registry |
 | Embedding Mesh | Converts text descriptions into searchable numbers |
 | Agent Cards | JSON files describing what each agent can do |
-| Tool Cards | JSON files describing available tools |
 | Tool Cards | JSON files describing available tools |
 
 ## Add it to your project

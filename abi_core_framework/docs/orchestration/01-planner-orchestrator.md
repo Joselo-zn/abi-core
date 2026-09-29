@@ -75,10 +75,12 @@ def gate_decision(triage, guardian, query):
 
 Receives a query and produces a structured plan:
 
-1. **Pick a methodology** — Before decomposing, an LLM call chooses which decomposition approach fits the request best: WBS, SMART, GTD, or Polya's "How to Solve It" (see "Methodology selection" below). Falls back to WBS on any failure.
-2. **LLM decomposition** — Calls the LLM with a chain-of-thought prompt (now including the chosen methodology's guidance) to break the task into sub-tasks
+1. **Fixed Agile Tech Lead framing** — every plan is decomposed the same way: the Planner's system prompt casts it as a Technical Lead writing a prioritized backlog of user stories for other developers to build (see "Methodology selection" below). There is no per-request choice of methodology anymore — `Plan.methodology`/`methodology_rationale` are set deterministically to `"Agile (Scrum/Kanban)"` before the plan is returned, overwriting anything the LLM may have filled in on its own.
+2. **LLM decomposition** — Calls the LLM with a chain-of-thought prompt (built around that fixed Agile framing) to break the task into sub-tasks
 3. **parse_plan** — Extracts structured JSON from the LLM response
 4. **assign_agents** — For each task, searches the Semantic Layer for the right agent
+
+Before step 2's LLM call, the Planner also deterministically recalls similar past plans from long-term memory (`get_long_term_memory(query)`, called directly in code — not something the LLM decides to do) and folds them into the prompt's context as `similar_past_plans`. Each plan's outcome is written to that same long-term memory (topic `plan_execution`) by the Orchestrator once a workflow finishes — see [Result Synthesis](04-result-synthesis.md) — so this is a loop: a plan's result becomes recall context for a future, similar request.
 
 Output:
 
@@ -88,8 +90,8 @@ Output:
   "plan": {
     "objective": "Analyze Q4 sales and generate report",
     "execution_strategy": "sequential",
-    "methodology": "WBS",
-    "methodology_rationale": "Two independent deliverables (analysis, report).",
+    "methodology": "Agile (Scrum/Kanban)",
+    "methodology_rationale": "Fixed framing for every plan — the Planner acts as a Technical Lead breaking the request into a prioritized backlog of User Stories.",
     "tasks": [
       {
         "task_id": "task-1",
@@ -164,7 +166,9 @@ location = await find_model("qwen3:latest")     # host url, or None
 
 ### Methodology selection
 
-`abi_core.common.methodology_tools.list_methodologies()` is the framework's registry of decomposition methodologies (`{"WBS": "...", "SMART": "...", "GTD": "...", "Polya": "..."}`) — available to any agent, not hardcoded inside the Planner's prompt. The Planner's methodology-selection call builds its options from this registry, so it's a single source of truth.
+The Planner no longer picks a decomposition methodology per request. Earlier it made a dedicated LLM call before decomposition to choose between WBS, SMART, GTD, or Polya's "How to Solve It" — that call was removed: it cost an extra LLM round-trip on every plan (minutes, on local models) and some models refused to plan at all under some framings (e.g. `devstral:24b`, whose own baked-in agentic persona read the plain "decompose into tasks" instruction as a request for tools it wasn't given, and answered "I don't have the tools needed" instead of producing a plan). The fixed Agile Tech Lead persona in `PLANNER_COT_INSTRUCTIONS` — writing a backlog for other developers to build — replaces it and doesn't trigger that refusal, since the model isn't asked to act as the one doing the work.
+
+`abi_core.common.methodology_tools` (`list_methodologies()`, `select_methodology()`, the WBS/SMART/GTD/Polya registry) is still in the framework and importable by any agent, but the Planner itself no longer calls it — it's currently unused dead code from that earlier design, not a single source of truth in active use.
 
 ## Get orchestration in your project
 

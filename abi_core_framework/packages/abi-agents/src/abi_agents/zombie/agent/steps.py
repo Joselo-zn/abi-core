@@ -24,12 +24,22 @@ async def gather_context(query):
         artifact_keys=config.ARTIFACT_KEYS if config.ARTIFACT_KEYS else None,
         workspace=config.WORKSPACE,
     )
+
+    # process-awareness.md (Tier 3) — read back the plan-wide blob the
+    # Orchestrator wrote (session_backend, keyed by PLAN_CONTEXT_ID, NOT
+    # this task's own CONTEXT_ID). Deterministic fetch, not an LLM tool.
+    process_context = {}
+    if config.PLAN_CONTEXT_ID:
+        session_ctx = await agent.get_session_context(config.PLAN_CONTEXT_ID)
+        process_context = session_ctx.get("process_context", {})
+
     return {
         "query": query,
         "workspace": config.WORKSPACE,
         "artifacts": ctx["artifacts"],
         "tools_available": config.TOOL_NAMES,
         "system_prompt": config.SYSTEM_PROMPT,
+        "process_context": process_context,
     }
 
 
@@ -66,10 +76,29 @@ async def analyze_and_execute(context, query):
         workspace=config.WORKSPACE,
     )
 
-    # Combine system prompt with memory context
+    # process-awareness.md (Tier 3) — this task's place in the overall
+    # plan (objective, sibling tasks, dependencies), not just its own
+    # description. Built from the deterministic fetch in gather_context.
+    process_note = ""
+    process_context = context.get("process_context") or {}
+    if process_context:
+        siblings = "; ".join(
+            f"{t.get('task_id', '?')}: {t.get('description', '')}"
+            for t in process_context.get("tasks", [])
+        )
+        process_note = (
+            f"## Your place in the overall plan\n"
+            f"Plan objective: {process_context.get('objective', '')}\n"
+            f"Total tasks in this plan: {process_context.get('total_tasks', '?')}\n"
+            f"All tasks: {siblings}"
+        )
+
+    # Combine system prompt with memory context + process awareness
     system_prompt = config.SYSTEM_PROMPT
     if memory_context:
         system_prompt = f"{config.SYSTEM_PROMPT}\n\n## Context from previous tasks:\n{memory_context}"
+    if process_note:
+        system_prompt = f"{system_prompt}\n\n{process_note}"
 
     result = await invoke(
         config.LLM_CONFIG, execution_prompt,

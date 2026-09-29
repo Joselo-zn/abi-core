@@ -8,12 +8,15 @@ The Semantic Layer is a shared service. If you add a tool there, every agent in 
 
 ## Add a custom MCP tool
 
-In your semantic layer's MCP server, register a new tool:
+In your semantic layer's MCP server (`services/semantic_layer/main.py`, a
+[FastMCP](https://github.com/jlowin/fastmcp) app), register a new tool with
+`@mcp.tool(...)` — the same decorator the built-in tools
+(`find_agent`, `register_agent`, `search_tool_registry`, ...) use:
 
 ```python
-# services/semantic_layer/main.py (or wherever your MCP server is defined)
+# services/semantic_layer/main.py
 
-@server.call_tool()
+@mcp.tool(name='store_document', description='Store a document for future semantic retrieval')
 async def store_document(content: str, metadata: dict = None) -> dict:
     """Store a document for future semantic retrieval."""
     # Your storage logic here (Weaviate, database, etc.)
@@ -21,12 +24,18 @@ async def store_document(content: str, metadata: dict = None) -> dict:
     return {"success": True, "doc_id": doc_id}
 
 
-@server.call_tool()
+@mcp.tool(name='search_documents', description='Search stored documents by semantic similarity')
 async def search_documents(query: str, max_results: int = 5) -> list:
     """Search stored documents by semantic similarity."""
     results = await weaviate_store.search(query, limit=max_results)
     return results
 ```
+
+Add `@validate_semantic_access` (from
+`abi_core.semantic.semantic_access_validator`) between `@mcp.tool(...)` and
+`async def ...` if the tool should go through the same OPA-backed agent/user
+check the built-in tools use — see [A2A Validation → Semantic Layer access
+validation](../security/06-a2a-validation.md#semantic-layer-mcp-access-validation).
 
 ## Call it from any agent
 

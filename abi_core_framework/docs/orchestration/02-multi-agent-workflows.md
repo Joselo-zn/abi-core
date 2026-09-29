@@ -95,6 +95,13 @@ guardian ──────────────┼→ synthesize
 search_context ────────┘
 ```
 
+## Context and artifacts across tasks
+
+When `build_workflow` spins up an ephemeral agent (via the Builder) for a `build_and_execute`/`create_tools_and_execute` task, that agent gets two kinds of context beyond its own task description:
+
+- **Prior tasks' artifacts** — if the task depends on an earlier task that produced a file, the Orchestrator collects that file's key and passes it through the Builder as `artifact_keys`. The ephemeral agent downloads it into its workspace (`context_loader.load_agent_context` → `download_artifacts`) before starting, so it can build on the actual prior output instead of reimplementing it from scratch.
+- **Its place in the whole plan** — the Orchestrator writes the plan's objective and full task list (with dependencies) to session context once, keyed by the plan's own `context_id`. Every ephemeral agent spawned for that plan reads the same blob back (via `PLAN_CONTEXT_ID` + a deterministic `get_session_context` call, not an LLM tool) and gets it folded into its system prompt as "Your place in the overall plan" — not just its own task description in isolation.
+
 ## Workflow state
 
 ```python

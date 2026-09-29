@@ -1,7 +1,7 @@
 """
 Planner Agent — decomposes queries into executable task plans.
 
-The planning pipeline (analyze_query -> parse_plan -> assign_agents)
+The planning pipeline (parse_plan -> assign_agents)
 is registered as @agent.step() decorators in main.py and injected
 as self.tool_graph by AbiCore.
 """
@@ -62,6 +62,23 @@ class AbiPlannerAgent(AbiAgent):
         """
         from abi_core.agent.llm_provider import invoke_structured
         from abi_core.common.plan_models import PlannerOutput
+
+        # Fase 2B corregida (ams-long-term-memory-no-consumer.md): recall
+        # similar past plans BEFORE calling the LLM, by direct code, not as
+        # a tool the LLM may or may not decide to call — the discretionary
+        # MEMORY_TOOLS pattern was already tried for a similar case
+        # (Orchestrator session memory) and proven to eat the full timeout
+        # budget on unsolicited memory calls (.abi/issues/
+        # 2026-09-09-fase1-memory-tools-lento.md). Global search (no
+        # context_id): each plan's outcome is written by the Orchestrator
+        # keyed by that execution's own task_id (Fase 2D), which never
+        # matches a fresh planning session_id, so a session-scoped search
+        # would never find anything.
+        from abi_core.memory import get_long_term_memory
+
+        similar_plans = await get_long_term_memory(query)
+        if similar_plans:
+            context = {**context, "similar_past_plans": similar_plans}
 
         planning_query = config.build_planning_query(query, context)
         result = await invoke_structured(

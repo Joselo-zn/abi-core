@@ -205,7 +205,7 @@ recent_text = format_conversation_summary(session_ctx.get("conversation_summary"
 ```
 
 ```{note}
-Availability isn't the same as correct use — putting the recent-conversation text in front of a model doesn't guarantee it merges relevant details instead of just pattern-matching the latest message. If you see that happen, add a short `SystemMessage` explaining *why* the block matters (a downstream call that only sees the field you write, nothing else) — that's what fixed it for the reference Orchestrator. See `.abi/specs/orchestrator-conversation-memory.md`.
+Availability isn't the same as correct use — putting the recent-conversation text in front of a model doesn't guarantee it merges relevant details instead of just pattern-matching the latest message. If you see that happen, add a short `SystemMessage` explaining *why* the block matters (a downstream call that only sees the field you write, nothing else) — that's what fixed it for the reference Orchestrator. See `.abi/specs/implemented/orchestrator-conversation-memory.md`.
 ```
 
 ## Concurrency & latency (know the trade-offs)

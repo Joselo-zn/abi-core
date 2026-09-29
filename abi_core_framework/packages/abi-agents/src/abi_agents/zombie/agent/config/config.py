@@ -90,6 +90,11 @@ class ZombieConfig:
     CONTEXT_ID: str = os.getenv("CONTEXT_ID", "")
     AGENT_MEMORY_URL: str = os.getenv("AGENT_MEMORY_URL", "")
 
+    # process-awareness.md (Tier 3) — the plan-wide id (distinct from
+    # CONTEXT_ID, this task's own id), used to read back the process_context
+    # blob the Orchestrator wrote via session_backend for the whole plan.
+    PLAN_CONTEXT_ID: str = os.getenv("PLAN_CONTEXT_ID", "")
+
     # Agent Card — write to disk from AGENT_CARD_JSON env var for MCP auth
     AGENT_CARD: str = "ephemeral"
     _AGENT_CARD_PATH: str = "/tmp/agent_card.json"

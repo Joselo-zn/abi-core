@@ -139,6 +139,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.abi/specs/chainlit-per-step-ui.md`.
 
 ### Fixed
+- **A task with more than one dependency ran once per dependency instead of
+  once after all of them completed.** `AgentInteractionFlow.add_edge`
+  (`abi_core/common/workflow.py`) only accepted a single predecessor id;
+  `build_workflow`'s edge loop (`orchestrator/agent/steps.py`) called it
+  once per `(dependency, task)` pair. LangGraph's own `StateGraph.add_edge`
+  only creates a real "wait for all" join when the predecessors are passed
+  *together* as one list in a single call — calling it once per dependency
+  registers each as its own independent trigger, so the target fires once
+  per call instead of once after all of them finish. Reproduced live: a
+  task with 3 dependencies ran 3 times, one with 4 ran 4 times, each as
+  soon as its *first* dependency alone completed — and reproduced again,
+  fixed, in an isolated repro (`AgentInteractionFlow` with real timed dummy
+  nodes) before touching the caller. `add_edge` now accepts
+  `str | list[str]`; the caller collects all of a task's dependencies and
+  calls it once with the full list. See
+  `.abi/specs/implemented/langgraph-multi-predecessor-join-fix.md`.
+- **Ephemeral agents never actually received prior tasks' artifacts, even
+  when the Orchestrator correctly identified and passed the dependency
+  keys.** `context_loader.load_agent_context` imported `download_artifacts`
+  from `abi_core.common.artifact_store` — a function that never existed
+  there. The `ImportError` was swallowed by a bare `except`, so every
+  ephemeral's `artifacts` list silently stayed empty regardless of real
+  `ARTIFACT_KEYS` passed in. Concrete production consequence, reproduced
+  live: a task depending on 3 already-written files received none of them
+  in its workspace and wrote a fully standalone reimplementation instead of
+  integrating with the prior work (no shared board/ghost classes, no
+  imports between the generated files). New
+  `download_artifacts(keys, workspace, bucket)` added to
+  `artifact_store.py`, reusing `ArtifactStore.download_file` per key —
+  `context_loader`'s existing import now resolves to a real function.
 - **`container_runtime.py`'s Docker SDK calls had no timeout of their own**
   — the only real I/O in the framework without one (`run_shell`'s
   `subprocess.run(timeout=60)` already kills its child process for real;

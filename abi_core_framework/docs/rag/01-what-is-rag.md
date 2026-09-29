@@ -24,21 +24,26 @@ User question
 
 ## In ABI-Core
 
-The Semantic Layer already uses RAG internally — agent cards and tool cards are stored as embeddings in Weaviate and searched semantically. You can extend this to store your own documents.
+The Semantic Layer already uses RAG internally — agent cards and tool cards are stored as
+embeddings in Weaviate (`AgentCard`/`MeshItem`/`ToolRegistry` collections) and searched
+semantically for agent discovery (`find_agent`, `recommend_agents`) and tool lookup
+(`search_tool_registry`):
 
 ```python
 from abi_core.common.semantic_tools import MCPToolkit
 
 toolkit = MCPToolkit()
 
-# Store a document
-await toolkit.store_document(
-    content="Return policy: 30 days, original packaging required.",
-    metadata={"type": "policy", "department": "support"}
-)
+results = await toolkit.search_tool_registry(query="parse a PDF")
+agent = await toolkit.find_agent(task_description="analyze quarterly revenue")
+```
 
-# Search later
-results = await toolkit.search_documents(query="return policy")
+```{note}
+There is no built-in general-purpose document store (no `store_document`/`search_documents`
+MCP tool ships with the framework). To do RAG over your own documents, add a Weaviate
+collection and a matching `@mcp.tool` to the Semantic Layer's `main.py` — the same pattern
+already used there for `register_tool`/`search_tool_registry`. See
+[Agents with RAG](04-agents-with-rag.md) for how that MCP tool would look once you've added it.
 ```
 
 ## When to use RAG

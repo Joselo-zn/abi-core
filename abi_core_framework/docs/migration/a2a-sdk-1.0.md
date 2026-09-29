@@ -64,4 +64,4 @@ No changes needed. Your `agent_cards/*.json` files keep all the same fields. The
 
 ## New projects
 
-Projects created with `abi-core create agent` (v1.12+) already use the new pattern. No action needed.
+Projects created with `abi-core add agent` (v1.12+) already use the new pattern. No action needed.

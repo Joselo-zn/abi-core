@@ -108,7 +108,11 @@ curl -X POST http://localhost:8181/v1/data/abi/finance/allow \
 
 ## Reload policies
 
-OPA watches the policies directory. Changes are picked up automatically. To force:
+The scaffolded OPA container (`opa run --server /policies`, no `-w`/watch
+flag) does **not** watch the policies directory — it loads `.rego` files
+once at startup. Even though `compose.yaml` mounts
+`./services/guardian/opa/policies` as a live volume, you still need to
+restart the container for a change to take effect:
 
 ```bash
 docker restart <opa-container>

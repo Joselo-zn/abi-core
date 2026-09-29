@@ -8,7 +8,7 @@ from abi_core.common.semantic_tools import tool_find_agent
 from abi_core.agent.agent import AbiAgent, _HeartbeatDone
 from abi_core.agent.agent_response import AgentResponse
 from abi_core.agent.routing_tools import build_routing_decision_schema, format_system_state
-from abi_core.memory import MEMORY_TOOLS
+from abi_core.memory import MEMORY_TOOLS, add_long_term_memory
 
 from config import config
 
@@ -369,6 +369,23 @@ class AbiOrchestratorAgent(AbiAgent):
                 yield AgentResponse.input_required(modify_text)
                 return
 
+            if action == "plan_modification_feedback":
+                # Deterministic twin of the reasoning turn's
+                # resolve_pending_plan+modify branch below (steps.py::
+                # classify_query) — bypasses the LLM routing decision
+                # entirely. awaiting_plan_modification was set by code
+                # right before asking "¿qué querés cambiar?", so this
+                # reply is unambiguously the feedback. Reproduced live
+                # 2026-09-29: the reasoning turn picked answer_directly
+                # (a dead end, no Planner call) instead of
+                # resolve_pending_plan for this exact case.
+                await self.update_session_context(context_id, {"awaiting_plan_modification": False})
+                feedback = gate.get("feedback", query)
+                enriched = f"{session_ctx.get('pending_plan_query', '')}\n\nCambios solicitados: {feedback}"
+                async for r in self._call_planner_and_respond(enriched, context_id, task_id):
+                    yield r
+                return
+
             if action == "clarification_answered":
                 # Deterministic twin of the reasoning turn's
                 # resolve_pending_clarification branch below — same
@@ -527,6 +544,29 @@ class AbiOrchestratorAgent(AbiAgent):
 
             # Log execution plan summary
             tasks = plan.get("tasks", [])
+
+            # process-awareness.md (Tier 3, ams-long-term-memory-no-consumer.md):
+            # one write, keyed by this plan's own context_id — every ephemeral
+            # spawned for this plan gets that same context_id threaded through
+            # Builder (steps.py::build_workflow's build_query) and reads this
+            # same blob back via get_session_context, instead of each getting
+            # a static per-task copy. Reuses session_backend (Redis) — no new
+            # storage.
+            await self.update_session_context(context_id, {
+                "process_context": {
+                    "objective": plan.get("objective", ""),
+                    "total_tasks": len(tasks),
+                    "tasks": [
+                        {
+                            "task_id": t.get("task_id", "?"),
+                            "description": t.get("description", "")[:100],
+                            "dependencies": t.get("dependencies", []),
+                        }
+                        for t in tasks
+                    ],
+                },
+            })
+
             abi_logging(f"[📋] Executing plan: '{plan.get('objective', '')}' — {len(tasks)} tasks")
             for t in tasks:
                 tid = t.get("task_id", "?")
@@ -630,6 +670,28 @@ class AbiOrchestratorAgent(AbiAgent):
                 )
                 if artifacts and missing_a_link:
                     final_response += format_artifact_links(artifacts)
+
+                # Fase 2D (ams-long-term-memory-no-consumer.md): write this
+                # plan's outcome to long-term memory so a future planning
+                # pass can recall it (Fase 2B). context_id=task_id, matching
+                # the design as confirmed — open point, not resolved here:
+                # whether this should key on task_id or the session's
+                # context_id once identity-chain-hmac-contract's derivation
+                # is in place (see that spec's Puntos débiles).
+                objective = plan.get("objective", "")
+                task_summaries = "; ".join(
+                    f"{t.get('task_id', '?')}: {t.get('description', '')[:60]}"
+                    for t in tasks
+                )
+                await add_long_term_memory(
+                    topic="plan_execution",
+                    task=objective[:50],
+                    content=(
+                        f"Plan '{objective}' with {len(tasks)} tasks: SUCCESS. "
+                        f"Tasks: {task_summaries}"
+                    ),
+                    context_id=task_id,
+                )
 
                 # QR of each artifact's download link, so the user can grab
                 # it on their phone without retyping the URL — see

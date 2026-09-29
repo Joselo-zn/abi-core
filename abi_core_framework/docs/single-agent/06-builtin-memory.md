@@ -128,10 +128,10 @@ result = await invoke(config.LLM_CONFIG, query, system_prompt=system_prompt)
 
 ## Letting the LLM recall memory (tools)
 
-To let the LLM decide when to look something up, add the ready-made memory tools to your agent:
+`abi_core.memory.MEMORY_TOOLS` wraps four of the operations above as LangChain tools the LLM can call directly: `get_long_term_memory(query)`, `get_short_term_memory()`, `save_short_term_memory(content, topic)`, `save_long_term_memory(content, topic)`. They resolve `context_id` and the AMS URL from the current run automatically, so the model only ever supplies the content/query — never a session id.
 
 ```python
-from abi_core.memory import MEMORY_TOOLS  # [get_long_term_memory, get_short_term_memory]
+from abi_core.memory import MEMORY_TOOLS  # get/save × short-term/long-term (4 tools)
 
 class MyAgent(AbiAgent):
     def __init__(self):
@@ -143,7 +143,25 @@ class MyAgent(AbiAgent):
         )
 ```
 
-The LLM can then call `get_long_term_memory(query)` or `get_short_term_memory()` on its own when it needs prior context. These tools resolve `context_id` and the AMS URL from the environment, so the model only supplies a query (or nothing).
+```{warning}
+**Don't bind `MEMORY_TOOLS` and let the LLM decide *on its own initiative* whether
+to call one before a decision that matters.** This was tried for the reference
+Orchestrator's routing turn and reproduced broken in production: the model would
+spontaneously reach for a memory tool on requests that didn't need it, and a
+single one of those calls could consume the *entire* reasoning timeout by itself
+(reproduced twice with the same query — two long-term-memory writes alone ate the
+full 180s budget before routing was ever decided), or return a garbled narrative
+about a "failed" save that then corrupted the next decision. See
+`.abi/issues/2026-09-09-fase1-memory-tools-lento.md`.
+
+For a decision with real consequences (routing, plan approval, anything
+latency-sensitive), prefer loading memory **deterministically in code** — call
+`get_short_term_memory()` / `get_long_term_memory(query)` / `recall_memory_context(query)`
+yourself inside a step and put the result in the prompt, as in "Reading memory"
+above — instead of handing the model the tool and hoping it calls it only when
+useful. `MEMORY_TOOLS` is still fine for a low-stakes, exploratory agent where an
+occasional slow or skipped lookup isn't costly.
+```
 
 ## Graceful degradation
 
@@ -156,4 +174,4 @@ This is intentional: memory is an enhancement, not a hard dependency. Your agent
 
 ## Next step
 
-👉 [Testing Agents](05-testing-agents.md)
+👉 [Sessions & Multi-turn](07-sessions-multi-turn.md)

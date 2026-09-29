@@ -78,6 +78,10 @@ links = format_artifact_links(artifacts)
 # "📎 report.pdf: https://minio.../presigned-url"
 ```
 
+## Learning across plans
+
+Once a workflow finishes successfully, the Orchestrator writes a summary of the plan and its tasks to long-term memory (`add_long_term_memory(topic="plan_execution", ...)`, keyed by the workflow's `task_id`). This isn't consumed by anything in the synthesis step itself — it's there for the *next* planning pass: the Planner deterministically recalls similar past plans before decomposing a new request (see [Planner & Orchestrator](01-planner-orchestrator.md#the-planner)). The write is a plain function call in code, not an LLM tool call.
+
 ## Error handling
 
 If a workflow fails partway through:

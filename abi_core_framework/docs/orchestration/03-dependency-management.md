@@ -56,6 +56,10 @@ Execution:
 2. Tasks 2 and 3 run in parallel (both depend only on 1)
 3. Task 4 waits for both 2 and 3
 
+### How a multi-dependency wait is actually built
+
+Task 4 above has two dependencies (`"2"` and `"3"`), and it must run exactly once, only after both finish — not once per dependency. `build_workflow` (`orchestrator/agent/steps.py`) builds this by collecting *all* of a task's dependency ids first and calling `AgentInteractionFlow.add_edge` **once**, passing the full list (`add_edge(["2", "3"], "4")`), instead of once per dependency. This matters because of how the underlying `StateGraph.add_edge` (LangGraph) works: it only creates a real "wait for all" join when every predecessor is passed together in one call. Calling `add_edge` once per dependency — even targeting the same node — registers each call as its own independent trigger, so the target would fire once per call instead of once after all predecessors complete. This was a real, reproduced bug (a task with 3 dependencies ran 3 times, one with 4 ran 4 times, each firing as soon as its first dependency alone finished) and is now fixed: `add_edge` accepts `str | list[str]`, and every caller with more than one dependency for the same target must group them into a single call. See `AgentInteractionFlow.add_edge`'s docstring in `abi_core/common/workflow.py` for the full detail.
+
 ## Programmatic parallelism in tasks
 
 Inside a `@agent.task`, use `asyncio.gather` for explicit parallel execution:

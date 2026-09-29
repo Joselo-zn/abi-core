@@ -242,20 +242,42 @@ class AgentInteractionFlow:
         # Add node to LangGraph
         self.graph_builder.add_node(node.id, node_function)
 
-    def add_edge(self, from_node_id: str, to_node_id: str) -> None:
-        """Add an edge between two nodes"""
-        if from_node_id not in self.nodes or to_node_id not in self.nodes:
+    def add_edge(self, from_node_id: str | list[str], to_node_id: str) -> None:
+        """Add an edge (or a joint edge from multiple predecessors) to a node.
+
+        `from_node_id` as a plain str: single predecessor, same as before.
+        `from_node_id` as a list[str]: a TRUE join — LangGraph's own
+        `add_edge` only waits for ALL start nodes when they're passed
+        together in one call. Calling `add_edge` once per predecessor with
+        the same `to_node_id` (the previous behavior here, and still a
+        trap if a caller does it directly against a node with >1 real
+        dependency) does NOT merge into a join — each call registers its
+        own independent trigger, so the target fires once per call instead
+        of once after all predecessors complete. Reproduced live and in an
+        isolated repro, 2026-09-29: a task with 3 dependencies ran 3 times,
+        one with 4 ran 4 times, as soon as its FIRST dependency alone
+        finished. Confirmed via `StateGraph.add_edge`'s own docstring
+        ("When multiple start nodes are provided... wait for ALL"). Callers
+        with more than one dependency for the same target MUST collect
+        them and call this once with a list, not once per dependency.
+        """
+        from_ids = from_node_id if isinstance(from_node_id, list) else [from_node_id]
+        for fid in from_ids:
+            if fid not in self.nodes:
+                raise ValueError('Invalid Node IDs')
+        if to_node_id not in self.nodes:
             raise ValueError('Invalid Node IDs')
-        
-        from_key = self.nodes[from_node_id].node_key or from_node_id[:8]
+
+        from_keys = ", ".join(self.nodes[fid].node_key or fid[:8] for fid in from_ids)
         to_key = self.nodes[to_node_id].node_key or to_node_id[:8]
-        abi_logging(f'[🔗] Edge: {from_key} → {to_key}')
-        
+        abi_logging(f'[🔗] Edge: {from_keys} → {to_key}')
+
         # Track edges for later use
         if not hasattr(self, '_edges'):
             self._edges = []
-        self._edges.append((from_node_id, to_node_id))
-        
+        for fid in from_ids:
+            self._edges.append((fid, to_node_id))
+
         self.graph_builder.add_edge(from_node_id, to_node_id)
     
     def compile(self):

@@ -5,7 +5,7 @@ Create a project, add an agent, run it, talk to it. 10 minutes.
 ## Step 1: Create the project
 
 ```bash
-abi-core create project my-first-project
+abi-core create project --name my-first-project
 cd my-first-project
 ```
 
@@ -22,7 +22,7 @@ my-first-project/
 ## Step 2: Add an agent
 
 ```bash
-abi-core add agent assistant \
+abi-core add agent --name assistant \
   --description "A helpful AI assistant" \
   --with-web-interface
 ```
@@ -42,10 +42,11 @@ agents/assistant/
 ├── steps.py            ← Your step functions
 ├── tasks.py            ← Your task functions
 ├── tools.py            ← Your tools
-├── prompts.py          ← Prompts (never inline)
+├── models.py           ← Pydantic input/output/error models
 ├── config/config.py    ← AI model, ports, env vars
 ├── web_interface.py    ← HTTP endpoints (SSE, REST)
 ├── main.py             ← Entry point
+├── requirements.txt
 └── Dockerfile
 ```
 
@@ -54,11 +55,13 @@ agents/assistant/
 ```bash
 # First time: pull the AI model (~2GB download)
 docker compose up ollama -d
-docker exec my-first-project-ollama ollama pull qwen3:latest
+docker exec ollama ollama pull qwen3:latest
 
 # Start everything
 docker compose up --build -d
 ```
+
+The `ollama` container name is always just `ollama` (not prefixed with your project name) — it's shared across projects and reused if one is already running.
 
 Check it's running:
 

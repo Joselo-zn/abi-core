@@ -71,7 +71,7 @@ def create():
 
     \b
     Examples:
-      abi-core create project my-app --with-semantic-layer
+      abi-core create project --name my-app --with-semantic-layer
 
     Use 'abi-core create COMMAND --help' for more information on a command.
     """
@@ -96,9 +96,9 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
     
     \b
     Examples:
-      abi-core create project my-app --name my-app
-      abi-core create project fintech --name fintech --domain finance --with-semantic-layer
-      abi-core create project secure-app --name secure-app --with-guardian --with-semantic-layer
+      abi-core create project --name my-app
+      abi-core create project --name fintech --domain finance --with-semantic-layer
+      abi-core create project --name secure-app --with-guardian --with-semantic-layer
     
     The project will be created in a new directory with the specified name.
     """

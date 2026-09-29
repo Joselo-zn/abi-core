@@ -15,9 +15,10 @@ abi-core create project my-app --with-semantic-layer
 
 | Collection | Content |
 |-----------|---------|
-| AgentCards | Agent descriptions + capabilities (for discovery) |
-| ToolRegistry | Tool descriptions + schemas (for tool search) |
-| Custom | Your documents (if you extend the Semantic Layer) |
+| `AgentCard` | Agent descriptions + capabilities (for discovery via `find_agent`/`recommend_agents`) |
+| `MeshItem` | Semantic mesh entries backing agent discovery/recommendation |
+| `ToolRegistry` | Tool descriptions + schemas (for `search_tool_registry`) |
+| Custom | Your own documents — not built in; add a collection + MCP tool if you need general-purpose document RAG |
 
 ## How data gets in
 
@@ -39,15 +40,19 @@ curl http://localhost:8081/v1/objects?limit=5
 
 ## Direct access (advanced)
 
-If you need to interact with Weaviate directly:
+If you need to interact with Weaviate directly, the Semantic Layer uses the
+`weaviate-client>=4.0.0` collections API, not the older `weaviate.Client(...)` v3 style:
 
 ```python
 import weaviate
 
-client = weaviate.Client("http://localhost:8081")
+client = weaviate.connect_to_local(host="localhost", port=8081)
 
 # Query objects
-result = client.query.get("AgentCards", ["text", "uri"]).with_limit(5).do()
+col = client.collections.get("AgentCard")
+result = col.query.fetch_objects(limit=5)
+
+client.close()
 ```
 
 But for most use cases, use `MCPToolkit` instead — it handles auth and sessions for you.

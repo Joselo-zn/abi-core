@@ -112,7 +112,7 @@ def add_service(service_type, name, domain):
         default_port = {
             'semantic-layer': 10100,
             'guardian': 11438,
-            'guardian-native': 11439,
+            'guardian-native': 11438,
             'mcp-api': 9000
         }.get(service_type, 8080)
 

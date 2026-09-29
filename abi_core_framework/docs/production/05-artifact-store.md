@@ -67,18 +67,57 @@ environment:
 
 ## Upload artifacts from an agent
 
-```python
-from abi_core.common.artifact_store import upload_artifact
+The common pattern — used by the Zombie/ephemeral agent and the Planner's
+`write_pdf` direct tool — is `upload_workspace_artifacts`: scan a local
+workspace directory and upload every new file (skipping anything that was
+itself downloaded as an input artifact):
 
-# Upload a file
-artifact = await upload_artifact(
-    content=pdf_bytes,
-    filename="quarterly-report.pdf",
-    content_type="application/pdf",
-    metadata={"agent": "reporter", "task_id": "task-42"},
+```python
+from abi_core.common.artifact_store import upload_workspace_artifacts
+
+uploaded = await upload_workspace_artifacts(
+    agent_name="reporter",
+    workspace="/app/workspace",
+    exclude=[],  # local paths to skip, e.g. downloaded input artifacts
 )
-# Returns: {"filename": "quarterly-report.pdf", "url": "...", "bucket": "abi-artifacts"}
+# Returns: [{"filename": "quarterly-report.pdf", "key": "reporter/quarterly-report.pdf",
+#            "url": "...", "agent": "reporter"}, ...]
 ```
+
+For a single file (or bytes already in memory), use the `ArtifactStore` class directly:
+
+```python
+from abi_core.common.artifact_store import ArtifactStore
+
+store = ArtifactStore()  # reads ARTIFACT_ENDPOINT/ARTIFACT_ACCESS_KEY/... from env
+await store.ensure_bucket()
+url = await store.upload("task_1/report.pdf", pdf_bytes)
+# or: await store.upload_file("task_1/report.pdf", "/local/path/report.pdf")
+```
+
+`ArtifactStore` also has `download`/`download_file`, `list_artifacts`, `delete`,
+`get_url` (pre-signed), and `exists`.
+
+## Download artifacts into an agent
+
+A task that `depends_on` another task's output needs that prior task's files
+in its own local workspace before it can build on them — not just know their
+MinIO keys. `download_artifacts` does that download step; it's what
+`context_loader.load_agent_context` calls internally to populate the
+`artifacts` list an ephemeral agent sees for a given `ARTIFACT_KEYS`:
+
+```python
+from abi_core.common.artifact_store import download_artifacts
+
+local_paths = await download_artifacts(
+    keys=["task_1_.../board.py", "task_1_.../ghost.py"],
+    workspace="/app/workspace",
+)
+# Returns: ["/app/workspace/board.py", "/app/workspace/ghost.py"]
+```
+
+A failed download for one key is logged and skipped rather than raising —
+the rest of the keys still get downloaded.
 
 ## Generate download URLs
 

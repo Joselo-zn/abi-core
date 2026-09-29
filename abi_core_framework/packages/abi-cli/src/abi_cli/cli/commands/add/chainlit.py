@@ -83,7 +83,7 @@ def add_chainlit(url, title, ui_dir):
         url, agent_display = _detect_web_agent(project_dir)
         if not url:
             console.print("❌ No agent with a web interface found in .abi/runtime.yaml.", style="red")
-            console.print("💡 Add one with 'abi-core add agent <name> --with-web-interface',", style="yellow")
+            console.print("💡 Add one with 'abi-core add agent --name <name> --with-web-interface',", style="yellow")
             console.print("   or pass --url http://<project>-<agent>:<port> explicitly.", style="yellow")
             return
         console.print(f"🔎 Auto-detected agent: {agent_display} → {url}", style="dim")

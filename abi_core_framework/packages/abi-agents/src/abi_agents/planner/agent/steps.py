@@ -1,9 +1,13 @@
 """Planner Agent — Steps.
 
-DAG: analyze_query → parse_plan → assign_agents
-"""
+DAG: parse_plan → assign_agents
 
-import json
+(`analyze_query` removed 2026-09-28 — dead step: it built its own
+`planning_query` but nothing downstream ever read it. The real prompt is
+built by `planner.py::_call_llm` -> `prompts.py::build_planning_query`
+*before* this DAG runs; `parse_plan` reads its input from `$input.llm_response`,
+an external value, not from any prior step's output.)
+"""
 
 from app import agent
 from abi_core.common.utils import abi_logging, clean_llm_json
@@ -14,21 +18,7 @@ from abi_core.common.agent_card_loader import get_agent_url
 
 
 @agent.step(
-    name="analyze_query",
-    input_map={
-        "query": "$input.query",
-        "context": "$input.context",
-    },
-)
-async def analyze_query(query, context):
-    """Prepare the planning prompt from query + context."""
-    planning_query = f"User request: {query}\nContext: {json.dumps(context, indent=2)}"
-    return {"planning_query": planning_query}
-
-
-@agent.step(
     name="parse_plan",
-    depends_on=["analyze_query"],
     input_map={"raw_response": "$input.llm_response"},
 )
 def parse_plan(raw_response):

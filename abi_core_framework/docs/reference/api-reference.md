@@ -15,10 +15,12 @@ agent = AbiCore(
 
 | Decorator | Purpose |
 |-----------|---------|
-| `@agent.step(name, depends_on, input_map)` | Deterministic DAG node |
+| `@agent.step(name, depends_on, input_map, timeout)` | Deterministic DAG node |
 | `@agent.task(name, task_id)` | Programmatic orchestrator of steps |
 | `@agent.tool(name)` | DAG node + LLM-invocable tool |
 | `@agent.mcp_tool(name)` | Remote tool via MCP protocol |
+| `@agent.task_async(name, max_retries, base_delay, on_success, on_error)` | Fire-and-forget background function — alpha. See [Background & Scheduled Tasks](../production/06-background-and-scheduled-tasks.md). |
+| `@agent.task_schedule(name, trigger, trigger_args, overlap_policy, fail_mode, ...)` | Recurring job on APScheduler, gated by overlap check + OPA — alpha. See [Background & Scheduled Tasks](../production/06-background-and-scheduled-tasks.md). |
 
 ### Methods
 
@@ -28,6 +30,8 @@ agent = AbiCore(
 | `agent.execute_task(name, query=...)` | Run a task (async generator) |
 | `agent.run(agent_instance)` | Compile DAG, start A2A server |
 | `agent.get_task_metadata()` | List all registered tasks |
+| `agent.execute_task_async(name, context_id=None, **kwargs)` | Launch a `@agent.task_async` function in the background; returns an `async_task_id` immediately |
+| `agent.get_async_task_status(async_task_id)` | Poll a background/scheduled task's status (`running`/`done`/`failed`) — `None` if unknown |
 
 ---
 
@@ -150,6 +154,49 @@ flow.set_source_card(my_card)
 async for chunk in flow.run_workflow():
     process(chunk)
 ```
+
+---
+
+## Memory (`abi_core.memory`)
+
+```{note}
+**Alpha.** Backed by the Agent Memory Server — see [Environment Variables → Agent Memory](environment-variables.md#agent-memory-redis-ams).
+```
+
+```python
+from abi_core.memory import (
+    add_short_term_memory,   # (topic, task, content, context_id=None, memory_url=None) -> bool
+    add_long_term_memory,    # (topic, task, content, context_id=None, memory_url=None) -> bool
+    get_short_term_memory,   # (context_id=None, memory_url=None) -> str
+    get_long_term_memory,    # (query, context_id=None, memory_url=None, limit=5) -> str
+    recall_memory_context,   # (query, context_id=None, memory_url=None, long_term_limit=3) -> str
+    MEMORY_TOOLS,             # LangChain tools: get_long_term_memory, get_short_term_memory,
+                               # save_short_term_memory, save_long_term_memory
+)
+# Also importable from abi_core.agent (add_short_term_memory, add_long_term_memory,
+# get_short_term_memory, get_long_term_memory, recall_memory_context).
+```
+
+All functions degrade gracefully — on any failure (AMS unreachable, library missing) they
+log a warning and return `False`/`""` instead of raising. See
+[Built-in Memory API](../single-agent/06-builtin-memory.md).
+
+---
+
+## Artifact Store (`abi_core.common.artifact_store`)
+
+```python
+from abi_core.common.artifact_store import (
+    ArtifactStore,               # upload/download/list_artifacts/delete/get_url/exists
+    upload_workspace_artifacts,  # scan a workspace dir, upload new files, skip `exclude`
+    download_artifacts,          # download a list of MinIO keys into a local workspace
+    generate_download_urls,      # add 'download_url' (pre-signed) to a list of artifact dicts
+    format_artifact_links,       # render artifacts as a markdown links block
+)
+```
+
+See [Artifact Store](../production/05-artifact-store.md) for usage patterns and the
+`ARTIFACT_ENDPOINT` vs `ARTIFACT_PUBLIC_ENDPOINT` distinction.
 
 ---
 

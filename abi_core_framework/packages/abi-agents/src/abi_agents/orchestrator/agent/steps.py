@@ -209,6 +209,20 @@ async def classify_query(query, context_id="", session_context=None):
         abi_logging(f"[🔁] Plan confirmation sentinel: {sentinel_result['classification']} for session '{context_id}'")
         return sentinel_result
 
+    # ── Deterministic check: free-text reply to "¿qué querés cambiar?" ──
+    # Mirrors clarification_answered below — awaiting_plan_modification is
+    # set by code (orchestrator.py, action=plan_modify_requested) right
+    # before asking this question, so ANY reply that follows is
+    # unambiguously the modification feedback, never a new unrelated
+    # request. Used to fall through to reasoning_required, where the
+    # model could (and did, reproduced live 2026-09-29) pick the dead-end
+    # answer_directly action instead of resolve_pending_plan — the turn
+    # ended in prose ("vamos a crear un plan...") with no plan ever
+    # created. See .abi/specs/orchestrator-unified-routing-contract.md.
+    if session_context.get("awaiting_plan_modification"):
+        abi_logging(f"[🔁] Plan modification feedback received for session '{context_id}'")
+        return {"classification": "plan_modification_feedback", "feedback": query}
+
     # ── Peek (never clear here) at a pending clarification, if any ──
     pending_clarification = await _peek_pending_clarification(context_id)
 
@@ -447,6 +461,10 @@ def gate_decision(triage, guardian, query):
             "pending_clarification": triage.get("pending_clarification"),
         }
 
+    if classification == "plan_modification_feedback":
+        abi_logging("[🔁] Gate: plan modification feedback received")
+        return {"action": "plan_modification_feedback", "feedback": triage.get("feedback", query)}
+
     if classification == "plan_confirmation_orphaned":
         # query looked like an approve/reject/modify reply, but there's no
         # pending plan in this session to apply it to — most likely lost
@@ -680,6 +698,12 @@ async def build_workflow(plan_result, context_id, task_id):
                 "task_type": task_type,
                 "builder_spec": builder_spec,
                 "description": desc,
+                # process-awareness.md (Tier 3) — the plan-wide context_id
+                # (not `tid`, which is per-task), so the spawned ephemeral
+                # can read back the process_context blob the Orchestrator
+                # wrote via update_session_context. See orchestrator.py's
+                # stream(), right before this workflow runs.
+                "context_id": context_id,
             })
 
             build_flow = AgentInteractionFlow()
@@ -781,12 +805,19 @@ async def build_workflow(plan_result, context_id, task_id):
             {"task_id": task_id, "context_id": context_id, "query": node_desc},
         )
 
+    # One add_edge call per target, with ALL its dependencies together —
+    # NOT one call per dependency. LangGraph's add_edge only creates a true
+    # "wait for all" join when the predecessors are passed as a single
+    # list; calling it once per dependency (the previous code here) fires
+    # the target once per call instead of once after all deps complete.
+    # Reproduced live 2026-09-29 — see workflow.py::add_edge's docstring.
     for task in tasks:
         tid = task.get("task_id")
-        for dep in task.get("dependencies", []):
-            if dep in nodes and tid in nodes:
-                workflow.add_edge(nodes[dep].id, nodes[tid].id)
-                abi_logging(f"[🔗] Edge: {dep} → {tid}")
+        if tid not in nodes:
+            continue
+        dep_ids = [nodes[dep].id for dep in task.get("dependencies", []) if dep in nodes]
+        if dep_ids:
+            workflow.add_edge(dep_ids if len(dep_ids) > 1 else dep_ids[0], nodes[tid].id)
 
     workflow.set_source_card(AGENT_CARD)
 

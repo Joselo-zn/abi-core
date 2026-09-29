@@ -53,10 +53,16 @@ Creates: `agents/<name>/` with app.py, steps.py, tasks.py, tools.py, prompts.py,
 ### `abi-core add service`
 
 ```bash
-abi-core add service <type>
+abi-core add service <type> [--name <name>] [--domain <domain>]
 ```
 
-Types: `semantic-layer`, `guardian-native`
+| Type | Description |
+|------|-------------|
+| `semantic-layer` | AI agent discovery and routing service (fixed name `semantic_layer`). Shortcut: `abi-core add semantic-layer`. |
+| `guardian` | Security policy enforcement service (placeholder) |
+| `guardian-native` | Native Guardian service based on abi-core guardial |
+| `mcp-api` | FastMCP/API central connection point service |
+| `agent-memory` | Short/long-term memory — provisions Redis 8 + Agent Memory Server (AMS) and wires `AGENT_MEMORY_URL` into existing (and future) agents. Works for any agent, not just a swarm. See [Environment Variables → Agent Memory](environment-variables.md#agent-memory-redis-ams). |
 
 ### `abi-core add chainlit`
 
@@ -106,6 +112,41 @@ Equivalent to `docker compose up -d`.
 
 ---
 
+## Capabilities
+
+### `abi-core capabilities`
+
+```{note}
+**Alpha.** Task-centric model capability matching — profiles are not yet wired
+into agent model selection.
+```
+
+```bash
+abi-core capabilities list [--source profiles.json]
+abi-core capabilities show <model> [--source profiles.json] [--radar out.png]
+abi-core capabilities profile <model> [--host http://localhost:11434] [--output profile.json] [--reps 10] [--timeout 300]
+```
+
+`list`/`show` read model profiles (default: the built-in seed catalog); `profile`
+measures a real Ollama model's operational envelope (structured output, reasoning,
+instruction following, code generation) via leveled probes and writes a JSON profile.
+
+---
+
+## UI
+
+### `abi-core ui chainlit`
+
+```bash
+abi-core ui chainlit --url http://localhost:8083 [--title "ABI"] [--port 8000] [--headless]
+```
+
+Runs a standalone Chainlit chat UI process against an agent's `/stream` URL —
+distinct from `abi-core add chainlit`, which instead wires Chainlit in as a
+permanent Docker service in `compose.yaml`.
+
+---
+
 ## Other commands
 
 | Command | Description |
@@ -115,6 +156,7 @@ Equivalent to `docker compose up -d`.
 | `abi-core info` | Show project configuration |
 | `abi-core remove agent <name>` | Remove an agent |
 | `abi-core remove service <name>` | Remove a service |
+| `abi-core remove agent-card <name>` | Remove only an agent's card from the semantic layer (e.g. to regenerate it), leaving the agent itself in place |
 
 ---
 

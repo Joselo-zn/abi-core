@@ -17,27 +17,33 @@ ABI-Core provides ready-made functions for finding agents. Import them from `abi
 ## Find one agent
 
 ```python
+from abi_core.common.agent_card_loader import get_agent_url
 from abi_core.common.semantic_tools import tool_find_agent
 
 agent_card = await tool_find_agent.ainvoke("analyze financial data")
 
 if agent_card:
-    print(agent_card.name)  # "analyst"
-    print(agent_card.url)   # "http://my-project-analyst:8001"
+    print(agent_card.name)          # "analyst"
+    print(get_agent_url(agent_card))  # "http://my-project-analyst:8001"
 ```
+
+`AgentCard` is a2a-sdk's protobuf type (since a2a-sdk 1.0) — it has no `.url`
+attribute. Use `get_agent_url(card)` (or `card.supported_interfaces[0].url`
+directly) to read the address.
 
 The search is semantic — "examine revenue" matches an agent described as "analyzes sales data".
 
 ## Find multiple agents
 
 ```python
+from abi_core.common.agent_card_loader import get_agent_url
 from abi_core.common.semantic_tools import tool_list_agents
 
 agents = await tool_list_agents.ainvoke("share opinions and discuss topics")
 # Returns a list of AgentCard objects
 
 for agent in agents:
-    print(f"{agent.name} at {agent.url}")
+    print(f"{agent.name} at {get_agent_url(agent)}")
 ```
 
 ## Check if an agent is alive

@@ -2,6 +2,17 @@
 
 Build an agent that answers questions using your own documents.
 
+```{note}
+`store_document`/`search_documents` below are **not** built-in MCP tools — the Semantic
+Layer ships with agent/tool discovery tools only (`find_agent`, `recommend_agents`,
+`search_tool_registry`, ...). This page shows the pattern for adding your own document
+store: an `@mcp.tool`-decorated pair in the Semantic Layer's `main.py`, following the
+same shape as the built-in `register_tool`/`search_tool_registry`, backed by a Weaviate
+collection of your own. Add those two tools to the Semantic Layer first — then the
+`MCPToolkit` calls below work exactly as shown, since `MCPToolkit` dynamically proxies
+to whatever tool names the Semantic Layer's MCP server actually registers.
+```
+
 ## The pattern
 
 1. Store documents in the Semantic Layer (via MCPToolkit)

@@ -148,9 +148,9 @@ ABI-Core is a Python framework for creating AI agent systems. You write agents a
 ```bash
 pip install abi-core-ai
 
-abi-core create project my-system --with-semantic-layer
+abi-core create project --name my-system --with-semantic-layer
 cd my-system
-abi-core add agent my-agent --description "My first agent" --with-web-interface
+abi-core add agent --name my-agent --description "My first agent" --with-web-interface
 abi-core run
 ```
 

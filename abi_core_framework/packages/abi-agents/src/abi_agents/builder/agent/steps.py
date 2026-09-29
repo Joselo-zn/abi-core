@@ -18,9 +18,10 @@ from abi_core.common.semantic_tools import tool_search_tools
         "builder_spec": "$input.builder_spec",
         "task_id": "$input.task_id",
         "task_type": "$input.task_type",
+        "plan_context_id": "$input.context_id",
     },
 )
-def parse_spec(builder_spec, task_id, task_type):
+def parse_spec(builder_spec, task_id, task_type, plan_context_id=""):
     """Parse and validate the builder_spec from the planner.
 
     Extracts tools needed, tools to create, system prompt, and
@@ -66,6 +67,7 @@ def parse_spec(builder_spec, task_id, task_type):
         "llm_config_override": llm_config_override,
         "artifact_keys": artifact_keys,
         "target_tag": target_tag,
+        "plan_context_id": plan_context_id,
     }
 
 
@@ -166,6 +168,7 @@ def generate_config(verification):
         "task_type": verification["task_type"],
         "artifact_keys": verification.get("artifact_keys", []),
         "target_tag": verification.get("target_tag", ""),
+        "plan_context_id": verification.get("plan_context_id", ""),
         # Library tools — all BASE_TOOLS for ephemeral agents
         "library_tools_resolved": ["write_file", "read_file", "run_shell", "list_files"],
     }
@@ -243,6 +246,11 @@ async def build_container(config):
             "LOG_BUCKET": os.getenv("LOG_BUCKET", "abi-logs"),
             "AGENT_CARD_JSON": config.get("agent_card_json", ""),
             "CONTEXT_ID": config.get("task_id", ""),
+            # process-awareness.md (Tier 3) — the plan-wide id, distinct
+            # from CONTEXT_ID (this task's own id). The ephemeral reads
+            # this back via get_session_context to learn its place in the
+            # overall plan (objective, sibling tasks, dependencies).
+            "PLAN_CONTEXT_ID": config.get("plan_context_id", ""),
             "AGENT_MEMORY_URL": os.getenv("AGENT_MEMORY_URL", "http://abi-swarm-agent-memory:8000"),
             "SERVICE_MODULE": "",
             "SERVICE_COMMAND": (

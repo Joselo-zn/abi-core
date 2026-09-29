@@ -52,13 +52,30 @@ curl -X POST http://localhost:8181/v1/data/abi/custom/allow \
 
 Response: `{"result": true}`
 
-## How Guardian uses OPA
+## Who talks to OPA
 
-1. Guardian receives a validation request (from Orchestrator or A2A validator)
-2. Builds an `input` object with agent info, action, and context
-3. POSTs to OPA at `http://opa:8181/v1/data/<package>/allow`
-4. OPA evaluates all rules and returns `true` or `false`
-5. Guardian returns the decision + any deny reasons
+OPA is a shared rules engine, not something every request is proxied
+through Guardian to reach — three independent pieces call it directly with
+`httpx`, each building its own `input` object and hitting its own package:
+
+| Caller | Package | Used for |
+|--------|---------|----------|
+| Guardian's own DAG (`evaluate_policy` step, via `policy_engine_secure`) | your custom policies (e.g. `abi.custom`, `abi.finance`) + core policies | Direct action validation requested over A2A (`guardian_validate` in the Orchestrator's DAG) or workflow validation |
+| `abi_core.security.a2a_access_validator` | `a2a_access` | Agent-to-agent task delegation (`agent_connection`, `AgentInteractionFlow`) — see [A2A Validation](06-a2a-validation.md) |
+| `abi_core.semantic.semantic_access_validator` | `abi.semantic_access` | MCP tool calls into the Semantic Layer — see [A2A Validation → Semantic Layer access validation](06-a2a-validation.md#semantic-layer-mcp-access-validation) |
+
+Each caller:
+
+1. Builds an `input` object with agent info, action/tool, and context
+2. POSTs to OPA at `http://opa:8181/v1/data/<package>/allow` (or `/<package>`
+   for a package that returns a richer object, like `abi.semantic_access`)
+3. OPA evaluates all rules and returns the result
+4. The caller applies its own decision (deny/allow, `strict`/`permissive`
+   fallback on OPA being unreachable). Only the A2A validator additionally
+   reports the outcome to Guardian's `/audit/log` for the audit trail — a
+   separate call from the policy check itself. The semantic-access
+   validator only logs locally (`abi_logging`); it accepts a `guardian_url`
+   but doesn't currently call it.
 
 ## Next step
 
