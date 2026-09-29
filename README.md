@@ -32,7 +32,7 @@ Agents discover each other by meaning, not configuration. The Semantic Router qu
 Execution agents are born, work, and die. The Builder creates Docker containers with injected tools, the Zombie executes, uploads artifacts to MinIO, deregisters from Weaviate, and the container self-destructs. No residual state.
 
 ### 3. Human Veto Always
-No agent acts without oversight. The Guardian validates every request against OPA policies before execution. Plan Confirmation (next milestone) lets users approve or reject plans before they run. Emergency shutdown is always available.
+No agent acts without oversight. The Guardian validates every request against OPA policies before execution. Plan Confirmation lets users approve, reject, or request changes to a plan before it runs — built into `AbiAgent` (`abi_core.agent.plan_confirmation`), not swarm-specific. Emergency shutdown is always available.
 
 ### 4. Local-First, Vendor-Agnostic
 Everything runs on your hardware with Ollama. No API keys, no data leaving your network. The Processor Interface abstracts the model — use qwen, llama, mistral, or any compatible model without changing code.
@@ -75,6 +75,7 @@ User query
 | CLI | `abi-core create project`, `add agent`, `run` with auto TUI detection |
 | TUI Console | Interactive Textual dashboard — services, logs, chat with orchestrator |
 | MinIO | Artifact storage for ephemeral agent outputs |
+| Redis + Agent Memory Server | Short/long-term memory backend, session storage, background task status |
 | OPA | Policy engine with immutable core policies |
 | Ollama | Local LLM serving — no API keys, no data leaves your network |
 | Docker | Container lifecycle for ephemeral agents with auto-cleanup |
@@ -256,10 +257,28 @@ async def report(result):
 agent.run(MyAgent())
 ```
 
-Three decorator types:
+Decorator types:
 - `@agent.step()` — Deterministic DAG step. Runs in strict topological order.
 - `@agent.tool()` — DAG step + LangChain tool. The LLM can also invoke it on demand.
 - `@agent.mcp_tool()` — Remote MCP tool called via MCPToolkit with HMAC auth. No local function needed.
+- `@agent.task_async()` — Fire-and-forget background work, launched via `agent.execute_task_async(name, **kwargs)`, not tied to the request that launches it. Status polled via `get_async_task_status`.
+- `@agent.task_schedule()` — Recurring job on an interval/cron, via APScheduler. Same status tracking as `task_async`, with configurable overlap policy and an optional OPA gate before each firing.
+
+### Memory, Sessions & Capability Matching
+
+```python
+from abi_core.memory import add_long_term_memory, get_long_term_memory
+
+# Write (inside a step/task)
+await add_long_term_memory(topic="plan_execution", task="build a scraper", content="...")
+
+# Read — semantic search, no LLM discretion required
+result = await get_long_term_memory("similar past plans")
+```
+
+- **Memory** (`abi_core.memory`) — short-term (working memory, per session) and long-term (semantic search across everything ever stored) built-in functions, backed by Redis Agent Memory Server. Also exposed as `MEMORY_TOOLS` for an LLM to call directly, though high-stakes decisions should call the functions deterministically in code instead — letting the model decide when to check memory has measured failure modes (full timeout consumed on an unsolicited call).
+- **Sessions** (`abi_core.session`) — pluggable `SessionBackend` (in-memory or Redis) for multi-turn conversation context, sliding-window TTL (active sessions never expire, only genuinely idle ones do).
+- **Capability matching** (`abi_core.capabilities`) — profile what a task actually needs (reasoning depth, tool use, domain knowledge) and what a model can deliver, via `abi-core capabilities profile`. Alpha: the scoring engine is implemented and tested standalone, not yet wired into agent routing decisions.
 
 ### Send a Query
 ```bash
@@ -271,14 +290,14 @@ curl -X POST http://localhost:8001/stream \
 ## 📋 Agent Capabilities
 
 ### Orchestrator
-Parallel triage (simple vs complex) + Guardian security gate. Discovers agents via MCP `find_agent` semantic search. Builds execution workflows with `AgentInteractionFlow` — dependency-aware, multi-step, with ephemeral agent support. SSE streaming via `/stream` endpoint.
+Parallel triage (simple vs complex) + Guardian security gate, then a routing decision forced to a fixed set of valid actions (new request, reply to a pending plan, plain chat) — no free-text fallback. Discovers agents via MCP `find_agent` semantic search. Builds execution workflows with `AgentInteractionFlow` — dependency-aware, multi-step, with ephemeral agent support. SSE streaming via `/stream` endpoint.
 
-DAG: `classify_query | guardian_validate` → `gate_decision` → `call_planner` → `extract_plan` → `build_workflow`
+DAG: `classify_query | guardian_validate` → `gate_decision` (3 nodes). Planning and workflow execution (`call_planner`, `extract_plan`, `build_workflow`) run as plain function calls after the DAG, once a request is actually confirmed — not DAG nodes themselves.
 
 ### Planner
-LLM-based query decomposition into structured plans. Each task includes description, steps, dependencies, tools needed, and model recommendation. Assigns agents via semantic search — if no agent exists, marks task for `build_and_execute` (Builder handles it).
+LLM-based query decomposition into structured plans. Each task includes description, dependencies, tools needed, and model recommendation. Assigns agents via semantic search — if no agent exists, marks task for `build_and_execute` (Builder handles it). Recalls similar past plans from long-term memory before decomposing (deterministic lookup, not an LLM-discretionary tool call).
 
-DAG: `analyze_query` → `parse_plan` → `assign_agents`
+DAG: `parse_plan` → `assign_agents`
 
 ### Builder *(beta)*
 Receives a builder spec, resolves required tools from the semantic layer, generates ephemeral agent config (Dockerfile, agent card, tool list), spawns a Docker container with injected environment, and registers the ephemeral agent card in Weaviate. Returns the agent card so the Orchestrator can route tasks to it.
@@ -289,7 +308,7 @@ DAG: `parse_spec` → `verify_tools` → `generate_config` → `build_container`
 OPA policy validation for every request. Detects prompt injection, reverse engineering attempts, and policy violations. Returns risk scores with contextual modifiers. Immutable core policies auto-generated at startup — agents cannot modify them. Emergency shutdown always available.
 
 ### Zombie (Ephemeral) *(beta)*
-Short-lived execution agent spawned by the Builder. Gathers context, executes tasks using injected library tools (`write_file`, `read_file`, `list_files`, `execute_command`), uploads artifacts to MinIO, then self-deregisters from Weaviate via `self_deregister_ephemeral` MCP tool and exits the container.
+Short-lived execution agent spawned by the Builder. Gathers context — including artifacts from dependency tasks, downloaded automatically, and its place in the overall plan (objective, sibling tasks) — executes using injected library tools (`write_file`, `read_file`, `run_shell`, `list_files`), uploads artifacts to MinIO, then self-deregisters from Weaviate via `self_deregister_ephemeral` MCP tool and exits the container.
 
 DAG: `gather_context` → `analyze_and_execute` → `synthesize_and_report`
 
@@ -390,6 +409,9 @@ Every query passes through the Guardian before execution:
 - [Agent Communication](abi_core_framework/docs/multi-agent-basics/03-agent-communication.md)
 - [Environment Variables](abi_core_framework/docs/reference/environment-variables.md)
 - [Sessions & Multi-turn](abi_core_framework/docs/single-agent/07-sessions-multi-turn.md)
+- [Memory — Short & Long-term](abi_core_framework/docs/single-agent/06-builtin-memory.md)
+- [Background & Scheduled Tasks](abi_core_framework/docs/production/06-background-and-scheduled-tasks.md)
+- [Capability Matching](abi_core_framework/docs/reference/capability-matching.md)
 - [Manifesto](MANIFIESTO.md)
 - [Whitepaper](WHITEPAPER.md)
 - [PyPI Documentation](https://abi-core.readthedocs.io)
@@ -431,7 +453,8 @@ The E2E pipeline is functional and verified. The system receives natural languag
 
 | Phase | What | Status |
 |-------|------|--------|
-| 1. Foundations | Plan Confirmation ✅ done · Interactive CLI/TUI, Docker auto-cleanup | 🔧 In progress |
+| 0. Shipped | Plan Confirmation, built-in Memory (short/long-term), Sessions (sliding TTL), Background/Scheduled tasks (`task_async`/`task_schedule`), Rich elements, Google OAuth + persistent threads | ✅ Done |
+| 1. Foundations | Capability matching wired into agent routing (scoring engine is done, alpha) · Interactive CLI/TUI, Docker auto-cleanup | 🔧 In progress |
 | 2. Intelligence | Result Validation, Plan Learning, Orchestrator Synthesis Refactor | 🔜 Next |
 | 3. Capabilities | Model Management, Artifact Transport, Hybrid Tool Discovery | 📋 Planned |
 | 4. Knowledge | Swarm Knowledge Base (.abi/ as MCP tools) | 📋 Planned |
