@@ -58,7 +58,7 @@ An agent card is a JSON file that tells the world what your agent can do and how
 The CLI generates them automatically when you add an agent:
 
 ```bash
-abi-core add agent analyst --description "Analyzes sales data"
+abi-core add agent --name analyst --description "Analyzes sales data"
 # → Creates agents/analyst/agent_cards/analyst_agent.json
 ```
 

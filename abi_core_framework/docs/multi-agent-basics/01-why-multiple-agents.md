@@ -36,11 +36,11 @@ Each agent has its own system prompt, its own tools, and can even use a differen
 
 ```bash
 # Create project where agents can find each other
-abi-core create project my-system --with-semantic-layer
+abi-core create project --name my-system --with-semantic-layer
 
 # Add specialized agents
-abi-core add agent analyst --description "Analyzes data and trends"
-abi-core add agent writer --description "Writes reports and summaries"
+abi-core add agent --name analyst --description "Analyzes data and trends"
+abi-core add agent --name writer --description "Writes reports and summaries"
 ```
 
 Each agent gets:

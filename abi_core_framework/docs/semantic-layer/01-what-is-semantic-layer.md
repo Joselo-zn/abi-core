@@ -33,7 +33,7 @@ agent = await tool_find_agent.ainvoke("examine revenue data")
 ## Add it to your project
 
 ```bash
-abi-core create project my-app --with-semantic-layer
+abi-core create project --name my-app --with-semantic-layer
 ```
 
 Or add to an existing project:
@@ -73,9 +73,9 @@ agent = await tool_find_agent.ainvoke("write reports")
 # Find multiple agents
 agents = await tool_list_agents.ainvoke("discuss and share opinions")
 
-# Call any custom MCP tool
+# Call any MCP tool on the Semantic Layer by name
 toolkit = MCPToolkit()
-result = await toolkit.store_document(content="...", metadata={...})
+tools = await toolkit.search_tool_registry(query="parse a PDF")
 ```
 
 ## Next step

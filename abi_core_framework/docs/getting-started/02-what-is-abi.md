@@ -66,15 +66,18 @@ async for chunk in agent_connection(my_card, target_card, payload):
 
 The security gate. Every request can be checked against rules before it runs. Blocks unauthorized actions, logs everything.
 
-## How it's different from just using LangChain
+## How it's different from wiring agents yourself
 
-| | Raw LangChain | ABI-Core |
+| | A typical hand-wired agent stack | ABI-Core |
 |---|---|---|
-| Execution | AI decides order | Your code decides order |
-| Multi-agent | You wire it yourself | Agents find each other automatically |
-| Deployment | You figure it out | `docker compose up` |
-| Security | Nothing built-in | Built-in rules engine |
-| Discovery | Hardcoded addresses | Search by capability |
+| Execution | The model decides what runs next | Your code decides; the model works inside steps |
+| Multi-agent | You connect every pair yourself | Agents find each other by capability |
+| Coordination | Agents talk until they agree | Agents hand over real work, checked by code |
+| Deployment | You figure it out | Every agent is a container; `abi-core run` |
+| Security | Added later, if at all | A rules engine checks requests before they run |
+| Models | Usually one cloud provider | Local by default (Ollama), any provider per agent |
+
+Want the long version? Read [Why ABI-Core](../why-abi-core.md).
 
 ## Next step
 

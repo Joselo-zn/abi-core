@@ -37,6 +37,6 @@ ABI_BANNER = r"""
                         ██║  ██║  ██████╔╝  ██║
                         ╚═╝  ╚═╝   ╚════╝   ╚═╝[/bold bright_cyan]
 """
-ABI_BANNER += f"""[bold white]ABI Swarm[/bold white] [dim]— Self-Building Multi-Agent System[/dim]
+ABI_BANNER += f"""[bold white]ABI-Core[/bold white] [dim]— Agent-Based Infrastructure Core[/dim]
 [dim]OSS CLI v{ABI_CORE_VERSION} | Core v{ABI_CORE_VERSION}[/dim]
 """

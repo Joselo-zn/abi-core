@@ -6,6 +6,7 @@ Centralizes all environment variables and configuration settings.
 import os
 import json
 from pathlib import Path
+from abi_core.agent.llm_provider import llm_config_from_env
 
 
 class AgentConfig:
@@ -31,12 +32,10 @@ class AgentConfig:
     OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 
     # LLM Configuration
-    LLM_CONFIG: dict = {
-        "provider": os.getenv("LLM_PROVIDER", "ollama"),
-        "model": os.getenv("MODEL_NAME", "qwen3:latest"),
-        "temperature": 0.0,
-        "base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-    }
+    # LLM settings from the environment (LLM_PROVIDER, MODEL_NAME, LLM_BASE_URL,
+    # LLM_API_KEY, LLM_TEMPERATURE, LLM_EXTRA_PARAMS — a JSON object passed
+    # as-is to the LangChain model). See abi_core.agent.llm_provider.
+    LLM_CONFIG: dict = llm_config_from_env()
 
     # Policy Configuration
     POLICIES_DIR: str = os.getenv("POLICIES_DIR", "/app/policies")

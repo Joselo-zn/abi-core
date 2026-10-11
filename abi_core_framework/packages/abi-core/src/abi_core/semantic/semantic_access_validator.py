@@ -8,6 +8,7 @@ import asyncio
 import httpx
 import hmac
 import hashlib
+import time
 import base64
 from functools import wraps, lru_cache
 from typing import Dict, Any, Optional, Callable
@@ -250,6 +251,45 @@ class SemanticAccessValidator:
         return is_valid
 
 
+    async def verify_caller(self, caller_context: Dict[str, Any], max_skew_s: int = 120) -> Dict[str, Any]:
+        """Verify who signed ``caller_context``, for a service that must know it.
+
+        Strict, unlike ``_verify_signature`` (which skips requests without a
+        payload): no payload, no signature, a stale timestamp or an unknown
+        card all fail. Returns the caller's card WITHOUT ``auth`` — the
+        service asking never sees a secret. Used by ``sandbox-service``
+        (ephemeral-reviewer-pipeline 02.5), which cannot look up ephemeral
+        cards itself.
+        """
+        def fail(reason: str) -> Dict[str, Any]:
+            abi_logging(f"[🔏] verify_caller: {reason}")
+            return {"verified": False, "reason": reason, "card": None}
+
+        payload = (caller_context or {}).get("payload")
+        headers = (caller_context or {}).get("headers") or {}
+        if not payload:
+            return fail("missing signed payload")
+        if not headers.get("X-ABI-Signature"):
+            return fail("missing signature")
+        agent_id = payload.get("agent_id") or ""
+        if not agent_id or headers.get("X-ABI-Agent-ID", agent_id) != agent_id:
+            return fail("agent id missing or inconsistent")
+        try:
+            age = abs(time.time() - float(payload.get("ts", 0)))
+        except (TypeError, ValueError):
+            return fail("invalid timestamp")
+        if age > max_skew_s:
+            return fail(f"stale signature ({int(age)}s old)")
+
+        card = await self._load_agent_card(agent_id)
+        if not card:
+            return fail(f"no card for {agent_id}")
+        if not self._verify_signature(card, caller_context):
+            return fail(f"invalid signature for {agent_id}")
+
+        public = {k: v for k, v in card.items() if k != "auth"}
+        return {"verified": True, "reason": "", "card": public}
+
     def _extract_agent_info(self, request_context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         headers = request_context.get("headers", {})
         
@@ -331,6 +371,13 @@ class SemanticAccessValidator:
                         
                         if (card_id == agent_id or
                                 id_prefix + card_name == agent_id):
+                            # A ServiceCard names its identity `service_id`;
+                            # the policy reads `id` (semantic_access.rego,
+                            # agent_registered). Without this every service
+                            # card was "not registered" — live 2026-10-09 the
+                            # sandbox-service's verify_caller call was denied.
+                            if not card_data.get("id") and card_data.get("service_id"):
+                                card_data = {**card_data, "id": card_data["service_id"]}
                             self.validation_cache[cache_key] = {
                                 "data": card_data,
                                 "timestamp": datetime.utcnow().timestamp()
@@ -507,6 +554,11 @@ class SemanticAccessValidator:
 
 # Instancia global del validador
 _validator = SemanticAccessValidator(GUARDIAN_URL, OPA_URL, AGENT_CARD_DIR)
+
+
+async def verify_caller(caller_context: Dict[str, Any]) -> Dict[str, Any]:
+    """Module-level entry for the semantic layer's ``verify_caller`` MCP tool."""
+    return await _validator.verify_caller(caller_context)
 
 def validate_semantic_access(func: Callable) -> Callable:
     """

@@ -339,6 +339,7 @@ class AbiAgent:
     async def _run_with_heartbeat(
         self, coro, context_id, task_id, status_msg,
         max_wait: Optional[float] = None, interval: float = _HEARTBEAT_INTERVAL,
+        phase: Optional[str] = None,
     ):
         """Run a coroutine, yielding heartbeats live as they occur.
 
@@ -383,6 +384,8 @@ class AbiAgent:
             status_msg: Text shown in heartbeat status messages.
             max_wait: Optional seconds to wait before giving up. ``None``
                 (default) imposes no cap.
+            phase: Optional ``RunPhase`` value carried in every heartbeat's
+                ``meta`` so clients can show which stage is still running.
 
         Yields:
             ``AgentResponse`` heartbeats as they occur, then a final
@@ -431,11 +434,13 @@ class AbiAgent:
             except asyncio.TimeoutError:
                 elapsed += wait_chunk
                 if not task.done():
+                    phase_meta = {"phase": phase} if phase else {}
                     yield AgentResponse.status(
                         status_msg,
                         agent=self.agent_name,
                         context_id=context_id,
                         task_id=task_id,
+                        **phase_meta,
                     )
 
         yield _HeartbeatDone(task.result())
@@ -577,7 +582,8 @@ class AbiAgent:
                 # Only agents that use bare @agent.tool() (no depends_on) pay for
                 # this extra LLM call; everyone else keeps today's DAG-only path.
                 dag_summary = _json.dumps(last_output) if last_output is not None else "Completed"
-                llm_query = f"[Pipeline result]: {dag_summary}\n\nOriginal request: {query}"
+                from abi_core.common.prompts.framework import build_pipeline_result_query
+                llm_query = build_pipeline_result_query(dag_summary, query)
                 final_response = None
                 async for item in self._run_llm_turn(llm_query, context_id, task_id):
                     if isinstance(item, _HeartbeatDone):

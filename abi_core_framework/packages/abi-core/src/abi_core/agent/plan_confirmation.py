@@ -21,7 +21,10 @@ bookkeeping around a pending plan.
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Dict, Optional
+import json
+from typing import Any, Awaitable, Callable, Dict, Literal, Optional
+
+from pydantic import BaseModel, Field
 
 from abi_core.common.utils import abi_logging
 
@@ -32,6 +35,11 @@ from abi_core.common.utils import abi_logging
 PLAN_CONFIRM_APPROVE = "__plan_confirm_approve__"
 PLAN_CONFIRM_REJECT = "__plan_confirm_reject__"
 PLAN_CONFIRM_MODIFY = "__plan_confirm_modify__"
+# Modify *with* the requested change, in one step — sent as JSON
+# {"_sentinel": PLAN_MODIFY_FEEDBACK_SENTINEL, "feedback": "..."} by a UI
+# that collects the feedback inline (Chainlit's PlanReview card), instead
+# of PLAN_CONFIRM_MODIFY followed by a separate "what should change?" turn.
+PLAN_MODIFY_FEEDBACK_SENTINEL = "__plan_modify__"
 
 # Type alias for the session-context update callable a caller passes in —
 # `AbiCore.update_session_context` or `AbiAgent.update_session_context`.
@@ -60,9 +68,19 @@ def classify_plan_confirmation_sentinel(
     calls this first — behavior for existing callers (haiku, any standalone
     agent) is unchanged.
 
-    Returns ``None`` if `query` isn't one of the three sentinels.
+    Returns ``None`` if `query` isn't one of the sentinels.
     """
     pending_plan = session_context.get("pending_plan")
+
+    feedback = _modify_feedback_from_sentinel(query)
+    if feedback is not None:
+        if not pending_plan:
+            return {"classification": "plan_confirmation_orphaned", "query": query}
+        return {
+            "classification": "plan_modify_feedback",
+            "original_query": session_context.get("pending_plan_query", ""),
+            "feedback": feedback,
+        }
 
     if query == PLAN_CONFIRM_APPROVE:
         if not pending_plan:
@@ -80,6 +98,21 @@ def classify_plan_confirmation_sentinel(
         return {"classification": "plan_modify_requested", "pending_plan": pending_plan}
 
     return None
+
+
+def _modify_feedback_from_sentinel(query: str) -> Optional[str]:
+    """The feedback text if `query` is a PLAN_MODIFY_FEEDBACK_SENTINEL
+    payload with non-empty feedback, else None."""
+    if not isinstance(query, str) or not query.lstrip().startswith("{"):
+        return None
+    try:
+        parsed = json.loads(query)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(parsed, dict) or parsed.get("_sentinel") != PLAN_MODIFY_FEEDBACK_SENTINEL:
+        return None
+    feedback = str(parsed.get("feedback") or "").strip()
+    return feedback or None
 
 
 async def classify_plan_confirmation_reply(
@@ -163,6 +196,12 @@ async def classify_plan_confirmation_reply(
     return None
 
 
+class _ConfirmationDecision(BaseModel):
+    """What the user's reply to a pending plan means."""
+    decision: Literal["approve", "reject", "modify", "unrelated"]
+    feedback: str = Field(default="", description="The changes the user asked for when decision is modify; otherwise empty.")
+
+
 async def _interpret_confirmation_reply(
     query: str,
     pending_plan: Dict[str, Any],
@@ -177,23 +216,20 @@ async def _interpret_confirmation_reply(
     exactly like today's "didn't match anything" fallback. Deliberately
     never guesses "approve" on failure — that would be dangerous.
     """
-    from abi_core.agent.llm_provider import invoke
+    from abi_core.agent.llm_provider import invoke_structured
     from abi_core.common.prompts import build_plan_confirmation_interpretation_prompt
-    from abi_core.common.utils import clean_llm_json, format_plan_summary
+    from abi_core.common.utils import format_plan_summary
 
     try:
         plan_summary = format_plan_summary(pending_plan)
-        raw = await invoke(
+        # Decoded against a schema (per-call-prompts-rewrite, B5): the
+        # decision is one of four values by construction, not parsed from text.
+        result = await invoke_structured(
             llm_config,
             build_plan_confirmation_interpretation_prompt(plan_summary, query),
-            thread_id=session_id,
+            _ConfirmationDecision,
         )
-        parsed = clean_llm_json(raw)
-        decision = parsed.get("decision")
-        if decision not in ("approve", "reject", "modify", "unrelated"):
-            abi_logging(f"[⚠️] Unrecognized plan-confirmation decision '{decision}'", level="warning")
-            return None, ""
-        return decision, (parsed.get("feedback") or "").strip()
+        return result.decision, (result.feedback or "").strip()
     except Exception as e:  # noqa: BLE001 — best-effort, never blocks the reply
         abi_logging(f"[⚠️] Plan-confirmation interpretation failed: {e}", level="warning")
         return None, ""

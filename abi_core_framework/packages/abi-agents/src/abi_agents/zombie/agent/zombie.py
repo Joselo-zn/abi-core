@@ -1,7 +1,6 @@
 """Zombie Agent — Self-configuring ephemeral agent class."""
 
 from abi_core.agent.agent import AbiAgent
-from abi_core.common import prompts
 from abi_core.common.utils import abi_logging
 from abi_agents.zombie.agent.config.config import config
 
@@ -28,10 +27,6 @@ class ZombieAgent(AbiAgent):
         ZOMBIE_TOOLS.clear()
         ZOMBIE_TOOLS.extend(ctx["lib_tools"] + ctx["mcp_tools"])
 
-        full_prompt = prompts.ZOMBIE_AGENT_PROMPT.format(
-            system_prompt=config.SYSTEM_PROMPT
-        )
-
         tool_list = [tool.name for tool in ZOMBIE_TOOLS]
         abi_logging(f"[🤖] My task: {config.SYSTEM_PROMPT}")
         abi_logging(f"[🔧] My tools to complete the task: {len(ZOMBIE_TOOLS)} tools: {tool_list}")
@@ -41,5 +36,5 @@ class ZombieAgent(AbiAgent):
             description=config.AGENT_DESCRIPTION,
             llm_config=config.LLM_CONFIG,
             tools=ZOMBIE_TOOLS,
-            system_prompt=full_prompt,
+            system_prompt=config.SYSTEM_PROMPT,
         )

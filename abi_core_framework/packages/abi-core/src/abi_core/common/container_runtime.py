@@ -19,9 +19,15 @@ Usage:
     )
 
     await destroy_container("ephemeral_task_1")
+
+Backends: CONTAINER_RUNTIME=docker (default — the Docker SDK code below) or
+cloudrun (one Cloud Run service per ephemeral, see cloudrun_runtime.py).
+Callers use the same functions either way; container_url() is the single
+place that knows how an ephemeral is addressed in each backend.
 """
 
 import asyncio
+import os
 from typing import Any, Dict, List, Optional
 
 from abi_core.common.utils import abi_logging
@@ -45,6 +51,26 @@ _DOCKER_TEARDOWN_TIMEOUT = 30
 _docker_client = None
 
 
+def _backend() -> str:
+    return os.getenv("CONTAINER_RUNTIME", "docker").strip().lower()
+
+
+def _cloudrun():
+    from abi_core.common import cloudrun_runtime
+    return cloudrun_runtime
+
+
+def container_url(name: str, port: Optional[int] = None) -> str:
+    """Base URL other services use to reach this container.
+
+    Docker: http://<name>:<port> on the shared network. Cloud Run: the
+    service's deterministic run.app URL — known before it is deployed.
+    """
+    if _backend() == "cloudrun":
+        return _cloudrun().container_url(name, port)
+    return f"http://{name}:{port}" if port else f"http://{name}"
+
+
 def _get_docker_client():
     """Lazy-init Docker client via socket."""
     global _docker_client
@@ -57,22 +83,45 @@ def _get_docker_client():
 async def check_container_health(
     url: str, timeout: int = 30, interval: float = 1.0, container_name: str = None
 ) -> bool:
-    """Poll a health endpoint until ready or timeout."""
+    """Poll a health endpoint until ready, the container dies, or timeout.
+
+    Waits as long as there is evidence of life and stops at evidence of
+    death: with Docker and a container_name, a container that exited (e.g.
+    its start-up `pip install` failed) ends the wait at once instead of
+    burning the whole timeout. That lets the timeout be generous for slow
+    but healthy start-ups — live 2026-10-05 an ephemeral's start-up pip
+    install took 69s and a 60s timeout declared it unhealthy 10s before it
+    was ready.
+    """
     import urllib.request
 
-    for _ in range(int(timeout / interval)):
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    checks = 0
+    while loop.time() < deadline:
         try:
             req = urllib.request.Request(url, method="GET")
-            urllib.request.urlopen(req, timeout=2)
+            await asyncio.to_thread(urllib.request.urlopen, req, timeout=2)
             abi_logging(f"[✅] Health check passed: {url}")
             return True
-        except Exception as e:
-            await asyncio.sleep(interval)
+        except Exception:
+            pass
+        checks += 1
+        if container_name and _backend() == "docker" and checks % 5 == 0:
+            try:
+                container = await asyncio.to_thread(_get_docker_client().containers.get, container_name)
+                if container.status in ("exited", "dead"):
+                    abi_logging(f"[⚠️] Container '{container_name}' {container.status} before becoming healthy")
+                    break
+            except Exception:
+                pass
+        await asyncio.sleep(interval)
+    else:
+        abi_logging(f"[⚠️] Health check timeout after {timeout}s: {url}")
 
-    abi_logging(f"[⚠️] Health check timeout after {timeout}s: {url}")
-
-    # Dump container logs to understand why it's not responding
-    if container_name:
+    # Dump container logs to understand why it's not responding (Docker only —
+    # on Cloud Run they are in Cloud Logging under the service name)
+    if container_name and _backend() == "docker":
         try:
             client = _get_docker_client()
             container = client.containers.get(container_name)
@@ -98,6 +147,13 @@ async def run_container(
     health_timeout: int = 30,
 ) -> Dict[str, Any]:
     """Run a Docker container via the Python SDK and optionally wait for health."""
+    if _backend() == "cloudrun":
+        return await _cloudrun().run_container(
+            name=name, image=image, env_vars=env_vars, network=network, port=port,
+            entrypoint=entrypoint, command=command,
+            health_check_url=health_check_url, health_timeout=health_timeout,
+        )
+
     abi_logging(f"[🐳] Running container '{name}' from {image}")
 
     try:
@@ -136,7 +192,7 @@ async def run_container(
                 health_check_url, timeout=health_timeout, container_name=name
             )
 
-        url = f"http://{name}:{port}" if port else None
+        url = container_url(name, port) if port else None
 
         return {
             "status": "running" if healthy else "unhealthy",
@@ -158,6 +214,9 @@ async def run_container(
 
 async def destroy_container(name: str) -> bool:
     """Stop and remove a container by name."""
+    if _backend() == "cloudrun":
+        return await _cloudrun().destroy_container(name)
+
     abi_logging(f"[🗑️] Destroying container '{name}'")
 
     try:

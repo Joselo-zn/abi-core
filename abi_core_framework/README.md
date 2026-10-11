@@ -180,7 +180,7 @@ CHAINLIT_AUTH_SECRET=...   # chainlit create-secret
 
 See the [authentication guide](https://abi-core.readthedocs.io/en/latest/production/07-authentication.html).
 
-### Capability matching — pick models by what the task needs
+### Capability matching — pick models by what the task needs *(alpha)*
 
 Instead of "which model should we use?", ask "what capabilities does the task
 require?". Profile a task by what it needs and a model by what it provides, over 7
@@ -223,7 +223,6 @@ async for chunk in agent_connection(my_card, target_card, payload):
 abi-core create project --name <name>          # Project scaffolding + compose
 abi-core add agent --name <name> --description "…"  # Add agent to existing project
 abi-core add semantic-layer                    # Add agent discovery service
-abi-core add service guardian-native           # Add security gate
 abi-core add chainlit                          # Add a Chainlit chat UI as a Docker service (SSE + sessions)
 
 # Run

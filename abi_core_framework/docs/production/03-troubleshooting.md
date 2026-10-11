@@ -35,10 +35,11 @@ docker exec <ollama-container> ollama list
 
 **Fix:** Use a smaller model:
 
-```python
-# config.py
-LLM_CONFIG = {"provider": "ollama", "model": "qwen2.5:1.5b"}  # Smaller, faster
+```bash
+docker exec ollama ollama pull qwen3:1.7b
 ```
+
+Then set `MODEL_NAME=qwen3:1.7b` on the agent in `compose.yaml` and restart it (`docker compose up -d <agent>`).
 
 Or check RAM usage: `docker stats`
 
@@ -72,7 +73,87 @@ the same effect). If this happens often for the same operation, it usually
 means its timeout budget is too tight for what it actually costs (see
 "Slow responses" above), not that something is broken.
 
-See `.abi/specs/heartbeat-timeout-redesign.md` for the full mechanism.
+## Ephemeral agent step is slow under concurrent load — is that a timeout risk?
+
+Symptoms: several plan tasks run in parallel, all hitting the same LLM
+backend at once, and one ephemeral agent genuinely takes several minutes
+because it's queued behind the others — not stuck.
+
+**This is not a timeout risk by design.** `EXECUTION_TIMEOUT`
+(default 3600s) is a last-resort backstop, not the mechanism deciding
+"this took too long" — the real bounding happens at the point of actual
+work:
+
+- The LLM stream is read **token by token** (`stream_mode="messages"`).
+  Once tokens start arriving, 120s with none is treated as a stall. The wait
+  for the *first* token has no limit of its own: with a single-slot model
+  server (Ollama runs with one generation slot by default, `-np 1`), a
+  request queued behind another generation legitimately sees nothing until
+  that slot frees up.
+- The memory lookup against AMS has its own 30s timeout.
+
+A task that's genuinely still producing output — just slowly, because it's
+queued behind other concurrent work — survives as long as it keeps making
+real progress. If the 3600s backstop actually fires, something is genuinely
+stuck, not merely slow.
+
+When a step does time out, the error message now carries the real cause and
+duration (e.g. `Agent stream stalled twice (120.0s each)...`) instead of a
+generic `Node '...' exceeded its 3600.0s timeout` for every timeout.
+
+## Chainlit shows "No response received." while the backend keeps working
+
+Symptoms: a long plan (several ephemeral tasks) shows no progress in the
+chat for minutes, then Chainlit gives up with "No response received." —
+while the Orchestrator logs and the model server show work still going on.
+
+**Cause (fixed):** the chat client reads the Orchestrator's `/stream` with
+a 600s timeout *between* received events. During task execution, progress
+from ephemeral agents (a heartbeat every ~15s) used to never reach the
+client: the workflow graph collected each task's events and only released
+them once the whole task finished, so a task longer than 600s looked dead.
+Task progress now streams live (LangGraph `stream_mode=["custom",
+"updates"]` in `AgentInteractionFlow.run_workflow`), and heartbeats are
+relayed whether they arrive as message text or status text.
+
+**If you still see it:** confirm progress is actually flowing by calling
+`/stream` directly — you should see a new `data:` line at least every ~15s
+during execution:
+
+```bash
+curl -N -X POST http://<orchestrator>:<WEB_INTERFACE_PORT>/stream \
+  -H "Content-Type: application/json" -d '{"query": "..."}'
+```
+
+
+## Multi-file deliverable: the files don't use each other
+
+Symptoms: a plan produces several files, but one of them reimplements what
+the others already define, or imports modules that don't exist.
+
+Check that every ephemeral agent shares the Orchestrator's session store.
+Their logs must show `Session backend: redis`, not `in-memory`. If they show
+`in-memory`, set `SESSION_BACKEND`/`SESSION_REDIS_URL` on the **Builder** —
+it forwards them to every agent it creates (see
+[Environment Variables](../reference/environment-variables.md#session-management)).
+Without a shared store, each agent works without knowing what the others
+produced.
+
+## The Orchestrator keeps answering instead of making a plan
+
+Symptoms: repeated requests to build something get a conversational reply
+("Would you like me to help you create...?") instead of a plan — sometimes
+the exact same reply word for word.
+
+Every routing decision is logged:
+
+```
+[🧭] Routing decision: action=answer_directly valid=[...] history_turns=11 detail='...'
+```
+
+If `history_turns` is high and the replies repeat verbatim, the model is
+copying an earlier reply from the conversation history shown to it
+(`CONVERSATION_WINDOW`). Workaround: start a new chat (fresh history).
 
 ## Semantic Layer not finding agents
 

@@ -41,7 +41,8 @@ async def ensure_model_available(config: dict) -> dict:
     # EPHEMERAL_MODEL_NAME=gemini-3.6-flash. Skip straight through for any
     # non-Ollama provider. See
     # .abi/specs/ephemeral-model-provider-check.md
-    provider = os.getenv("LLM_PROVIDER", "ollama").lower().strip()
+    # The ephemeral's provider, which may differ from the Builder's own.
+    provider = (os.getenv("EPHEMERAL_LLM_PROVIDER") or os.getenv("LLM_PROVIDER") or "ollama").lower().strip()
     if provider != "ollama":
         return {**config, "model_used": model, "model_location": "api"}
 

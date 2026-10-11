@@ -31,6 +31,9 @@ from __future__ import annotations
 from typing import Literal, Optional, Type, Union
 
 from pydantic import BaseModel, Field, create_model
+from abi_core.common.prompts.orchestrator import (  # noqa: F401  (moved; re-exported)
+    format_system_state,
+)
 
 # Redesigned (2026-09-22, see
 # .abi/specs/routing-decision-discriminated-union.md) from a single flat
@@ -112,27 +115,3 @@ def build_routing_decision_schema(valid_actions: list[str]) -> Type[BaseModel]:
         outcome_field = (Union[members], Field(discriminator="action"))
     return create_model("RoutingDecisionWrapper", outcome=outcome_field)
 
-
-def format_system_state(
-    pending_plan_summary: Optional[str],
-    pending_clarification_question: Optional[str],
-    recent_conversation_summary: Optional[str] = None,
-) -> str:
-    """Render the same [SYSTEM STATE] block the old inject_routing_state
-    middleware used to inject into the system prompt — now passed explicitly
-    into the phase-2 structured-output prompt instead of via middleware.
-
-    ``recent_conversation_summary`` — see AbiAgent.record_conversation_turn /
-    .abi/specs/orchestrator-conversation-memory.md — is the deterministic
-    replacement for the (documented broken) discretionary memory-tool path;
-    listed first since it's background context, not an outstanding decision
-    like the other two blocks.
-    """
-    blocks = []
-    if recent_conversation_summary:
-        blocks.append(f"[SYSTEM STATE] Recent conversation:\n{recent_conversation_summary}")
-    if pending_plan_summary:
-        blocks.append(f"[SYSTEM STATE] Pending plan (awaiting approve/reject/modify):\n{pending_plan_summary}")
-    if pending_clarification_question:
-        blocks.append(f"[SYSTEM STATE] Unanswered clarification question:\n{pending_clarification_question}")
-    return "\n\n".join(blocks)

@@ -309,11 +309,6 @@ def format_plan_summary(plan: dict, model_status: dict = None) -> str:
         f"🎯 **Objective:** {objective}\n",
     ]
 
-    methodology = plan.get("methodology")
-    if methodology:
-        rationale = plan.get("methodology_rationale", "")
-        lines.append(f"🧭 **Methodology:** {methodology} — {rationale}\n")
-
     lines.append(f"📊 **Strategy:** {strategy.capitalize()}\n")
     lines.append(f"**Tasks ({len(tasks)}):**\n")
 
@@ -328,19 +323,122 @@ def format_plan_summary(plan: dict, model_status: dict = None) -> str:
             names = [a.get("name", "Unknown") for a in agents if a]
             lines.append(f"   👤 Agent(s): {', '.join(names)}")
         else:
-            lines.append("   ⚠️ No agent assigned")
+            lines.append("   🆕 A new agent will be created")
         if deps:
             lines.append(f"   🔗 Depends on: {', '.join(deps)}")
 
         ms = model_status.get(tid)
         if ms:
             if ms.get("location"):
-                lines.append(f"   ✅ Model: {ms['model']} ({ms['location']})")
+                lines.append(f"   ✅ Model: {ms['model']}")
             else:
                 lines.append(f"   ⬇️ Model: {ms['model']} (will be downloaded)")
 
     lines.append("\n**Reply to approve, reject, or request changes.**")
     return "\n".join(lines)
+
+
+def plan_execution_order(tasks: list) -> list:
+    """Stable topological sort — the order a plan's tasks actually run in:
+    every task after the tasks it depends on, plan order kept among tasks
+    that are ready at the same time.
+
+    Dependencies pointing outside `tasks` (e.g. a retry's reduced plan,
+    whose already-built siblings aren't in this list) are ignored. A cycle
+    can't be ordered — remaining tasks are appended in plan order and
+    logged. Shared by the orchestrator's build_workflow and the plan review
+    card, so both number tasks the same way.
+    """
+    ids = {t.get("task_id") for t in tasks}
+    pending = list(tasks)
+    placed: set = set()
+    ordered = []
+    while pending:
+        ready = [
+            t for t in pending
+            if all(d in placed or d not in ids for d in t.get("dependencies", []))
+        ]
+        if not ready:
+            abi_logging(
+                f"[⚠️] Dependency cycle among {[t.get('task_id') for t in pending]} "
+                "— keeping plan order for them",
+                level="warning",
+            )
+            ordered.extend(pending)
+            break
+        for t in ready:
+            ordered.append(t)
+            placed.add(t.get("task_id"))
+            pending.remove(t)
+    return ordered
+
+
+def _fallback_task_title(task: dict) -> str:
+    """Title for a task the Planner gave none: the description with its
+    "Write a <language> file named <file> that" lead-in removed, cut to
+    its first sentence — or the target filename / task id."""
+    import re
+
+    desc = " ".join(str(task.get("description", "")).split())
+    desc = re.sub(
+        r"^(?:write|create)\s+an?\s+(?:[\w+#.-]+\s+)?(?:file|script)\s+named\s+\S+\s*"
+        r"(?:that|which|to|with|containing)?\s*",
+        "", desc, flags=re.IGNORECASE,
+    )
+    desc = desc.split(". ")[0].strip(" .")
+    if desc:
+        desc = desc[0].upper() + desc[1:]
+        return desc if len(desc) <= 60 else desc[:59].rstrip() + "…"
+    target = task.get("target") or {}
+    return target.get("tag") or str(task.get("task_id", ""))
+
+
+def build_plan_view(plan: dict, model_status: Optional[dict] = None) -> dict:
+    """Presentation data for reviewing *plan* before approval — what the
+    Chainlit PlanReview card renders. Deterministic, no LLM.
+
+    Steps come in execution order (``plan_execution_order``), numbered
+    1..n — the same numbering the run progress uses. ``notices`` hold only
+    things the user should actually know (a model that will be
+    downloaded), as codes the UI localizes. Methodology, strategy and
+    infrastructure URLs are left out on purpose. See
+    .abi/specs/not-implemented/ux/chainlit-plan-review-card.md.
+    """
+    model_status = model_status or {}
+    ordered = plan_execution_order(plan.get("tasks") or [])
+    index_of = {t.get("task_id"): i for i, t in enumerate(ordered, 1)}
+
+    steps, deliverables, notices, download_models = [], [], [], []
+    for i, task in enumerate(ordered, 1):
+        tid = task.get("task_id")
+        target = task.get("target") or {}
+        agents = [a for a in task.get("agents") or [] if a]
+        ms = model_status.get(tid) or {}
+        if target.get("tag") and target.get("type", "file") == "file" and target["tag"] not in deliverables:
+            deliverables.append(target["tag"])
+        if ms.get("model") and not ms.get("location") and ms["model"] not in download_models:
+            download_models.append(ms["model"])
+        steps.append({
+            "task_id": tid,
+            "index": i,
+            "title": task.get("title") or _fallback_task_title(task),
+            "detail": task.get("description", ""),
+            "deliverable": {"tag": target["tag"], "type": target.get("type", "file")} if target.get("tag") else None,
+            "depends_on": sorted(index_of[d] for d in task.get("dependencies") or [] if d in index_of),
+            "agent": (agents[0].get("name") if isinstance(agents[0], dict) else str(agents[0])) if agents else None,
+            "direct_tool": task.get("direct_tool"),
+            "model": ms.get("model"),
+        })
+
+    for model in download_models:
+        notices.append({"code": "model_download", "model": model})
+
+    return {
+        "objective": plan.get("objective", ""),
+        "steps": steps,
+        "deliverables": deliverables,
+        "notices": notices,
+    }
 
 
 def format_conversation_summary(turns: Optional[list]) -> Optional[str]:
@@ -372,6 +470,11 @@ async def yield_chunk_data(chunk: str) -> str:
             chunk_data = chunk.dict()
         elif hasattr(chunk, '__dict__'):
             chunk_data = chunk.__dict__
+        elif isinstance(chunk, dict):
+            # AgentResponse yields plain dicts: send them as a JSON object,
+            # not str(dict) (a Python repr no JSON client can parse).
+            # parse_agent_message already accepts a dict here.
+            chunk_data = {"message": chunk, "type": "dict"}
         else:
             chunk_data = {"message": str(chunk), "type": type(chunk).__name__}
 

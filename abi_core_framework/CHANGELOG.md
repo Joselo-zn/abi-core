@@ -8,206 +8,270 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Google OAuth login + Postgres-backed persistent threads + invite-only
-  registration for the bundled Chainlit UI** (`abi_core.ui.chainlit_app`,
-  opt-in — set `OAUTH_GOOGLE_CLIENT_ID` to activate, otherwise the UI stays
-  anonymous exactly as before). Adds `@cl.oauth_callback` (Google, via
-  Chainlit's native provider support), a `SQLAlchemyDataLayer` on Postgres
-  (persisted users/threads/steps, resumable across logins and devices), and
-  an invite/waiting-list system: the first user to register becomes admin
-  automatically, every registered user gets one invite to hand out, and
-  anyone without an available invite lands on a real `/waiting-list` form
-  (not Chainlit's generic error page — done via a custom exception handler
-  reordering Chainlit's own catch-all route, since a route added the normal
-  way is otherwise shadowed by it). New dependencies (`sqlalchemy[asyncio]`,
-  `asyncpg`, `boto3` — `ui` extra only, reuses the swarm's existing MinIO for
-  thread element storage). See
-  `.abi/specs/not-implemented/chainlit-oauth-login-session-continuity.md`,
-  `.abi/specs/not-implemented/chainlit-invite-link-registration.md`, and
+- **LLM parameters from the deployment (`LLM_EXTRA_PARAMS`).** New
+  `abi_core.agent.llm_provider.llm_config_from_env()` builds `LLM_CONFIG`
+  from the environment for the reference agents, the Guardian and the agent
+  template. `LLM_EXTRA_PARAMS` (a JSON object, passed as-is to the LangChain
+  model) goes over the agent's own defaults, so parameters such as
+  `thinking`, `thinking_level`, `max_tokens` or `api_version` no longer
+  require editing code. Invalid JSON stops the agent at start-up, naming the
+  variable (`parse_extra_params`). The Builder forwards
+  `EPHEMERAL_LLM_EXTRA_PARAMS` to each ephemeral, and a task's own
+  `llm_config` (model, `extra_params`, `temperature`) now reaches the
+  ephemeral whole.
+- **Ephemerals can run on their own LLM provider.** `EPHEMERAL_LLM_PROVIDER`,
+  `EPHEMERAL_MODEL_NAME`, `EPHEMERAL_LLM_API_KEY` and
+  `EPHEMERAL_LLM_BASE_URL` on the Builder. With a hosted provider the
+  ephemeral installs `abi-core-ai[<provider>]` at start-up and receives the
+  key.
+- **Code execution sandbox (`abi_core.common.sandbox`).**
+  `run_in_sandbox(files, command, ...)` runs code in a throwaway container:
+  no network, only allowlisted environment variables, a non-root user with
+  no capabilities, a read-only root with a size-limited `/workspace`, and
+  wall-clock/CPU/memory/PID/output limits. The command comes from the
+  caller, never from a model; output is returned as untrusted data. Images
+  under `sandbox-images/` (`abi-sandbox-python`, `abi-sandbox-pygame`).
+- **Governed sandbox (`SANDBOX_RUNTIME=service`).** Code runs only through
+  `sandbox-service` (`python -m abi_services.sandbox_service`), the only
+  component with the Docker socket. Every request is signed with the
+  caller's agent card, verified by the Semantic Layer (new MCP tool
+  `verify_caller`), decided by OPA (`abi/sandbox`, new `sandbox.rego`;
+  denied if OPA is unreachable) and audited. New `@agent.sandboxed` and
+  `sandbox_caller(run_id)`.
+- **Result review for multi-file deliverables (reference agents).** When a
+  plan delivers several code files, the set is checked as a whole — static
+  checks and a run in the sandbox — before the answer is written. Problems
+  are repaired where possible; anything still broken, or never verified, is
+  appended to the answer verbatim instead of being summarized away.
+  Switches: `INTEGRATION_REVIEW`, `INTEGRATION_REVIEW_SANDBOX`.
+- **Runs that survive failing agents (reference agents).** If an ephemeral
+  agent fails, the run continues with what arrived, and the final answer
+  states exactly what was missing and how it was completed.
+- **Plan-run files in the artifact store.** Each plan run keeps its files
+  together; they expire after `PROJECT_RETENTION_DAYS` (default 30) through
+  a bucket lifecycle rule that leaves the bucket's other rules untouched.
+- **Cloud Run backend for ephemeral agents (`CONTAINER_RUNTIME=cloudrun`).**
+  One Cloud Run service per ephemeral, addressed by its run.app URL; the
+  Orchestrator sweeps finished services. Docker stays the default. New extra:
+  `abi-core-ai[gcp]`.
+- **Agent card URLs from the environment.** `"url": "${VAR:-default}"` is
+  expanded by `load_agent_card` and by the Semantic Layer, so one card file
+  serves local Docker and Cloud Run.
+- **Semantic Layer tools** `get_ephemeral_card` (exact lookup of an
+  ephemeral's card, without `auth`) and `verify_caller`.
+- **`invoke(recursion_limit=..., checkpointer=...)`.** Size a tool-calling
+  agent's step budget to its work, and keep its conversation beyond the call.
+- **Orchestrator logs its routing decision** (`[🧭] Routing decision: ...`)
+  after every reasoning turn.
+- **Google OAuth login, Postgres-backed persistent threads and invite-only
+  registration for the bundled Chainlit UI** (opt-in with
+  `OAUTH_GOOGLE_CLIENT_ID`; otherwise the UI stays anonymous). The first user
+  becomes admin, every user gets one invite to hand out, and anyone without
+  one lands on a waiting list. New dependencies in the `ui` extra:
+  `sqlalchemy[asyncio]`, `asyncpg`, `boto3`. See
   [Authentication](docs/production/07-authentication.md).
-- **`SessionStore`'s TTL is now a sliding window, not a fixed deadline.**
-  `resolve()` (both `InMemorySessionBackend` and `RedisSessionBackend`) now
-  renews the token/session expiry on every successful call — a session in
-  active use never expires, only one genuinely idle for the full
-  `SESSION_TTL` does. Previously the TTL was set once at `create_session()`
-  and never touched again, so a conversation spanning more than `SESSION_TTL`
-  wall-clock time (even with constant activity) silently lost its token,
-  manifesting as "I approved the plan and it said there was no plan" —
-  reproduced live, root-caused by comparing two real sessions (one that
-  survived a 37-minute gap, one that didn't survive 19 minutes) and finding
-  the actual token was over 3.5 hours old in the failing case. Also: `/stream`
-  now sets `X-Session-Resolved: false` when a supplied token didn't resolve
-  (silently fell back to an anonymous session before), and
-  `AgentStreamClient` clears its cached token on that signal so the *next*
-  message fetches a fresh one instead of repeating a dead token forever. See
-  `.abi/specs/session-token-ttl-not-refreshed.md` and
-  [Sessions & Multi-turn → Token expiry](docs/single-agent/07-sessions-multi-turn.md#token-expiry-is-a-sliding-window-not-a-fixed-deadline).
-- **`AgentResponse.element(element_type, props, name)`** — agents can now
-  send rich elements (image/file/pdf/audio/video/text/dataframe/qr) alongside
-  their response, rendered inline by a Chainlit-based UI. Binary content
-  should ride as a `url` (e.g. from `ArtifactStore.get_url()`) rather than
-  inline bytes. `element_type="qr"` renders a QR server-side from a
-  `data` string (URL, typically) — agents never need the `qrcode` package
-  themselves, only the rendering process does (new `qrcode[pil]` dependency,
-  `ui` extra only). See `.abi/specs/agent-rich-elements.md` and
+- **`AgentResponse.element(element_type, props, name)`.** Agents send rich
+  elements (image/file/pdf/audio/video/text/dataframe/qr) rendered inline by
+  a Chainlit-based UI; `qr` is rendered server-side. See
   [Rich Elements](docs/single-agent/10-rich-elements.md).
-- **Custom `.jsx` elements**, bundled and auto-installed. `abi_core.ui.chainlit_app`
-  now ships `InfoCard` and `MapEmbed` as reference components and copies
-  them into `public/elements/` on import — no per-project Dockerfile step
-  needed, same "no project needs its own copy" principle the module already
-  followed. Any `element_type` that isn't a built-in type is treated as a
-  custom element name. See `.abi/specs/agent-custom-elements.md`.
-- **Orchestrator "recent error" awareness** — the last error recorded for a
-  session (`AbiAgent.record_error`) now surfaces once, as
-  `recent_error_summary` in the reasoning turn's routing contract, on the
-  very next request in that session, then is consumed (cleared) — no TTL,
-  no timestamp; it shows up exactly once, never repeats. See
-  `.abi/specs/orchestrator-last-error-awareness.md`.
-- The Orchestrator's per-task chat step now shows an actual QR + download
-  link for generated artifacts, using the two features above together.
-- **`write_pdf` fixed tool + `direct_tool` plan tasks** — fixes the Planner
-  getting stuck in an infinite clarification loop when asked for a PDF
-  deliverable (it could only recognize "write a file" tasks, and its own
-  rules forbade any task that executes code, with no fallback). Rather than
-  loosening that rule (rejected — it would let the Planner ask an ephemeral
-  agent to generate-and-run code, reopening a prompt-injection surface), a
-  `PlanTask` can now carry `direct_tool: "write_pdf"`: a fixed, audited
-  tool (`abi_core.common.library_tools.write_pdf`, via `fpdf2`) that the
-  **Planner itself** executes directly — no ephemeral agent, no Builder
-  round-trip — then uploads to MinIO and reports the link, same as an
-  ephemeral agent's own flow. It still goes through the same plan
-  confirmation (approve/reject/modify) as any other task. See
-  `.abi/specs/planner-direct-tool-pdf.md`.
-- **`AbiAgent.record_conversation_turn` / `format_conversation_summary`** —
-  fixes a context-loss bug where a plain conversational turn (e.g. "I'm in
-  Xilitla, staying 3 days") was completely forgotten by the very next
-  request ("make me an itinerary"), forcing the Orchestrator to re-ask for
-  details the user had just given. Root cause: nothing outside
-  `pending_plan`/`pending_clarification` was ever persisted across turns —
-  `_reasoning_turn`'s only discretionary memory path (`MEMORY_TOOLS`
-  tool-calling) is separately documented as broken
-  (`.abi/issues/2026-09-09-fase1-memory-tools-lento.md`). Every resolved
-  turn is now deterministically appended to a rolling session window
-  (`session_backend`, LB/multi-pod safe — the Orchestrator also switched
-  from the in-memory session backend to Redis, `SESSION_BACKEND=redis`,
-  fixing the same restart-loses-everything exposure for `pending_plan`/
-  `last_error` as a side effect); the oldest turn is promoted to AMS
-  long-term memory before being dropped once the window (`CONVERSATION_WINDOW`,
-  default 5) overflows. Generic capability, lives in `AbiAgent`/`AbiCore`
-  per `WORKING_RULES.md` → *Perspectiva Local vs Global*, not swarm-specific.
-  Getting the data into the prompt wasn't sufficient on its own — the
-  routing decision's LLM call had no system prompt at all, so it kept
-  pattern-matching only the literal current message; a targeted
-  `SystemMessage` explaining *why* the recent-conversation block matters
-  fixed that. See `.abi/specs/orchestrator-conversation-memory.md`.
+- **Custom `.jsx` elements**, with `InfoCard` and `MapEmbed` bundled and
+  installed automatically.
+- **Recent-error awareness.** The last error recorded for a session
+  (`AbiAgent.record_error`) is shown once to the next reasoning turn, then
+  cleared.
+- **`write_pdf` fixed tool and `direct_tool` plan tasks.** A plan task can
+  name a fixed, audited tool (`abi_core.common.library_tools.write_pdf`)
+  instead of an agent; the Planner runs it directly. It still goes through
+  plan confirmation.
+- **`AbiAgent.record_conversation_turn` / `format_conversation_summary`.** A
+  rolling window of recent turns, kept in the session backend
+  (multi-pod safe); the oldest turn is promoted to long-term memory when the
+  window overflows.
 
 ### Changed
-- **`record_error`/`record_pending_plan`/`clear_pending_plan` moved from
-  Orchestrator-private methods to `AbiAgent` (generic, inherited by any
-  agent) with matching `AbiCore` passthroughs** — same pattern already used
-  for `get_session_context`/`update_session_context`. The Orchestrator's
-  swarm-specific piece (persisting a plan's methodology to AMS) stays local,
-  renamed `_record_plan_methodology`, now called alongside the inherited
-  `record_pending_plan`. No behavior change — pure relocation/delegation.
-  See `.abi/specs/agent-session-bookkeeping-methods.md`.
-- **`AbiAgent._run_with_heartbeat()`/`_run_llm_turn()` are now async
-  generators** that yield each heartbeat live as it occurs, ending with a
-  `_HeartbeatDone(result)` sentinel — not a batched list handed back after
-  the wait finishes, which defeated the point of a heartbeat (see Fixed,
-  below). `max_wait` is `Optional[float] = None` — no default cap. Guessing
-  one global timeout for every call site was the actual bug (measured live:
-  the same call site, same code path, needed 164s one run and 179s — timed
-  out — the next); *coro* is now expected to bound its own real work
-  internally (a DAG step's own `timeout`, a subprocess's own `timeout=`, an
-  LLM call's own bound) instead. `max_wait` remains available as an opt-in
-  safety net for a specific coroutine known not to self-bound yet
-  (`HeartbeatTimeoutError`, no longer needs to carry `.heartbeats` — nothing
-  is generated before a cutoff that wasn't already streamed live). All 9
-  call sites, the scaffolding template used by `abi-core add service
-  guardian`, and downstream example projects updated to the new
-  `async for item: isinstance(item, _HeartbeatDone)` pattern. Breaking for
-  any subclass calling `_run_with_heartbeat` directly with the old
-  `await ... -> (result, heartbeats)` shape. See
-  `.abi/specs/heartbeat-timeout-redesign.md` ("Revisión 2026-09-11").
-- Chainlit UI (`abi_core.ui.chainlit_app`): the single "Working" step is now
-  a "Processing" parent with one child step opened per plan task
-  (`meta.task_key`/`task_label`), so each task stays visible in the chat
-  instead of being overwritten by the next one. The parent step's name
-  reflects the active agent while no task is running yet (routing/planning/
-  synthesis) instead of staying fixed. See
-  `.abi/specs/chainlit-active-agent-label.md`,
-  `.abi/specs/chainlit-per-step-ui.md`.
-
-### Fixed
-- **A task with more than one dependency ran once per dependency instead of
-  once after all of them completed.** `AgentInteractionFlow.add_edge`
-  (`abi_core/common/workflow.py`) only accepted a single predecessor id;
-  `build_workflow`'s edge loop (`orchestrator/agent/steps.py`) called it
-  once per `(dependency, task)` pair. LangGraph's own `StateGraph.add_edge`
-  only creates a real "wait for all" join when the predecessors are passed
-  *together* as one list in a single call — calling it once per dependency
-  registers each as its own independent trigger, so the target fires once
-  per call instead of once after all of them finish. Reproduced live: a
-  task with 3 dependencies ran 3 times, one with 4 ran 4 times, each as
-  soon as its *first* dependency alone completed — and reproduced again,
-  fixed, in an isolated repro (`AgentInteractionFlow` with real timed dummy
-  nodes) before touching the caller. `add_edge` now accepts
-  `str | list[str]`; the caller collects all of a task's dependencies and
-  calls it once with the full list. See
-  `.abi/specs/implemented/langgraph-multi-predecessor-join-fix.md`.
-- **Ephemeral agents never actually received prior tasks' artifacts, even
-  when the Orchestrator correctly identified and passed the dependency
-  keys.** `context_loader.load_agent_context` imported `download_artifacts`
-  from `abi_core.common.artifact_store` — a function that never existed
-  there. The `ImportError` was swallowed by a bare `except`, so every
-  ephemeral's `artifacts` list silently stayed empty regardless of real
-  `ARTIFACT_KEYS` passed in. Concrete production consequence, reproduced
-  live: a task depending on 3 already-written files received none of them
-  in its workspace and wrote a fully standalone reimplementation instead of
-  integrating with the prior work (no shared board/ghost classes, no
-  imports between the generated files). New
-  `download_artifacts(keys, workspace, bucket)` added to
-  `artifact_store.py`, reusing `ArtifactStore.download_file` per key —
-  `context_loader`'s existing import now resolves to a real function.
-- **`container_runtime.py`'s Docker SDK calls had no timeout of their own**
-  — the only real I/O in the framework without one (`run_shell`'s
-  `subprocess.run(timeout=60)` already kills its child process for real;
-  Docker's sync SDK, dispatched via `asyncio.to_thread`, had nothing).
-  `run_container`/`destroy_container` now wrap those calls in
-  `asyncio.wait_for` (300s for `containers.run`, which may need to pull the
-  image; 30s for `get`/`remove`). Documented explicitly that this bounds the
-  *wait*, not the thread itself — asyncio cancellation is cooperative and
-  can't force-stop a thread already running a blocking Docker SDK call. See
-  `.abi/specs/heartbeat-timeout-redesign.md`.
-- **Heartbeat progress was never actually live.** `_run_with_heartbeat`
-  batched every `AgentResponse.status(...)` into a list only handed back
-  once the wait was over — the whole point of a heartbeat (keeping an SSE
-  connection alive under a proxy's idle timeout, see `_HEARTBEAT_INTERVAL`'s
-  own comment) was defeated for any call taking longer than that timeout.
-  Fixed as part of the generator rewrite above — heartbeats now reach the
-  client the instant they occur. See `.abi/specs/heartbeat-timeout-redesign.md`.
-- **Artifact download links (and QR codes of them) used an internal
-  Docker-network hostname the user's browser can't resolve.**
-  `ArtifactStore` used one `endpoint` for both internal I/O and the
-  presigned URLs handed to a human. New `ARTIFACT_PUBLIC_ENDPOINT` (falls
-  back to `ARTIFACT_ENDPOINT` when unset) is used only for the latter.
-  Verified empirically that MinIO's Console UI port (9001, `/browser/...`)
-  does *not* validate presigned URLs — it just serves the Console's own app
-  shell — so this must point at the actual S3 API port (9000-style), not
-  the Console. See [Artifact Store](docs/production/05-artifact-store.md).
+- **The reviewer's repair rules live in its role prompt.** The repair
+  message no longer repeats them; it carries the findings, the agents'
+  answers, missing files, allowed imports and the output format. The role
+  gains two rules (imported names and call signatures must match; wire the
+  main loop). Measured on four sets with injected failures: every set was
+  repaired in one call, as before.
+- **Code agents get a role prompt.** It says what a code agent is and how it
+  works (its spec before its code, then the file, then a check against the
+  spec), with the rules behind the most common integration failures:
+  use only what the other files expose, write only its own file, a module
+  runs nothing on import, no external files the plan does not deliver. The
+  task block below it is filled from the plan and its technical design
+  (file, role, responsibility, plan files, entry point, what the
+  dependencies expose). The plan's methodology framing is no longer
+  prepended to ephemerals, and the task message no longer repeats the
+  tool list the model already receives.
+- **Orchestrator routing prompt covers every action.** It described two of
+  the four actions the routing schema offers; it now explains all four,
+  says to answer in the user's language, and drops a rule the schema
+  already enforces.
+- **Synthesis, document content and plan confirmation prompts rewritten.**
+  The synthesis message gives its instruction once, before the run's data.
+  Document content (`direct_tool`) is written in the request's language and
+  leaves visible placeholders instead of inventing facts. The plan
+  confirmation is decoded against a schema, so its decision is always one
+  of approve, reject, modify or unrelated.
+- **Every prompt in one place: `abi_core.common.prompts` is now a package**
+  with one module per agent. All the text the framework and its agents send
+  to a model lives there, unchanged. Every old import path keeps working.
+- **A hosted provider no longer receives the Ollama server as `base_url`.**
+  `OLLAMA_HOST` is the default `base_url` for Ollama only. The Guardian now
+  reads `LLM_BASE_URL`, `LLM_API_KEY` and the cloud keys like the other
+  agents.
+- **Guardian and generated agent cards no longer set `temperature`.**
+- **Role prompts of the reference Planner, Builder and Orchestrator
+  rewritten** (`abi_core.common.prompts`); the Orchestrator's synthesis call
+  now has a system prompt.
+- **`execute_step` honours the step's declared `timeout`**, as the DAG does.
+- **`SessionStore`'s TTL is a sliding window.** `resolve()` renews the expiry
+  on every use: only a session idle for the full `SESSION_TTL` expires.
+  `/stream` sets `X-Session-Resolved: false` when a token didn't resolve, and
+  `AgentStreamClient` drops its cached token on that signal. See
+  [Sessions & Multi-turn](docs/single-agent/07-sessions-multi-turn.md#token-expiry-is-a-sliding-window-not-a-fixed-deadline).
+- **`record_error` / `record_pending_plan` / `clear_pending_plan` moved to
+  `AbiAgent`**, with `AbiCore` passthroughs. No behaviour change.
+- **`AbiAgent._run_with_heartbeat()` / `_run_llm_turn()` are async
+  generators** that yield each heartbeat as it happens and end with a
+  `_HeartbeatDone(result)` sentinel. `max_wait` has no default cap. Breaking
+  for subclasses that called `_run_with_heartbeat` with the old
+  `await ... -> (result, heartbeats)` shape.
+- **`EXECUTION_TIMEOUT` default 600 → 3600**, now a last-resort backstop:
+  ephemeral work is bounded by real progress (a stalled model stream, a
+  memory call's own timeout), not by a flat clock.
+- **Chainlit UI:** one progress step per plan task, so each task stays
+  visible instead of being overwritten by the next.
 
 ### Removed
-- **`abi-core add abi-swarm`, `abi-core create swarm`, `abi-core remove abi-swarm`** —
-  the combined Orchestrator+Planner+Builder scaffolding graduated into its own
-  product (ABI Swarm), built and maintained separately from this framework now
-  that it's earned enough standalone value. The reference agent implementations
-  themselves (`abi_agents.planner`/`.orchestrator`/`.builder`) are untouched —
-  still the canonical example for `depends_on`, plan confirmation, methodology
-  selection, and ephemeral agent creation (see
-  [Planner & Orchestrator](docs/orchestration/01-planner-orchestrator.md)).
-  Replicating the combined system is now a manual wiring exercise (`abi-core
-  create project` + `abi-core add agent`/`add service` for each piece), not a
-  single command. See `.abi/specs/remove-abi-swarm-cli-scaffolding.md`.
+- **`abi-core run --mode`.** It only changed the banner; nothing read the
+  mode it exported.
+- **The TUI (`abi_core.tui`), deprecated in favour of the web interface
+  (Chainlit).** Removed the package, the `textual` dependency, the
+  `console.py` that `abi-core create project` generated, and `abi-core run`'s
+  TUI mode (`--no-tui`, `interface.enabled` in `runtime.yaml`). An existing
+  `console.py` fails on import from this version on; delete it.
+- **`abi-core add service guardian` and `guardian-native`.** Both generated
+  broken services. The Guardian is created with the project
+  (`abi-core create project --with-guardian`).
+- **`abi-core add abi-swarm`, `abi-core create swarm`, `abi-core remove
+  abi-swarm`.** The combined Orchestrator + Planner + Builder system is now
+  its own product, ABI Swarm. The reference agents stay in `abi_agents`; see
+  [Planner & Orchestrator](docs/orchestration/01-planner-orchestrator.md).
+- Unused prompts `ORCHESTRATOR_QA_COT_PLANNER`,
+  `ORCHESTRATOR_PLANNER_SUMMARY`, `VERIFIER_COT_INSTRUCTIONS`,
+  `OBSERVER_COT_INSTRUCTIONS` and `ORCHESTRATOR_TRIAGE_PROMPT`.
+- Unused prompts `ZOMBIE_AGENT_PROMPT` and `WORKER_COT_TASK`, and a
+  duplicate definition of `WORKER_PROMPT`.
+
+### Fixed
+- **New agents and MCP services could not build their image.** The
+  `abi-core-ai` pin in the scaffolding was glued to the following text, and
+  pip rejected it (`Invalid requirement`); the project template silently
+  dropped `fastapi`. Each pin is now on its own line.
+- **The generated web interface sent malformed SSE events** (`ping`, `done`,
+  `error` carried a literal backslash-n instead of a line break).
+- **Every Open WebUI user shared one conversation.** A generated agent's
+  `/api/chat` and `/api/generate` used a fixed session. They now use one
+  session per Open WebUI user and chat, from the user JWT Open WebUI signs
+  (`OPENWEBUI_JWT_SECRET` on the agent, same value as Open WebUI's
+  `FORWARD_USER_INFO_HEADER_JWT_SECRET`), or the agent's session token. An
+  identity that does not verify is rejected (401); `ABI_SESSION_REQUIRED`
+  applies as on `/stream`.
+- **`/api/generate` streamed in the chat format.** A generated agent's
+  Ollama-compatible `/api/generate` sent its streamed text in
+  `message.content`, where Ollama clients don't look for it; it now uses
+  `response`, as Ollama does. `/api/chat` is unchanged.
+- **The agent stream sent Python text instead of JSON.** A response
+  (`AgentResponse`) went out as the Python repr of a dict inside `message`;
+  it is now a JSON object. Existing clients that use `parse_agent_message`
+  (the Chainlit UI) read both.
+- **`abi_core.client` exported nothing.** `AgentStreamClient` and
+  `parse_agent_message` are now importable from `abi_core.client`.
+- **`abi-core add policies` created policies that were never applied.** It
+  wrote them outside the folder OPA loads, in a package the Guardian does
+  not evaluate. It now writes to `services/guardian/opa/policies/` in the
+  `abi.custom` package (custom policies add up), refuses in a project
+  without a Guardian, and reminds you to restart OPA.
+- **`tool_list_agents` always failed.** It read a resource no Semantic Layer
+  defines. It now calls `recommend_agents` and returns agent cards; new
+  optional `max_agents` (default 5). An agent card that restricts
+  `security.allowed_mcp_tools` must list `recommend_agents`; the scaffolded
+  Guardian policy now grants it to its example users too. In an existing
+  project with user validation on, add `recommend_agents` to the users'
+  `allowed_tools` in `semantic_access.rego`.
+- **`@agent.mcp_tool` with a wrapper function never called the MCP tool.**
+  The wrapper now receives the node's inputs and returns the call's
+  arguments (a dict); the node's output is the tool's result.
+- **`MCPToolkit.call` returned only part of a list**, and an empty list as
+  `{}`. It now returns the tool's `structuredContent` when the server sends
+  one.
+- **`invoke(thread_id=...)` was documented as conversation memory.** On its
+  own it keeps nothing between calls; the docstring now says so.
+- **CLI banner named another product.** It now reads "ABI-Core —
+  Agent-Based Infrastructure Core".
+- **A2A messages without `"kind"` went out empty.** A part with `text` and
+  no `kind` is now treated as text.
+- **A2A policy denials and invalid requests are no longer retried.**
+  `agent_connection` raises `A2APolicyDenied` (a `PermissionError`) for a
+  policy decision; connection failures stay a plain `PermissionError` and
+  are retried.
+- **Gemini message content arriving as a list of blocks crashed
+  tool-calling agents** on their final answer.
+- **Ephemerals could not make A2A calls.** The Builder now passes `OPA_URL`
+  and `GUARDIAN_URL`; without them, `strict` mode denied every call.
+- **Ephemerals of the same run could not talk to each other.** The
+  scaffolded A2A policy now allows calls within a run, and only within it.
+  New tasks are no longer assigned to a previous run's ephemerals (agent
+  lookups for new work use `exclude_ephemeral=True`).
+- **An ephemeral that couldn't deliver its work stayed alive indefinitely.**
+  It now ends after a bounded retry.
+- **Plans in the same conversation could read each other's intermediate
+  state.** Each plan run now has its own id.
+- **Tasks didn't receive the output of the tasks they depend on.** The
+  dependency files were never downloaded (`download_artifacts` didn't
+  exist), used the wrong storage keys, and dependents could be built before
+  their dependencies. Ephemerals also didn't share the Orchestrator's
+  session store — set `SESSION_BACKEND`/`SESSION_REDIS_URL` on the Builder,
+  which now forwards them.
+- **A task with several dependencies ran once per dependency.**
+  `AgentInteractionFlow.add_edge` now accepts a list and builds a real
+  "wait for all" join.
+- **A plan with fully independent tasks ran only the first one.** Every
+  entry node is now connected to the graph's start.
+- **Task progress never reached the client during plan execution.** Workflow
+  nodes now stream each event as it arrives (`stream_mode=["custom",
+  "updates"]`), and the Orchestrator relays heartbeats that arrive as status
+  updates.
+- **Heartbeats were batched instead of live.** Fixed by the generator
+  rewrite above.
+- **The stall watchdog on tool-calling streams fired on healthy
+  generations.** Streams are read token by token; the wait for the first
+  token is unbounded, and the stall timeout applies only once tokens flow. A
+  timed-out step now reports its real cause.
+- **Tool-calling `invoke()` had no stall protection** and could block the
+  event loop. It now bounds each chunk's wait, with one retry on a fresh
+  client (opt-in via `call_timeout`).
+- **Tool-calling agents were capped at ~5 tool calls.** See
+  `invoke(recursion_limit=...)` above.
+- **Docker SDK calls had no timeout of their own.** `run_container` /
+  `destroy_container` now bound the wait.
+- **A healthy ephemeral was declared dead after 60 s.** The Builder now
+  waits while the container is alive (`EPHEMERAL_HEALTH_TIMEOUT`, default
+  300 s) and stops as soon as it exits; an ephemeral that never becomes
+  healthy is destroyed.
+- **The per-task model override was pulled but not used.**
+- **An ephemeral that rewrote one of its input files never uploaded it.**
+- **Service cards were rejected by the semantic access policy** (no `id`);
+  `service_id` is now used as `id`.
+- **pygame sandbox image: audio unavailable.** The image now installs
+  `libglib2.0-0` (rebuild `abi-sandbox-pygame`).
+- **Download links (and their QR codes) used an internal Docker hostname.**
+  New `ARTIFACT_PUBLIC_ENDPOINT` is used for links handed to people; it must
+  point at MinIO's S3 API port, not the Console. See
+  [Artifact Store](docs/production/05-artifact-store.md).
 
 ## [1.13.31] - 2026-09-11
 

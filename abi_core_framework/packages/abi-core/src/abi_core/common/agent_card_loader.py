@@ -7,6 +7,8 @@ that must be separated before constructing the protocol object.
 """
 
 import json
+import os
+import re
 from pathlib import Path
 from typing import Tuple
 
@@ -36,6 +38,27 @@ def load_agent_card(path: str) -> Tuple[AgentCard, dict]:
     return build_agent_card(full_data)
 
 
+_ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def resolve_card_env(card_data: dict) -> dict:
+    """Expand ${VAR} / ${VAR:-default} in a card's "url" from the environment.
+
+    Lets one card file serve every deployment: locally the default (Docker
+    DNS) applies, on Cloud Run the deploy injects the service URL, e.g.
+    "url": "${PLANNER_URL:-http://abi-swarm-planner:11437}".
+    A reference with no value and no default is left as written.
+    """
+    url = card_data.get("url")
+    if isinstance(url, str) and "${" in url:
+        card_data = dict(card_data)
+        card_data["url"] = _ENV_REF.sub(
+            lambda m: os.getenv(m.group(1)) or (m.group(2) if m.group(2) is not None else m.group(0)),
+            url,
+        )
+    return card_data
+
+
 def build_agent_card(full_data: dict) -> Tuple[AgentCard, dict]:
     """Build AgentCard from a full data dict (including ABI metadata).
 
@@ -45,6 +68,8 @@ def build_agent_card(full_data: dict) -> Tuple[AgentCard, dict]:
     Returns:
         Tuple of (AgentCard protobuf object, dict with ABI-specific metadata).
     """
+    full_data = resolve_card_env(full_data)
+
     # Build skills
     skills = []
     for s in full_data.get("skills", []):

@@ -29,32 +29,24 @@ context = build_semantic_context_from_card(
 
 ## OPA policy for user permissions
 
+User permissions live in the policy the Semantic Layer already uses, `services/guardian/opa/policies/semantic_access.rego` (`package abi.semantic_access`). Edit its `user_permissions` map — one entry per email, with the MCP tools that person may use:
+
 ```rego
-package abi
-
-# User permission database
 user_permissions := {
-    "admin@company.com": {"role": "admin", "tools": ["*"]},
-    "analyst@company.com": {"role": "user", "tools": ["find_agent", "search_tools"]},
-}
-
-# Allow if user has permission for this tool
-allow if {
-    perms := user_permissions[input.user.email]
-    "*" in perms.tools
-}
-
-allow if {
-    perms := user_permissions[input.user.email]
-    input.request_metadata.mcp_tool in perms.tools
-}
-
-# Deny if user not found
-deny["User not authorized"] if {
-    input.context.require_user_validation
-    not user_permissions[input.user.email]
+    "admin@company.com": {
+        "allowed_tools": ["find_agent", "recommend_agents", "register_agent", "check_agent_capability"],
+        "role": "admin"
+    },
+    "analyst@company.com": {
+        "allowed_tools": ["find_agent", "recommend_agents"],
+        "role": "user"
+    }
 }
 ```
+
+With user validation required, a request is denied when it carries no email, or when the email isn't in the map, or when the tool isn't in that user's `allowed_tools`. `tool_list_agents` calls `recommend_agents`, so list it for anyone who should be able to search for several agents.
+
+Restart OPA after editing — it reads policies at start-up only.
 
 ## Configure in compose.yaml
 

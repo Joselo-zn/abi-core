@@ -90,10 +90,39 @@ agent's `AgentCard.name` field — i.e. whatever `name` you put in the agent
 card JSON (the scaffolded default policy matches on the full card name, e.g.
 `"Abi Orchestrator Agent"`, not a lowercase slug like `"orchestrator"`).
 Keep your rules consistent with the actual `name` in your agent cards. The
-scaffolded default policy (`abi-core add service guardian`) also uses a
+scaffolded default policy (`abi-core create project --with-guardian`) also uses a
 data-driven `communication_rules` list plus a `"*"` wildcard for source/target
 instead of one `allow if {}` block per rule — same idea, different shape.
 ```
+
+## Ephemerals of the same run
+
+The scaffolded policy also covers agents created on demand. The agents created for one plan run can talk to each other, and an agent of one run is denied when it tries to reach an agent of another. One run can't read or steer another run's work, even inside the same project.
+
+Ephemerals need `OPA_URL` and `GUARDIAN_URL` to validate their own calls. The Builder forwards them from its own environment; without them, `strict` mode denies every call an ephemeral makes.
+
+## Denials vs. connection failures
+
+`agent_connection()` raises two kinds of error when a call is blocked:
+
+| Exception | When | Retry? |
+|-----------|------|--------|
+| `A2APolicyDenied` (subclass of `PermissionError`) | The policy said no | No — asking again gets the same answer |
+| `PermissionError` | Guardian/OPA unreachable, timed out, or the validation itself errored | Yes, the service may come back |
+
+```python
+from abi_core.common.abi_a2a import A2APolicyDenied, agent_connection
+
+try:
+    async for chunk in agent_connection(my_card, target_card, payload):
+        process(chunk)
+except A2APolicyDenied as e:
+    record_and_stop(e)       # a decision, not an outage
+except PermissionError as e:
+    retry_later(e)
+```
+
+Catch `A2APolicyDenied` first: it is also a `PermissionError`. A request the target rejects as malformed (`InvalidParamsError`, e.g. a message with no text part) is not a denial, but it is not worth retrying either.
 
 ## Test a policy
 

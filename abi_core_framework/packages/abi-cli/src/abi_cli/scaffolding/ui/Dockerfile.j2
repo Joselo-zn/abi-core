@@ -13,6 +13,11 @@ RUN pip install --no-cache-dir "abi-core-ai[ui]"
 COPY chainlit.md .
 COPY .chainlit/ .chainlit/
 
+# Chainlit translations with the step-header "Using/Used" prefix blanked —
+# only files missing from .chainlit/translations/ are created, so any you
+# add yourself win.
+RUN python -m abi_core.ui.translations .chainlit/translations
+
 # Chainlit serves on 8000 inside the container; the host port is mapped in compose.
 EXPOSE 8000
 

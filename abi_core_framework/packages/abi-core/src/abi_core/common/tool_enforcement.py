@@ -14,6 +14,9 @@ from copy import deepcopy
 from langchain_core.tools import BaseTool
 
 from abi_core.common.utils import abi_logging
+from abi_core.common.prompts.framework import (  # noqa: F401  (moved; re-exported)
+    get_enforcement_system_prompt,
+)
 
 
 class ToolTracker:
@@ -59,14 +62,8 @@ class ToolTracker:
 
     def get_enforcement_prompt(self, llm_result: str) -> str:
         """Generate a retry prompt for tools that weren't used."""
-        missing = self.get_missing()
-        tools_desc = ", ".join(missing)
-        return (
-            f"You were required to use these tools but did NOT call them: {tools_desc}\n\n"
-            f"Your previous output was:\n{llm_result[:3000]}\n\n"
-            f"NOW you MUST call {missing[0]} with the appropriate arguments.\n"
-            f"Do not explain. Do not describe. Just call the tool."
-        )
+        from abi_core.common.prompts.framework import build_enforcement_retry_prompt
+        return build_enforcement_retry_prompt(self.get_missing(), llm_result)
 
     def execute_fallback(self, llm_result: str) -> List[Dict[str, Any]]:
         """Deterministic fallback: extract params from LLM output and call tools directly.
@@ -164,13 +161,3 @@ class ToolTracker:
             return match.group(1)
         return ""
 
-
-def get_enforcement_system_prompt(required_tools: List[str]) -> str:
-    """Generate system prompt addition that reminds the LLM to use tools."""
-    tools_str = ", ".join(required_tools)
-    return (
-        f"\n\nMANDATORY TOOL USAGE: You MUST call these tools during this task: {tools_str}. "
-        f"Do NOT just describe what you would do. Actually CALL the tools. "
-        f"If you need to write a file, call write_file. If you need to run a command, call run_shell. "
-        f"Your response is INCOMPLETE unless you have called the required tools."
-    )

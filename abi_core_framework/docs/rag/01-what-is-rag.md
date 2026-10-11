@@ -35,15 +35,11 @@ from abi_core.common.semantic_tools import MCPToolkit
 toolkit = MCPToolkit()
 
 results = await toolkit.search_tool_registry(query="parse a PDF")
-agent = await toolkit.find_agent(task_description="analyze quarterly revenue")
+agent = await toolkit.find_agent(query="analyze quarterly revenue")
 ```
 
 ```{note}
-There is no built-in general-purpose document store (no `store_document`/`search_documents`
-MCP tool ships with the framework). To do RAG over your own documents, add a Weaviate
-collection and a matching `@mcp.tool` to the Semantic Layer's `main.py` — the same pattern
-already used there for `register_tool`/`search_tool_registry`. See
-[Agents with RAG](04-agents-with-rag.md) for how that MCP tool would look once you've added it.
+There is no built-in general-purpose document store. To do RAG over your own documents, add a `store_document`/`search_documents` pair of tools to the Semantic Layer — [Extending the Semantic Layer](../semantic-layer/04-extending-semantic-layer.md) shows a minimal version — then follow [Agents with RAG](04-agents-with-rag.md).
 ```
 
 ## When to use RAG

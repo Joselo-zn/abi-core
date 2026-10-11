@@ -19,6 +19,7 @@ agent = AbiCore(
 | `@agent.task(name, task_id)` | Programmatic orchestrator of steps |
 | `@agent.tool(name)` | DAG node + LLM-invocable tool |
 | `@agent.mcp_tool(name)` | Remote tool via MCP protocol |
+| `@agent.sandboxed` | Lets a step or task run code in the governed sandbox; the function must take a `run_id` argument. See [Code Execution Sandbox](../production/08-sandbox.md). |
 | `@agent.task_async(name, max_retries, base_delay, on_success, on_error)` | Fire-and-forget background function — alpha. See [Background & Scheduled Tasks](../production/06-background-and-scheduled-tasks.md). |
 | `@agent.task_schedule(name, trigger, trigger_args, overlap_policy, fail_mode, ...)` | Recurring job on APScheduler, gated by overlap check + OPA — alpha. See [Background & Scheduled Tasks](../production/06-background-and-scheduled-tasks.md). |
 
@@ -26,7 +27,7 @@ agent = AbiCore(
 
 | Method | Description |
 |--------|-------------|
-| `agent.execute_step(name, **kwargs)` | Run a step by name |
+| `agent.execute_step(name, **kwargs)` | Run a step by name. Honours the step's declared `timeout`, as the DAG does |
 | `agent.execute_task(name, query=...)` | Run a task (async generator) |
 | `agent.run(agent_instance)` | Compile DAG, start A2A server |
 | `agent.get_task_metadata()` | List all registered tasks |
@@ -75,8 +76,11 @@ yield AgentResponse.result({"key": "value"})
 yield AgentResponse.error("Something failed")
 yield AgentResponse.text("Plain text response")
 yield AgentResponse.input_required("Need more info: ...")
-yield AgentResponse.success("Final answer")
+yield AgentResponse.element("image", {"url": url}, name="Chart")   # rich element
+yield AgentResponse.status("Planning...", phase=RunPhase.PLANNING.value)  # timeline phase
 ```
+
+`element()` is covered in [Rich Elements](../single-agent/10-rich-elements.md); `phase` and the other progress keys in [Run Progress](../single-agent/11-run-progress.md) (`from abi_core.agent.agent_response import RunPhase`).
 
 ---
 
@@ -86,10 +90,17 @@ yield AgentResponse.success("Final answer")
 from abi_core.agent.llm_provider import invoke
 
 result = await invoke(config.LLM_CONFIG, "Your prompt here")
-result = await invoke(config.LLM_CONFIG, prompt, thread_id="session-1")  # With memory
 result = await invoke(config.LLM_CONFIG, prompt, tools=[my_tool])        # With tools
 result = await invoke(config.LLM_CONFIG, prompt, system_prompt="...")    # Custom system
+result = await invoke(config.LLM_CONFIG, prompt, tools=[my_tool],
+                      recursion_limit=30)                                # More tool calls
+result = await invoke(config.LLM_CONFIG, prompt, tools=[my_tool],
+                      thread_id="gen-1", checkpointer=saver)             # Keep the conversation
 ```
+
+- `required_tools` — tool names the model **must** call: `invoke(config.LLM_CONFIG, prompt, tools=[write_file], required_tools=["write_file"])`. If the model answers without calling one, it gets one more try with a reminder. If it still skips it, ABI calls the tool itself with arguments taken from the model's answer — this works for tools whose parameters are `filename`, `content` and/or `command`.
+- `recursion_limit` — maximum LangGraph steps of the tool-calling agent (default 10; each tool call costs two steps). Size it to the work: a task that reads and writes several files needs more.
+- `checkpointer` — a LangGraph checkpointer that keeps the tool-calling conversation after the call returns. A later `invoke` with the same `thread_id` and checkpointer continues it Without a `checkpointer`, `thread_id` alone does not carry anything between calls — each `invoke` starts fresh. For conversation memory across requests, see [Agents with Memory](../single-agent/04-agents-with-memory.md).
 
 ---
 
@@ -212,3 +223,67 @@ from abi_core.common.utils import (
     format_conversation_summary, # Render a recorded conversation window as prompt text
 )
 ```
+
+---
+
+## Which task runs, and what it receives
+
+When a request reaches an agent that has `@agent.task` functions, the agent picks one:
+
+1. The task whose `task_id` matches the request's `task_id`
+2. Otherwise a task named `route_to_task`, or `main`
+3. Otherwise the first task registered
+
+The task is called with only the arguments its signature declares, out of `query` (the request text, unchanged), `context_id` (the session) and `task_id`. A task written as `async def chat(query)` keeps working; one written as `async def chat(query, context_id=None)` receives the session id. `agent.execute_step(...)` does the same for steps: `context_id` and `task_id` are dropped if the step doesn't declare them, while any other unexpected argument still raises a `TypeError`.
+
+---
+
+## Web interface endpoints
+
+An agent created with `--with-web-interface` serves, on `WEB_INTERFACE_PORT`:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/stream` | POST | `{"query": "..."}` → Server-Sent Events, one per `AgentResponse` |
+| `/query` | POST | Same body, one final answer |
+| `/session/start`, `/session/rotate`, `/session/end` | POST | Session tokens — see [Sessions & Multi-turn](../single-agent/07-sessions-multi-turn.md) |
+| `/health` | GET | Liveness |
+| `/api/tags`, `/api/version`, `/api/ps`, `/api/chat`, `/api/generate` | GET/POST | Ollama-compatible endpoints, so [Open WebUI](https://docs.openwebui.com/) can use the agent as if it were a model |
+
+```{warning}
+The Ollama-compatible endpoints forward only the last user message, and every request shares one session. Fine for a single-user demo in Open WebUI; for several users, use `/stream` with session tokens (or the bundled Chainlit UI).
+```
+
+---
+
+## Client (`abi_core.client.agent_stream_client`)
+
+```python
+from abi_core.client.agent_stream_client import AgentStreamClient
+
+client = AgentStreamClient("http://localhost:8002")   # one instance per conversation
+async for event in client.stream("Hello"):
+    print(event.get("response_type"), event.get("content"))
+```
+
+Starts a session on first use, sends its token with every message, decodes each event into a dict, and drops a token the server no longer recognizes. Failures come back as a `{"response_type": "error", ...}` event, not an exception. See [Testing Agents](../single-agent/05-testing-agents.md#talk-to-it-from-python).
+
+---
+
+## Helpers
+
+```python
+from abi_core.common.retry import retry_with_backoff
+from abi_core.common.model_tools import list_available_models, find_model, pull_model
+from abi_core.common.qr_code import generate_qr_png
+from abi_core.common.library_tools import write_pdf
+```
+
+| Helper | What it does |
+|--------|--------------|
+| `await retry_with_backoff(fn, *args, max_retries=3, base_delay=1.0, max_delay=None, retryable=None, on_retry=None, **kwargs)` | Calls `fn` (sync or async), retrying failures with exponential backoff. `retryable(exc)` can opt an exception out; `on_retry(attempt, exc)` runs before each wait |
+| `await list_available_models(hosts=None)` | `{model_name: host_url}` across one or more Ollama hosts |
+| `await find_model(model, hosts=None)` | The host that has `model`, or `None` |
+| `await pull_model(model, host=None)` | Download `model` into Ollama |
+| `generate_qr_png(data)` | PNG bytes of a QR code for `data` (needs the `ui` extra). In a response, prefer `AgentResponse.element("qr", {"data": ...})` |
+| `write_pdf` | A LangChain tool that renders text as a PDF in the agent's workspace (`WORKSPACE`, default `/app/workspace`). Call it with `write_pdf.invoke({"filename": "report.pdf", "content": "..."})`, or hand it to a model via `invoke(..., tools=[write_pdf])` |

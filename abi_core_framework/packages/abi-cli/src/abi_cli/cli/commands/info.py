@@ -114,7 +114,7 @@ def info():
         
         if services_count == 0:
             suggestions.append("• Add semantic layer: abi-core add service semantic-layer")
-            suggestions.append("• Add security: abi-core add service guardian")
+            suggestions.append("• Security (Guardian): created with the project — abi-core create project --with-guardian")
         
         if policies_count == 0:
             suggestions.append("• Add policies: abi-core add policies --name YourPolicies")

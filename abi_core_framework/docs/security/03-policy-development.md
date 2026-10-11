@@ -4,10 +4,10 @@ Write your own Rego policies for your domain.
 
 ## Create a policy file
 
-Add a `.rego` file in `services/guardian/opa/policies/`:
+Add a `.rego` file in `services/guardian/opa/policies/`. Guardian reads your rules from one package, `abi.custom` — use exactly that name, or Guardian never sees them:
 
 ```rego
-package abi.finance
+package abi.custom
 
 import future.keywords.if
 import future.keywords.in
@@ -102,7 +102,7 @@ deny["Rate limit exceeded"] if {
 docker exec <opa-container> opa check /policies/
 
 # Evaluate with test input
-curl -X POST http://localhost:8181/v1/data/abi/finance/allow \
+curl -X POST http://localhost:8181/v1/data/abi/custom/allow \
   -d '{"input": {"action": "execute_trade", "amount": 3000, "source_agent": {"name": "finance_agent"}}}'
 ```
 

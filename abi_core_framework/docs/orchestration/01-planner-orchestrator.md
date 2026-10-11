@@ -1,180 +1,137 @@
 # Planner & Orchestrator
 
 ```{warning}
-**Alpha.** The ABI Swarm (Orchestrator + Planner + Builder + ephemeral agents) is
-under active development. APIs, generated structure, and behavior may change between
-releases. Not recommended for production yet.
+**Alpha.** The reference Orchestrator, Planner and Builder agents (the pieces behind ABI Swarm) are
+under active development. Behavior may change between releases. Not recommended for production yet.
 ```
 
-The Orchestrator is the entry point for complex requests. The Planner breaks them into smaller tasks and assigns agents. Together they coordinate multi-agent work.
+The Orchestrator is the entry point for complex requests. The Planner breaks a request into smaller tasks and finds an agent for each. The Builder creates the agents that don't exist yet. Together they turn one sentence into coordinated multi-agent work — and nothing runs until you say yes.
 
 ## How they work together
 
 ```
 User request
   → Orchestrator
-    ├─ Step 1: Is this simple or complex? + Is it allowed?
-    ├─ Step 2: Decision (answer directly | send to Planner | block)
-    ├─ Step 3: Planner picks a methodology, breaks it into tasks → assigns agents
-    ├─ Step 4: Show the plan to the user — wait for approve / reject / modify
-    └─ Step 5: (once approved) Build ephemeral agents if needed → execute tasks → combine results
+    ├─ Is it allowed? (Guardian)  ┐ in parallel
+    ├─ Is it simple or complex?   ┘
+    ├─ Decide: answer directly | ask the Planner | block
+    ├─ Planner: break it into tasks, find an agent for each
+    ├─ Show the plan to the user — wait for approve / reject / modify
+    └─ Once approved: create missing agents → run the tasks → combine the results
   → Response to user
 ```
 
 ## The Orchestrator
 
-Receives every request. Its DAG:
-
-1. **classify_query** — Is this simple (answer directly) or complex (needs planning)? Also deterministically detects two kinds of replies that skip the LLM entirely: an answer to a pending clarification, and an approve/reject/modify reply to a plan awaiting confirmation (see "Plan confirmation" below).
-2. **guardian_validate** — Is this request allowed by security policies? (runs in parallel with classify)
-3. **gate_decision** — Routes based on classification + security: respond directly, call the planner, block, or (if a plan is pending) confirm/reject/re-plan.
-4. **call_planner** — Send to Planner via A2A for task decomposition
-5. **extract_plan** — Pull the structured plan out of the Planner's A2A response
-6. **check_model_availability** — Read-only: for each task that would spin up an ephemeral agent, is its model already installed? (`@agent.tool`, see "Model availability" below) — this is the DAG's terminal node.
-
-`build_workflow` — turning the plan into an `AgentInteractionFlow` with nodes for each agent — is **not** part of this DAG. It's a plain function the Orchestrator calls directly, and only *after* the user approves the plan, because it's the step that actually calls the Builder and creates ephemeral containers. See "Plan confirmation" below.
+The Orchestrator is an ordinary ABI agent. Its first moves are a DAG of `@agent.step` functions: a security check and a triage run **in parallel**, and a deterministic gate waits for both before anything else happens.
 
 ```python
-# Orchestrator DAG (from steps.py)
-@agent.step(name="classify_query", input_map={"query": "$input.query", "session_context": "$input.session_context"})
-async def classify_query(query, session_context=None):
-    # Deterministic short-circuits first (pending plan confirmation, pending
-    # clarification) — only falls through to the LLM triage if neither applies.
-    text = await invoke(config.LLM_CONFIG, TRIAGE_PROMPT.format(query=query))
-    parsed = clean_llm_json(text)
-    return {"classification": parsed.get("classification", "complex")}
+@agent.step(name="classify_query", input_map={"query": "$input.query"})
+async def classify_query(query):
+    # Simple question, or does it need a plan?
+    ...
+    return {"classification": "complex"}
 
-@agent.step(name="guardian_validate", input_map={...})
-async def guardian_validate(query, context_id):
-    # Calls Guardian agent via A2A
+
+@agent.step(name="guardian_validate", input_map={"query": "$input.query"})
+async def guardian_validate(query):
+    # Ask Guardian whether this request is allowed
     ...
     return {"status": "approved", "allowed": True}
 
-@agent.step(name="gate_decision", depends_on=["classify_query", "guardian_validate"])
-def gate_decision(triage, guardian, query):
-    if guardian.get("status") == "error":
-        return {"action": "system_error", "message": "..."}
-    if guardian.get("status") == "blocked":
-        return {"action": "blocked", "message": "..."}
 
-    classification = triage.get("classification")
-    if classification == "plan_confirmed":
-        return {"action": "execute_confirmed_plan", "plan": triage.get("pending_plan")}
-    if classification == "plan_rejected":
-        return {"action": "plan_rejected"}
-    if classification == "plan_modify_requested":
-        return {"action": "plan_modify_requested"}
-    if classification == "plan_modify_feedback":
-        return {"action": "call_planner", "query": "...original + feedback..."}
-    if classification == "simple":
+@agent.step(
+    name="gate_decision",
+    depends_on=["classify_query", "guardian_validate"],
+    input_map={"triage": "$classify_query", "guardian": "$guardian_validate"},
+)
+def gate_decision(triage, guardian):
+    if guardian.get("status") == "blocked":
+        return {"action": "blocked"}
+    if triage.get("classification") == "simple":
         return {"action": "respond_direct"}
     return {"action": "call_planner"}
 ```
 
+`depends_on` sets the order; `input_map` wires each dependency's output (`$classify_query`) into a parameter.
+
+The gate is plain Python. The model helps classify; your code decides. A blocked request never reaches the Planner, and a request never runs without passing Guardian.
+
+The gate also recognizes two kinds of replies without asking a model: an answer to a pending clarification question, and an approve/reject/modify reply to a plan that is waiting for confirmation.
+
 ## The Planner
 
-Receives a query and produces a structured plan:
-
-1. **Fixed Agile Tech Lead framing** — every plan is decomposed the same way: the Planner's system prompt casts it as a Technical Lead writing a prioritized backlog of user stories for other developers to build (see "Methodology selection" below). There is no per-request choice of methodology anymore — `Plan.methodology`/`methodology_rationale` are set deterministically to `"Agile (Scrum/Kanban)"` before the plan is returned, overwriting anything the LLM may have filled in on its own.
-2. **LLM decomposition** — Calls the LLM with a chain-of-thought prompt (built around that fixed Agile framing) to break the task into sub-tasks
-3. **parse_plan** — Extracts structured JSON from the LLM response
-4. **assign_agents** — For each task, searches the Semantic Layer for the right agent
-
-Before step 2's LLM call, the Planner also deterministically recalls similar past plans from long-term memory (`get_long_term_memory(query)`, called directly in code — not something the LLM decides to do) and folds them into the prompt's context as `similar_past_plans`. Each plan's outcome is written to that same long-term memory (topic `plan_execution`) by the Orchestrator once a workflow finishes — see [Result Synthesis](04-result-synthesis.md) — so this is a loop: a plan's result becomes recall context for a future, similar request.
-
-Output:
+The Planner receives the request and returns a structured plan — an objective and a list of tasks, each with a description, the agent that should do it, and the tasks it depends on:
 
 ```json
 {
   "status": "ready",
   "plan": {
-    "objective": "Analyze Q4 sales and generate report",
-    "execution_strategy": "sequential",
-    "methodology": "Agile (Scrum/Kanban)",
-    "methodology_rationale": "Fixed framing for every plan — the Planner acts as a Technical Lead breaking the request into a prioritized backlog of User Stories.",
+    "objective": "Analyze Q4 sales and generate a report",
     "tasks": [
       {
-        "task_id": "task-1",
-        "type": "analysis",
+        "task_id": "task_1",
         "description": "Analyze Q4 revenue data",
-        "agents": [{"name": "analyst", "url": "http://..."}]
+        "agents": [{"name": "analyst"}],
+        "dependencies": []
       },
       {
-        "task_id": "task-2",
-        "type": "generation",
-        "description": "Generate PDF report from analysis",
-        "agents": [{"name": "reporter", "url": "http://..."}],
-        "depends_on": ["task-1"]
+        "task_id": "task_2",
+        "description": "Write the report from the analysis",
+        "agents": [],
+        "dependencies": ["task_1"]
       }
     ]
   }
 }
 ```
 
-If the Planner needs more info, it returns `{"status": "needs_clarification", "clarification": "..."}` and the Orchestrator forwards it to the user.
+- **Agents are found by meaning.** For each task the Planner asks the [Semantic Layer](../semantic-layer/01-what-is-semantic-layer.md) who can do it. A task with no matching agent is marked to be built on demand.
+- **Dependencies set the order.** Tasks that don't depend on each other run in parallel — see [Dependency Management](03-dependency-management.md).
+- **It asks when it doesn't know.** If the request is ambiguous, the Planner returns `{"status": "needs_clarification", ...}` instead of guessing, and the Orchestrator forwards the questions to the user.
+- **It remembers what worked.** Before planning, the Planner recalls similar past plans from long-term memory. When a plan finishes, its outcome is stored there. Next time, a similar request starts from experience instead of from zero.
 
-### Direct tool tasks
+### Fixed-format deliverables
 
-Most tasks need a real, generated agent — the Builder spins up an ephemeral container, the model writes code or content, the result comes back. That round-trip (Orchestrator → Builder → container → Orchestrator) is the right cost for a task that genuinely needs bespoke logic, but it's wasteful for a deliverable that's just "this content, rendered as a fixed, well-known format" — nothing to generate beyond content the Planner already has.
-
-For that case, a task can set `"direct_tool"` on itself instead of getting an `agents`/`builder_spec`. Today the only fixed tool is `write_pdf` (`abi_core.common.library_tools.write_pdf`, a `fpdf2`-backed tool — no LLM-generated code, the only untrusted input is the text itself):
-
-```json
-{
-  "task_id": "task-2",
-  "description": "3-day itinerary from Xilitla to CDMX with daily stops and a refueling reminder",
-  "direct_tool": "write_pdf",
-  "target": {"tag": "itinerary.pdf", "type": "file"}
-}
-```
-
-The Planner itself executes this — no Builder call, no ephemeral container. It generates the content, calls `write_pdf(filename, content)` directly, uploads the result to MinIO, and reports back exactly like an ephemeral agent's own result would. It still goes through the same plan confirmation as every other task (see below) — the user can reject or ask to modify a plan that includes one.
-
-```{note}
-`direct_tool` is a fixed whitelist checked in code (`PlanTask.direct_tool: Optional[Literal["write_pdf"]]`), never something the LLM can invoke freely — see .abi/specs/planner-direct-tool-pdf.md for why the alternative (letting an ephemeral agent generate-and-run code) was rejected.
-```
+Some deliverables don't need a new agent at all — "these contents, as a PDF" is a rendering job, not a reasoning job. For those, a task can name a fixed tool instead of an agent. Today that tool is `write_pdf` (`abi_core.common.library_tools`). It's a whitelist checked in code: the model can pick the tool for a task, but it can't run anything outside the list.
 
 ## Plan confirmation
 
-The Orchestrator never executes a plan the moment it's produced — the user always confirms it first ("the system proposes, the user disposes"). After `check_model_availability` runs, the Orchestrator:
+The Orchestrator never executes a plan the moment it's produced. The system proposes; the user disposes.
 
-1. Formats the plan as a readable summary — objective, methodology + rationale, each task, and (for tasks that need an ephemeral agent) whether the model is already installed or will be downloaded.
-2. Saves the plan in the session (`SessionStore` — survives across the pause) and persists the chosen methodology to system-level short-term memory, so any agent inspecting this conversation can recover it, not just whichever one receives the next prompt directly.
-3. Sends the summary with `require_user_input: true` and stops. In Chainlit this renders as three action buttons — ✅ Aprobar / ❌ Rechazar / ✏️ Modificar — not just free text.
+1. The plan is shown as a readable summary: the objective, each step, and — for steps that need a new agent — whether its model is already installed or will be downloaded first.
+2. The plan is parked in the session, so it survives the pause, even across replicas with the Redis session backend.
+3. The Orchestrator stops and waits. In the Chainlit UI the plan appears as a review card with Approve / Modify / Reject.
 
-On the next turn, `classify_query` deterministically reads the button choice (or a typed "sí"/"no") and `gate_decision` routes it:
+On the next turn:
 
-- **Approve** (`execute_confirmed_plan`) — the Orchestrator calls `build_workflow` for real with the stored plan, and only *now* does the Builder get invoked and ephemeral containers get created.
-- **Reject** (`plan_rejected`) — the session is cleared, the user gets "Plan cancelado."
-- **Modify** (`plan_modify_requested`) — the Orchestrator asks what to change; the next message is treated as feedback and merged into the original query, re-entering the Planner for a new plan (which pauses for confirmation again).
+- **Approve** — only now are agents created and tasks run.
+- **Reject** — the plan is dropped and nothing runs.
+- **Modify** — the user's feedback goes back to the Planner, which produces a new plan that pauses for confirmation again.
 
-If the pending plan expired (session backend restarted, or too much time passed) before the user approves, the Orchestrator says so explicitly rather than executing something that no longer matches what was shown.
+If the pending plan expired before the reply arrived, the Orchestrator says so instead of running something the user no longer sees.
+
+The same building block is available to any single agent — see [Plan Confirmation](../single-agent/09-plan-confirmation.md).
 
 ### Model availability
 
-`abi_core.common.model_tools` is a framework-level module (not specific to the Orchestrator or Builder) that maps `{model_name: host_url}` across one or more Ollama hosts, rather than a yes/no check against one hardcoded container:
+`abi_core.common.model_tools` maps every model to the Ollama host that has it, across one or more hosts:
 
 ```python
 from abi_core.common.model_tools import list_available_models, find_model, pull_model
 
-registry = await list_available_models()      # {"qwen3:latest": "http://ollama:11434", ...}
-location = await find_model("qwen3:latest")     # host url, or None
+registry = await list_available_models()    # {"qwen3:latest": "http://ollama:11434", ...}
+location = await find_model("qwen3:latest")  # host url, or None
+await pull_model("qwen3:latest")             # download it if it's missing
 ```
 
-- The **Orchestrator** wraps `find_model`/`list_available_models` in a read-only `@agent.tool` (`check_model_availability`) used only to build the confirmation summary — it never mutates anything.
-- The **Builder** wraps `pull_model` in `ensure_model_available` (`@agent.tool`, ahead of `build_container`) so an ephemeral agent's container is never built with a missing model.
-
-### Methodology selection
-
-The Planner no longer picks a decomposition methodology per request. Earlier it made a dedicated LLM call before decomposition to choose between WBS, SMART, GTD, or Polya's "How to Solve It" — that call was removed: it cost an extra LLM round-trip on every plan (minutes, on local models) and some models refused to plan at all under some framings (e.g. `devstral:24b`, whose own baked-in agentic persona read the plain "decompose into tasks" instruction as a request for tools it wasn't given, and answered "I don't have the tools needed" instead of producing a plan). The fixed Agile Tech Lead persona in `PLANNER_COT_INSTRUCTIONS` — writing a backlog for other developers to build — replaces it and doesn't trigger that refusal, since the model isn't asked to act as the one doing the work.
-
-`abi_core.common.methodology_tools` (`list_methodologies()`, `select_methodology()`, the WBS/SMART/GTD/Polya registry) is still in the framework and importable by any agent, but the Planner itself no longer calls it — it's currently unused dead code from that earlier design, not a single source of truth in active use.
+The Orchestrator uses `find_model` read-only, to tell the user in the plan summary what will be downloaded. The Builder uses `pull_model` so a new agent is never started with a model that isn't there. Both are ordinary functions — wrap them in an `@agent.tool` in your own agents.
 
 ## Get orchestration in your project
 
-There's no single CLI command that scaffolds the full Orchestrator + Planner + Builder bundle — that combined system (ABI Swarm) graduated into its own product, built and maintained separately from this framework.
+There's no single CLI command that scaffolds the full Orchestrator + Planner + Builder bundle — that combined system is ABI Swarm, a separate product built on this framework.
 
-The reference implementations themselves are still here, in `abi_agents` (`abi_agents.planner`, `abi_agents.orchestrator`, `abi_agents.builder`), and stay the canonical example of everything on this page — `depends_on`, plan confirmation, methodology selection, ephemeral agent creation. If you want this pattern in your own project, use them as a starting point: `abi-core create project --with-semantic-layer --with-guardian` for the base infrastructure, then wire each agent by hand — copy the agent source, generate its agent card, register it with the Semantic Layer, add its service to `compose.yaml`.
+The reference agents ship in `abi_agents` (`abi_agents.orchestrator`, `abi_agents.planner`, `abi_agents.builder`). To use the pattern in your own project, start from `abi-core create project --name my-app --with-semantic-layer --with-guardian` and wire each agent by hand: its source, its agent card, its registration in the Semantic Layer, and its service in `compose.yaml`.
 
 ## Next step
 

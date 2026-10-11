@@ -417,8 +417,19 @@ class ToolExecutionGraph:
                         "status": GraphStatus.RUNNING.value,
                     }
 
-                except asyncio.TimeoutError:
-                    last_error = f"Node '{node.id}' exceeded its {node.timeout}s timeout"
+                except asyncio.TimeoutError as e:
+                    # `asyncio.wait_for`'s OWN timeout raises a bare
+                    # `TimeoutError()` with no message (str(e) == "") — but
+                    # code running inside `call` can raise its own
+                    # `TimeoutError` (same class in Python 3.11+) with a
+                    # real, already-diagnosed message (e.g. invoke()'s
+                    # "Agent stream stalled twice (120.0s each)..."). That
+                    # inner message is strictly more accurate than this
+                    # generic one — confirmed live 2026-10-01: a task that
+                    # failed via the inner stall-twice path in ~4 minutes
+                    # was reported here as "exceeded its 3600.0s timeout",
+                    # hiding both the real cause and the real duration.
+                    last_error = str(e) or f"Node '{node.id}' exceeded its {node.timeout}s timeout"
                     node.attempts = attempt + 1
                     abi_logging(
                         f"[⚠️] Node '{node.id}' attempt {attempt + 1}/{node.max_retries}: {last_error}",

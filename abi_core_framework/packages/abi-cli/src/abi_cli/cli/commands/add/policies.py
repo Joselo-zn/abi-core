@@ -23,8 +23,17 @@ def add_policies(name, domain):
     if not domain:
         domain = Prompt.ask("Policy domain", default="custom")
 
-    policies_dir = Path('policies')
-    policies_dir.mkdir(exist_ok=True)
+    # OPA loads services/guardian/opa/policies/ (mounted at /policies), and
+    # the Guardian evaluates data.abi: core and custom. A policy anywhere else,
+    # or in another package, is never applied.
+    policies_dir = Path('services') / 'guardian' / 'opa' / 'policies'
+    if not policies_dir.is_dir():
+        console.print(
+            "❌ This project has no Guardian, so no policy would be applied. "
+            "Create the project with: abi-core create project --with-guardian",
+            style="red",
+        )
+        return
 
     policy_file = policies_dir / f"{name.lower().replace(' ', '_').replace('-', '_')}.rego"
 
@@ -46,18 +55,14 @@ def add_policies(name, domain):
         policy_content = f'''# {name} Custom Policies
 # Domain: {domain}
 
-package {name.lower().replace(' ', '_').replace('-', '_')}.custom
+# Every custom policy file shares the package the Guardian evaluates
+# (data.abi.custom): its rules add up with the other custom files'.
+package abi.custom
 
-# Import ABI core policies
-import data.abi.core
-
-# Custom rules for {domain} domain
-domain := "{domain}"
-
-# Allow basic operations
+# Allow basic operations in the {domain} domain
 allow if {{
     input.action in ["read", "query"]
-    input.domain == domain
+    input.domain == "{domain}"
 }}
 
 # Deny dangerous operations
@@ -82,3 +87,4 @@ deny contains "Dangerous operation blocked" if {{
 
     console.print(f"\n✅ Policies '{name}' added successfully!", style="green")
     console.print(f"📁 Location: {policy_file}", style="blue")
+    console.print("🔄 Restart OPA to load it: docker compose restart <project>-opa", style="yellow")

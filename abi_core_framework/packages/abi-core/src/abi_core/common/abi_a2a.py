@@ -12,6 +12,16 @@ from a2a.types import (
 from abi_core.common.agent_card_loader import get_agent_url
 
 
+# Denials that are not a policy decision: the validator could not get one.
+_TRANSIENT_DENIALS = ("Guardian returned status", "Guardian timeout", "Validation error:")
+
+
+class A2APolicyDenied(PermissionError):
+    """The A2A policy decided to deny this call. Retrying gets the same
+    answer — unlike a plain PermissionError, which may be a connection
+    failure while asking for the decision."""
+
+
 async def agent_connection(
     source_card: AgentCard,
     target_card: AgentCard,
@@ -68,6 +78,8 @@ async def agent_connection(
             f"Reason: {reason}"
         )
         abi_logging(f"❌ {error_msg}")
+        if reason and not str(reason).startswith(_TRANSIENT_DENIALS):
+            raise A2APolicyDenied(error_msg)
         raise PermissionError(error_msg)
     
     abi_logging(f"✅ A2A validated: {source_card.name} -> {target_card.name}")
@@ -88,7 +100,11 @@ async def agent_connection(
         parts_data = payload.get("message", {}).get("parts", [])
         parts = []
         for p in parts_data:
-            if p.get("kind") == "text":
+            # A part without "kind" but with "text" is text: the documented
+            # example (multi-agent-basics/03-agent-communication.md) omits
+            # "kind", and such a message used to go out with no parts at all
+            # — the receiver rejected it ("Validation failed"), live 2026-10-10.
+            if p.get("kind", "text") == "text" and "text" in p:
                 parts.append(Part(text=p.get("text", "")))
         
         # Map role string to protobuf enum

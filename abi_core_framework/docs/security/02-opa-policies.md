@@ -11,6 +11,20 @@ services/guardian/opa/policies/
 └── custom.rego          ← Your domain-specific rules
 ```
 
+## Core policies: the rules you can't turn off
+
+Before your own rules, Guardian generates a set of **core policies** (`package abi.core`) at start-up. They are not a file you edit: Guardian writes them, records a hash of them, checks that hash on later starts, and refuses to start if the core policies are missing or have been tampered with. An action passes only if both the core policies and your custom policy allow it and neither denies it; its risk score is the higher of the two.
+
+| Core rule | Applies to |
+|-----------|-----------|
+| Self-replication | `create_agent`, `spawn_process`, `replicate`, `fork`, `clone` |
+| Policy protection | Writing, deleting or modifying policies, OPA configuration or security configuration |
+| System protection | Executing shell or system commands against the OS, kernel or root |
+| Sensitive files | Reading or writing credentials, keys, certificates or system configuration |
+| Network | Network requests |
+
+Everything not explicitly allowed is denied (`default allow := false`). Your custom policies add rules on top; they can't loosen these.
+
 ## A simple policy
 
 ```rego
@@ -60,7 +74,7 @@ through Guardian to reach — three independent pieces call it directly with
 
 | Caller | Package | Used for |
 |--------|---------|----------|
-| Guardian's own DAG (`evaluate_policy` step, via `policy_engine_secure`) | your custom policies (e.g. `abi.custom`, `abi.finance`) + core policies | Direct action validation requested over A2A (`guardian_validate` in the Orchestrator's DAG) or workflow validation |
+| Guardian's own DAG (`evaluate_policy` step, via `policy_engine_secure`) | your custom policies (`abi.custom` — the only package Guardian reads) + core policies (`abi.core`) | Direct action validation requested over A2A (`guardian_validate` in the Orchestrator's DAG) or workflow validation |
 | `abi_core.security.a2a_access_validator` | `a2a_access` | Agent-to-agent task delegation (`agent_connection`, `AgentInteractionFlow`) — see [A2A Validation](06-a2a-validation.md) |
 | `abi_core.semantic.semantic_access_validator` | `abi.semantic_access` | MCP tool calls into the Semantic Layer — see [A2A Validation → Semantic Layer access validation](06-a2a-validation.md#semantic-layer-mcp-access-validation) |
 

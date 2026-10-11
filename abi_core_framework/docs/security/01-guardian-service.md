@@ -20,7 +20,7 @@ Older scaffolding still maps a `dashboard_port` (8080) for Guardian in
 `compose.yaml`, and an earlier Guardian implementation (`agent_deprecated/`
 in the scaffolding templates: `dashboard.py.j2`, `metrics_collector.py.j2`,
 `alerting_system.py.j2`) shipped a web dashboard and `/metrics` endpoint. The
-current Guardian (`abi-core add service guardian-native`, the AbiCore-based
+current Guardian (`abi-core create project --with-guardian`, the AbiCore-based
 `agent/` implementation) does not serve a dashboard — it's a plain
 `parse_request → evaluate_policy → format_decision` DAG behind the standard
 A2A endpoints (below). Don't rely on port 8080 for it.
@@ -29,14 +29,10 @@ A2A endpoints (below). Don't rely on port 8080 for it.
 ## Add Guardian to your project
 
 ```bash
-abi-core create project my-app --with-guardian
+abi-core create project --name my-app --with-guardian
 ```
 
-Or add to an existing project:
-
-```bash
-abi-core add service guardian-native
-```
+The Guardian is created with the project only; `abi-core add service` has no Guardian type.
 
 ## How the Orchestrator uses it
 

@@ -1,6 +1,7 @@
 """
-`add service` / `add semantic-layer` — scaffold semantic-layer, guardian,
-guardian-native, and mcp-api services.
+`add service` / `add semantic-layer` — scaffold semantic-layer, mcp-api and
+agent-memory services. The Guardian is only created with the project
+(`abi-core create project --with-guardian`).
 """
 
 import click
@@ -12,7 +13,7 @@ from .compose import _update_compose_with_service, _update_compose_with_semantic
 
 
 @click.command("service")
-@click.argument('service_type', type=click.Choice(['semantic-layer', 'guardian', 'guardian-native', 'mcp-api', 'agent-memory']))
+@click.argument('service_type', type=click.Choice(['semantic-layer', 'mcp-api', 'agent-memory']))
 @click.option('--name', '-n', help='Service name (optional, not used for semantic-layer/agent-memory)')
 @click.option('--domain', help='Domain specialization')
 def add_service(service_type, name, domain):
@@ -22,14 +23,14 @@ def add_service(service_type, name, domain):
 
     \b
     semantic-layer    Add AI agent discovery and routing service (uses fixed name 'semantic_layer')
-    guardian          Add security policy enforcement service (placeholder)
-    guardian-native   Add native guardian service based on abi-core guardial
     mcp-api          Add FastMCP/API central connection point service
     agent-memory     Add short/long-term memory (Agent Memory Server + Redis) for
                      abi_core.memory.add_short_term_memory/get_short_term_memory —
                      works for any agent, not just abi-swarm projects
 
+    \b
     Note: You can also use 'abi-core add semantic-layer' as a shortcut.
+    The Guardian is created with the project: abi-core create project --with-guardian
     """
 
     # Check if we're in an ABI project
@@ -97,22 +98,12 @@ def add_service(service_type, name, domain):
         if service_type == 'semantic-layer':
             _create_semantic_layer_service(service_dir, domain)
 
-        elif service_type == 'guardian':
-            # Create guardian placeholder structure
-            (service_dir / 'guard_core').mkdir()
-            (service_dir / 'guard_core' / '__init__.py').touch()
-
-        elif service_type == 'guardian-native':
-            _create_guardian_native_service(service_dir, name, domain)
-
         elif service_type == 'mcp-api':
             _create_mcp_api_service(service_dir, name, domain)
 
         # Determine default port based on service type
         default_port = {
             'semantic-layer': 10100,
-            'guardian': 11438,
-            'guardian-native': 11438,
             'mcp-api': 9000
         }.get(service_type, 8080)
 
@@ -318,75 +309,6 @@ def _create_semantic_layer_service(service_dir, domain):
 
     context = {'domain': domain or 'general', 'project_name': service_dir.parent.parent.name}
     _create_semantic_layer_structure(service_dir, context)
-
-
-def _create_guardian_native_service(service_dir, name, domain):
-    """Create native guardian service using templates"""
-    console.print("🛡️ Creating native Guardian service...", style="blue")
-
-    # Create structure
-    (service_dir / 'agent').mkdir()
-    (service_dir / 'agent' / 'models').mkdir()
-    (service_dir / 'opa' / 'policies').mkdir(parents=True)
-    (service_dir / 'config').mkdir()
-
-    # Context for templates
-    context = {
-        'project_name': Path.cwd().name,
-        'service_name': name or 'guardian',
-        'domain': domain or 'general'
-    }
-
-    # Guardian config files (inside agent/)
-    guardian_config_files = [
-        ('agent/config/__init__.py', 'service_guardian/agent/config/__init__.py'),
-        ('agent/config/config.py', 'service_guardian/agent/config/config.py'),
-    ]
-
-    # Guardian agent files
-    guardian_files = [
-        ('agent/__init__.py', 'service_guardian/agent/__init__.py'),
-        ('agent/guardial_secure.py', 'service_guardian/agent/guardial_secure.py'),
-        ('agent/emergency_response.py', 'service_guardian/agent/emergency_response.py'),
-        ('agent/dashboard.py', 'service_guardian/agent/dashboard.py'),
-        ('agent/alerting_system.py', 'service_guardian/agent/alerting_system.py'),
-        ('agent/metrics_collector.py', 'service_guardian/agent/metrics_collector.py'),
-        ('agent/audit_persistence.py', 'service_guardian/agent/audit_persistence.py'),
-        ('agent/policy_engine_secure.py', 'service_guardian/agent/policy_engine_secure.py'),
-        ('agent/mcp_interface.py', 'service_guardian/agent/mcp_interface.py'),
-        ('agent/main.py', 'service_guardian/agent/main.py'),
-        ('agent/models/agent_models.py', 'service_guardian/agent/models/agent_models.py'),
-    ]
-
-    # Root level files
-    root_files = [
-        ('Dockerfile', 'service_guardian/Dockerfile'),
-        ('requirements.txt', 'service_guardian/requirements.txt'),
-        ('README.md', 'service_guardian/README.md'),
-        ('alerting_config.json', 'service_guardian/alerting_config.json'),
-    ]
-
-    # OPA files
-    opa_files = [
-        ('opa/policies/semantic_access.rego', 'service_guardian/opa/policies/semantic_access.rego'),
-        ('opa/policies/a2a_access.rego', 'service_guardian/opa/policies/a2a_access.rego'),
-        ('opa/policies/basic.rego', 'service_guardian/opa/policies/basic.rego'),
-    ]
-
-    # Create all files
-    all_files = guardian_config_files + guardian_files + root_files + opa_files
-
-    for file_path, template_path in all_files:
-        full_path = service_dir / file_path
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            with open(full_path, 'w') as f:
-                f.write(render_template_content(template_path, context))
-        except Exception as e:
-            console.print(f"⚠️ Could not create {file_path}: {e}", style="yellow")
-
-    console.print("✅ Native Guardian service created successfully", style="green")
 
 
 def _create_mcp_api_service(service_dir, name, domain):

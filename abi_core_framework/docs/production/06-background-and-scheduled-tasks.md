@@ -189,4 +189,4 @@ See [Environment Variables](../reference/environment-variables.md#async-task-bac
 
 ## Next step
 
-👉 [Troubleshooting](03-troubleshooting.md)
+👉 [Authentication](07-authentication.md)

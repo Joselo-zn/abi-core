@@ -16,19 +16,32 @@ In your semantic layer's MCP server (`services/semantic_layer/main.py`, a
 ```python
 # services/semantic_layer/main.py
 
-@mcp.tool(name='store_document', description='Store a document for future semantic retrieval')
-async def store_document(content: str, metadata: dict = None) -> dict:
-    """Store a document for future semantic retrieval."""
-    # Your storage logic here (Weaviate, database, etc.)
-    doc_id = await weaviate_store.insert(content, metadata)
+import uuid
+
+# A deliberately simple store: a dict in the Semantic Layer's process.
+# Good enough to see the whole loop work. For real retrieval by meaning,
+# back these two tools with a Weaviate collection of your own.
+_DOCUMENTS: dict[str, dict] = {}
+
+
+@mcp.tool(name='store_document', description='Store a document for later retrieval')
+async def store_document(content: str, metadata: dict | None = None) -> dict:
+    """Store a document for later retrieval."""
+    doc_id = str(uuid.uuid4())
+    _DOCUMENTS[doc_id] = {"doc_id": doc_id, "content": content, "metadata": metadata or {}}
     return {"success": True, "doc_id": doc_id}
 
 
-@mcp.tool(name='search_documents', description='Search stored documents by semantic similarity')
+@mcp.tool(name='search_documents', description='Find stored documents that mention the query words')
 async def search_documents(query: str, max_results: int = 5) -> list:
-    """Search stored documents by semantic similarity."""
-    results = await weaviate_store.search(query, limit=max_results)
-    return results
+    """Find stored documents that mention the query words."""
+    words = {w.lower() for w in query.split()}
+    scored = [
+        (sum(w in doc["content"].lower() for w in words), doc)
+        for doc in _DOCUMENTS.values()
+    ]
+    hits = [doc for score, doc in sorted(scored, key=lambda x: -x[0]) if score > 0]
+    return hits[:max_results]
 ```
 
 Add `@validate_semantic_access` (from
@@ -51,7 +64,9 @@ await toolkit.store_document(
 )
 
 # Search later
-results = await toolkit.search_documents(query="revenue growth")
+found = await toolkit.search_documents(query="revenue growth")
+for doc in found:
+    print(doc["content"])
 ```
 
 ## Add tool cards for discovery

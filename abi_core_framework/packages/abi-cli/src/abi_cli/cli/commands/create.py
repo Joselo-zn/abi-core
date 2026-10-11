@@ -356,9 +356,6 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
         with open(project_dir / 'README.md', 'w') as f:
             f.write(render_template_content('project/README.md', context))
         
-        # Interactive console (TUI)
-        with open(project_dir / 'console.py', 'w') as f:
-            f.write(render_template_content('project/console.py', context))
         
         progress.update(task, description="Project created successfully!", completed=True)
     

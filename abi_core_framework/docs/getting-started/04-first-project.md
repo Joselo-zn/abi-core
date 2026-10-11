@@ -9,6 +9,18 @@ abi-core create project --name my-first-project
 cd my-first-project
 ```
 
+The command asks five questions. For a first project, answer `n` to the two services — you don't need them yet — and press Enter for the rest:
+
+```
+Project description (ABI-powered my-first-project project):
+Domain/Industry (general):
+Include semantic layer service? [y/n] (y): n
+Include guardian security service? [y/n] (y): n
+Choose model serving strategy [centralized/distributed] (distributed):
+```
+
+The Semantic Layer (agent discovery) and Guardian (security rules) come later in these docs; `--with-semantic-layer` and `--with-guardian` add them without asking. `distributed` vs `centralized` decides how agents share Ollama — see [Model Serving](../production/01-model-serving.md).
+
 This creates:
 
 ```
@@ -27,11 +39,14 @@ abi-core add agent --name assistant \
   --with-web-interface
 ```
 
-When it asks for tasks/skills, type:
+It asks two questions. Answer the first one and press Enter on the second:
 
 ```
-answer_questions
+Supported tasks/skills (comma-separated) (process_request,analyze_data): answer_questions
+Agent URL (http://my-first-project-assistant:8001):
 ```
+
+The CLI prints the ports it picked — the agent on `8001`, its web interface on `8002`.
 
 Now you have:
 
@@ -47,13 +62,32 @@ agents/assistant/
 ├── web_interface.py    ← HTTP endpoints (SSE, REST)
 ├── main.py             ← Entry point
 ├── requirements.txt
+├── agent_cards/        ← The agent's identity card (JSON)
 └── Dockerfile
 ```
+
+## Step 2b: Make it answer
+
+The generated step is a placeholder — it returns `{"result": None}` until you fill it in. Open `agents/assistant/steps.py` and replace the body of `answer_questions_step` so it calls the model:
+
+```python
+from app import agent
+from config import config
+from abi_core.agent.llm_provider import invoke
+
+
+@agent.step(name="answer_questions_step", input_map={"query": "$input.query", "context_id": "$input.context_id"})
+async def answer_questions_step(query, context_id=None):
+    answer = await invoke(config.LLM_CONFIG, query)
+    return {"answer": answer}
+```
+
+`query` is exactly the text you send in the request — no wrapping, no JSON to parse.
 
 ## Step 3: Start it
 
 ```bash
-# First time: pull the AI model (~2GB download)
+# First time: pull the AI model (~5 GB download)
 docker compose up ollama -d
 docker exec ollama ollama pull qwen3:latest
 

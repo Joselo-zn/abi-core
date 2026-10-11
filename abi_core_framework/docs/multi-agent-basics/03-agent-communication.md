@@ -23,7 +23,7 @@ async def ask_another_agent(target_card, message):
         "message": {
             "messageId": "msg-001",
             "role": "user",
-            "parts": [{"text": json.dumps({"text": message})}],
+            "parts": [{"kind": "text", "text": json.dumps({"text": message})}],
         }
     }
 
@@ -81,7 +81,9 @@ Every agent-to-agent call is checked before it goes through:
 2. **Rules check** — Guardian checks if this communication is allowed
 3. **Logged** — Every call is recorded for auditing
 
-If the check fails, `agent_connection()` raises an error and the call doesn't happen.
+If the check fails, `agent_connection()` raises an error and the call doesn't happen: `A2APolicyDenied` when the policy said no (don't retry), a plain `PermissionError` when Guardian/OPA couldn't be reached (retry later). See [A2A Validation](../security/06-a2a-validation.md#denials-vs-connection-failures).
+
+Each part of the message should carry `"kind": "text"`. A part with `text` and no `kind` is treated as text too; a message with no text part at all is rejected by the receiver as an invalid request.
 
 ## What the target agent sees
 

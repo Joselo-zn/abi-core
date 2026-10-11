@@ -51,14 +51,14 @@ Tasks run one after another. Each depends on the previous.
 collect_data → analyze_data → write_report
 ```
 
-The Planner expresses this with `depends_on`:
+The Planner expresses this with `dependencies`:
 
 ```json
 {
   "tasks": [
-    {"task_id": "1", "description": "Collect data", "depends_on": []},
-    {"task_id": "2", "description": "Analyze", "depends_on": ["1"]},
-    {"task_id": "3", "description": "Report", "depends_on": ["2"]}
+    {"task_id": "task_1", "description": "Collect data", "dependencies": []},
+    {"task_id": "task_2", "description": "Analyze", "dependencies": ["task_1"]},
+    {"task_id": "task_3", "description": "Report", "dependencies": ["task_2"]}
   ]
 }
 ```
@@ -76,10 +76,10 @@ collect_inventory─┘
 ```json
 {
   "tasks": [
-    {"task_id": "1", "description": "Collect sales", "depends_on": []},
-    {"task_id": "2", "description": "Collect costs", "depends_on": []},
-    {"task_id": "3", "description": "Collect inventory", "depends_on": []},
-    {"task_id": "4", "description": "Analyze all", "depends_on": ["1", "2", "3"]}
+    {"task_id": "task_1", "description": "Collect sales", "dependencies": []},
+    {"task_id": "task_2", "description": "Collect costs", "dependencies": []},
+    {"task_id": "task_3", "description": "Collect inventory", "dependencies": []},
+    {"task_id": "task_4", "description": "Analyze all", "dependencies": ["task_1", "task_2", "task_3"]}
   ]
 }
 ```
@@ -95,12 +95,17 @@ guardian ──────────────┼→ synthesize
 search_context ────────┘
 ```
 
-## Context and artifacts across tasks
+## What ABI Swarm adds on top
 
-When `build_workflow` spins up an ephemeral agent (via the Builder) for a `build_and_execute`/`create_tools_and_execute` task, that agent gets two kinds of context beyond its own task description:
+The reference agents use this engine to run whole plans, and they add a few guarantees you get without writing them yourself:
 
-- **Prior tasks' artifacts** — if the task depends on an earlier task that produced a file, the Orchestrator collects that file's key and passes it through the Builder as `artifact_keys`. The ephemeral agent downloads it into its workspace (`context_loader.load_agent_context` → `download_artifacts`) before starting, so it can build on the actual prior output instead of reimplementing it from scratch.
-- **Its place in the whole plan** — the Orchestrator writes the plan's objective and full task list (with dependencies) to session context once, keyed by the plan's own `context_id`. Every ephemeral agent spawned for that plan reads the same blob back (via `PLAN_CONTEXT_ID` + a deterministic `get_session_context` call, not an LLM tool) and gets it folded into its system prompt as "Your place in the overall plan" — not just its own task description in isolation.
+- **Each task builds on the real output of the ones before it.** Files produced by a task travel through the [Artifact Store](../production/05-artifact-store.md) to the tasks that depend on it — no task reimplements what an earlier one already wrote.
+- **Every agent knows where it stands.** An agent created for one task also sees the plan's objective and the tasks around it, not just its own sentence.
+- **The result is checked as a whole before you get it.** When a plan delivers several code files, the set is reviewed and run in the [code execution sandbox](../production/08-sandbox.md). Problems are repaired where possible, and anything still broken is reported to you word for word — a summary never presents a broken deliverable as working.
+- **One failing agent doesn't sink the run.** If an agent fails, the work continues with what arrived, and the final answer says exactly what was missing.
+- **Runs stay apart.** The [A2A policy](../security/06-a2a-validation.md) lets the agents created for one run talk to each other, and never to the agents of another run.
+
+None of this needs agents to chat with each other. They coordinate through artifacts and checks that code performs — bounded in time, bounded in cost, and auditable after the fact.
 
 ## Workflow state
 
@@ -135,6 +140,27 @@ async for item in self._run_with_heartbeat(dag_coro, context_id, task_id, "Proce
 to bound its own real work internally (a DAG step's own `timeout=`, an LLM
 call's own per-call bound). Pass `max_wait` explicitly only for a coroutine
 you know isn't bounded internally yet, as a temporary safety net.
+
+### Progress from tasks running in other agents
+
+Each agent wraps its own work in `_run_with_heartbeat`, so an ephemeral agent
+running a plan task emits a heartbeat every ~15s while it works. For that to
+reach the user, every hop has to forward it as it happens:
+
+- **`AgentInteractionFlow.run_workflow()`** runs the plan as a LangGraph graph
+  with `stream_mode=["custom", "updates"]`. Each node writes every event it
+  receives from its agent through LangGraph's stream writer
+  (`get_stream_writer()`), tagged with its node id, so events leave the graph
+  the moment they arrive. `"updates"` is used only to detect pause/completion.
+  Without the `"custom"` stream, a node only surfaced its events after the
+  whole task finished — a 15-minute task looked silent for 15 minutes.
+- **The Orchestrator** relays each event's text to its own client, whether the
+  agent sent it as message text or as status text (heartbeats arrive as
+  `status_update` events, parsed into `A2AResponse.status_message`).
+
+`workflow.current_node_key` / `current_agent_name` are set per event, so with
+several tasks running in parallel each event is attributed to the task that
+actually produced it.
 
 ## Next step
 

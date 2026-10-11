@@ -108,8 +108,8 @@ class OrchestratorWebinterface:
                 context_id = derive_session_id(user_id, thread_id)
 
             # ── Fallback: opaque session token (unchanged) — still the only
-            # mechanism for callers that don't send an identity chain (the
-            # TUI, or any future client not yet migrated). See
+            # mechanism for callers that don't send an identity chain (any
+            # client not yet migrated). See
             # .abi/specs/implemented/session-management.md.
             if context_id is None:
                 token = _extract_token(authorization)

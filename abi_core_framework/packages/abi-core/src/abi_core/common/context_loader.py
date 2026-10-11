@@ -26,6 +26,9 @@ import shutil
 from typing import Any, Dict, List, Optional
 
 from abi_core.common.utils import abi_logging
+from abi_core.common.prompts.code_agent import (  # noqa: F401  (moved; re-exported)
+    build_execution_prompt,
+)
 
 
 def load_agent_context_sync(**kwargs) -> Dict[str, Any]:
@@ -164,37 +167,25 @@ async def unload_agent_context(
             abi_logging(f"[⚠️] Failed to clean workspace: {e}")
 
 
-def build_execution_prompt(
-    query: str,
-    tools: Optional[List] = None,
-    artifacts: Optional[List[str]] = None,
-    workspace: str = "/app/workspace",
-) -> str:
-    """Build a dynamic execution prompt from query, tools, and artifacts.
+def extract_python_contract(file_path: str) -> Dict[str, Any]:
+    """Deterministically extract a Python file's top-level classes/functions
+    and their real signatures via `ast` — no LLM self-description involved,
+    so it can't hallucinate a method that doesn't exist or omit one that
+    does. Lets a later task know exactly what an earlier task's file
+    exposes (import X, call Y(args)) instead of just its file path.
 
-    Generates a clean prompt that describes the task, lists available tools
-    with their descriptions, and includes artifact paths if present.
-
-    Args:
-        query: The task description.
-        tools: LangChain tools (each with .name and .description).
-        artifacts: Local file paths of downloaded artifacts.
-        workspace: Workspace directory path.
-
-    Returns:
-        Formatted prompt string ready for LLM.
+    Returns ``{"classes": [...], "functions": [...]}`` — empty dict if the
+    file doesn't exist or isn't valid Python (e.g. not a .py file).
     """
-    parts = [f"Task: {query}"]
+    # One implementation, shared with the code agent TDD ("exposes" field).
+    from abi_core.common.code_tdd import extract_exposes
 
-    if tools:
-        tools_desc = "\n".join(f"- {t.name}: {t.description}" for t in tools)
-        parts.append(f"\nAvailable tools:\n{tools_desc}")
-
-    if artifacts:
-        arts = "\n".join(f"  - {p}" for p in artifacts)
-        parts.append(f"\nArtifacts in workspace ({workspace}):\n{arts}")
-
-    return "\n".join(parts)
+    try:
+        with open(file_path, "r") as f:
+            source = f.read()
+    except (OSError, UnicodeDecodeError):
+        return {}
+    return extract_exposes(source)
 
 
 async def self_deregister(agent_name: str, destroy: bool = True) -> None:

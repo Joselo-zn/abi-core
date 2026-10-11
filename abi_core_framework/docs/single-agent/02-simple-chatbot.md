@@ -9,9 +9,19 @@ An agent that:
 2. Generates a response based on the classification
 3. Streams status updates in real-time
 
+## Create the agent
+
+```bash
+abi-core add agent --name chatbot \
+  --description "Classifies messages and answers them" \
+  --with-web-interface
+```
+
+When it asks for tasks/skills, type `chat`.
+
 ## The steps
 
-Edit `agents/chatbot/steps.py`:
+Replace the contents of `agents/chatbot/steps.py`:
 
 ```python
 from app import agent
@@ -41,10 +51,9 @@ Respond naturally and concisely."""
 
 ## The task
 
-Edit `agents/chatbot/tasks.py`:
+Replace the contents of `agents/chatbot/tasks.py`:
 
 ```python
-import json
 from app import agent
 from abi_core.agent.agent_response import AgentResponse
 
@@ -52,8 +61,7 @@ from abi_core.agent.agent_response import AgentResponse
 @agent.task(name="chat", task_id="task-chat")
 async def chat(query):
     """Classify then respond."""
-    data = json.loads(query) if isinstance(query, str) else query
-    text = data.get("text", "")
+    text = query  # the text exactly as the user sent it
 
     yield AgentResponse.status("Understanding your message...")
     classification = await agent.execute_step("classify", text=text)
@@ -76,22 +84,27 @@ async def route_to_task(query):
         yield response
 ```
 
+Why the second task? When a request arrives, the agent picks the task to run in this order: the task whose `task_id` matches the request's `task_id`, then a task named `route_to_task` (or `main`), then the first task registered. A `route_to_task` makes the entry point explicit instead of depending on file order — and it's the natural place to branch to different tasks later.
+
 ## Test it
 
 ```bash
 docker compose up --build -d
 
-curl -X POST http://localhost:8002/stream \
+curl -N -X POST http://localhost:8002/stream \
   -H "Content-Type: application/json" \
   -d '{"query": "What is machine learning?"}'
 ```
 
-You'll see:
+You'll see one `data:` line per update (`curl -N` prints them as they arrive). Each line wraps one `AgentResponse`:
+
 ```
-event: status → "Understanding your message..."
-event: status → "Got it — this is a question..."
-event: result → {"intent": "question", "response": "Machine learning is..."}
+data: {"message": "{'response_type': 'status', 'content': 'Understanding your message...', 'is_task_completed': False, ...}", "type": "dict"}
+data: {"message": "{'response_type': 'status', 'content': 'Got it — this is a question...', 'is_task_completed': False, ...}", "type": "dict"}
+data: {"message": "{'response_type': 'data', 'content': {'intent': 'question', 'response': 'Machine learning is...'}, 'is_task_completed': True, ...}", "type": "dict"}
 ```
+
+`AgentResponse.status(...)` arrives as `response_type: status`, `AgentResponse.result(...)` as `response_type: data` with `is_task_completed: True`. You don't need to unpack this by hand — [`AgentStreamClient`](05-testing-agents.md#talk-to-it-from-python) does it for you. The rest of these docs abbreviate the stream as `event: status → "..."` / `event: result → {...}`.
 
 ## What's different from the first agent
 

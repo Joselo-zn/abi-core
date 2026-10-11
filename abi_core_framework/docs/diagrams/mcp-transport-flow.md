@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # MCP Transport Flow Diagrams
 
 ## SSE Transport Flow

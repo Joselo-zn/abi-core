@@ -120,7 +120,7 @@ The ABI Orchestration Engine plays a role analogous to cutting-edge orchestratio
 | Auditability | Every selection decision is traceable | Varies |
 | Governance | Immutable policies, human veto always | Not included |
 | Tool discovery | Semantic search in Weaviate | Static tool lists |
-| Deployment | `pip install` + `abi-core create swarm` | Manual setup |
+| Deployment | `pip install` + `abi-core create project` / `add agent` | Manual setup |
 
 In essence, ABI enables dynamic, context-aware, and vendor-agnostic cognitive orchestration — while keeping it open, transparent, and under the control of its community.
 

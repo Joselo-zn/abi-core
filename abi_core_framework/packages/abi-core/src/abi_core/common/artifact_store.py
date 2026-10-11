@@ -110,6 +110,36 @@ class ArtifactStore:
                 abi_logging(f"[❌] Failed to create bucket '{self.bucket}': {e}")
                 raise
 
+    async def ensure_expiration(self, prefix: str, days: int, rule_id: str) -> None:
+        """Expire objects under ``prefix`` after ``days`` (bucket lifecycle rule).
+
+        The S3 API replaces the bucket's whole lifecycle configuration on
+        every put, so the current rules are read first and only the rule with
+        ``rule_id`` is added or replaced — other rules on the bucket survive.
+        """
+        import asyncio
+
+        client = self._get_client()
+        try:
+            current = await asyncio.to_thread(
+                client.get_bucket_lifecycle_configuration, Bucket=self.bucket
+            )
+            rules = [r for r in current.get("Rules", []) if r.get("ID") != rule_id]
+        except Exception:
+            rules = []  # no lifecycle configuration yet
+        rules.append({
+            "ID": rule_id,
+            "Filter": {"Prefix": prefix},
+            "Status": "Enabled",
+            "Expiration": {"Days": days},
+        })
+        await asyncio.to_thread(
+            client.put_bucket_lifecycle_configuration,
+            Bucket=self.bucket,
+            LifecycleConfiguration={"Rules": rules},
+        )
+        abi_logging(f"[📦] Lifecycle: '{prefix}' expires after {days} days")
+
     async def upload(
         self, key: str, content: bytes, metadata: Dict[str, str] = None
     ) -> str:

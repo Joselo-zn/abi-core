@@ -250,6 +250,45 @@ async def get_agent_card(card_name: str, _request_context: dict = None) -> dict:
     return {"agent_card": matches}
 
 
+@mcp.tool(
+    name='get_ephemeral_card',
+    description='Exact lookup of a registered ephemeral agent card by name (e.g. "reviewer-<run_id>"). Returns the card without its secret.',
+)
+@validate_semantic_access
+async def get_ephemeral_card(agent_name: str, _request_context: dict = None) -> dict:
+    """find_agent never returns ephemeral cards and get_agent_card_by_stem
+    only sees cards on disk; a code agent still has to reach its run's
+    reviewer by its known name (ephemeral-reviewer-pipeline 02.2). Looks the
+    card up in Weaviate by its id, the same way the access validator does,
+    and strips `auth`."""
+    from embedding_mesh.weaviate_store import get_agent_card_by_uuid
+
+    agent_id = agent_name if agent_name.startswith("agent://") else f"agent://{agent_name}"
+    card = get_agent_card_by_uuid(str(uuid.uuid5(uuid.NAMESPACE_DNS, agent_id)))
+    if not card:
+        return {"found": False, "agent_card": None}
+    return {"found": True, "agent_card": {k: v for k, v in card.items() if k != "auth"}}
+
+
+# ── Caller verification (for services) ─────────────────────────
+
+
+@mcp.tool(
+    name='verify_caller',
+    description='Verify the HMAC signature of another caller. Returns the caller card without secrets.',
+)
+@validate_semantic_access
+async def verify_caller(caller_context: dict, _request_context: dict = None) -> dict:
+    """For a service that must know who is calling it (sandbox-service):
+    verifies `caller_context` (headers + signed payload) against the
+    caller's card — on disk or, for ephemerals, in Weaviate — and returns
+    {verified, reason, card} with the card's `auth` removed. Strict: no
+    payload, no signature or a stale timestamp fail.
+    Spec: ephemeral-reviewer-pipeline/02-ephemeral-reviewer/02.5-governed-sandbox.md"""
+    from abi_core.semantic.semantic_access_validator import verify_caller as _verify_caller
+    return await _verify_caller(caller_context)
+
+
 # ── Registration ────────────────────────────────────────────────
 
 

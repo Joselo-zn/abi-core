@@ -7,12 +7,22 @@ Welcome to **ABI-Core** documentation — build AI agents that work together, fi
 ```{toctree}
 :maxdepth: 2
 :hidden:
-:caption: 1. Fundamentals
+:caption: 1. Start Here
 
+why-abi-core
 getting-started/01-installation
 getting-started/02-what-is-abi
 getting-started/03-basic-concepts
 getting-started/04-first-project
+```
+
+```{toctree}
+:maxdepth: 2
+:hidden:
+:caption: Use Cases
+
+use-cases/index
+use-cases/01-customer-support
 ```
 
 ```{toctree}
@@ -29,6 +39,7 @@ single-agent/07-sessions-multi-turn
 single-agent/08-plan-and-execute
 single-agent/09-plan-confirmation
 single-agent/10-rich-elements
+single-agent/11-run-progress
 single-agent/05-testing-agents
 ```
 
@@ -103,6 +114,7 @@ production/04-deployment
 production/05-artifact-store
 production/06-background-and-scheduled-tasks
 production/07-authentication
+production/08-sandbox
 ```
 
 ```{toctree}
@@ -128,20 +140,13 @@ faq
 roadmap
 ```
 
-## Hello, I'm ABI
+## Agents that keep working on Monday
 
-I help you build AI agents that actually work together. You write the logic, I handle everything else — running them, connecting them, keeping them secure. One `pip install`, a few decorators, and your agents are live.
+Most agent demos are magic for ninety seconds and a mess by the end of the week. The model picks what runs and when, security is a plugin for later, and a "team" of agents is a group chat with a large bill attached.
 
-ABI-Core is a Python framework for creating AI agent systems. You write agents as simple Python functions. ABI packages them, runs them, connects them to each other, and makes sure they play by the rules. No glue code, no infrastructure headaches.
+I'm ABI, and I work the other way. You write plain Python; the model thinks inside steps you control, and your code decides what happens next. Your agents run in their own containers, find each other by describing what they need, and ask permission before they act. Nothing big runs until you approve the plan. It all starts on your own laptop, with a local model.
 
-## What makes ABI different
-
-- **You control the order** — Your code decides what runs when. The AI thinks, but your graph executes. No surprises, no random tool calls.
-- **Any AI model** — Ollama running on your laptop, OpenAI, Gemini, Grok, Anthropic — switch by changing one line. Your agent code stays the same.
-- **Agents find each other** — You don't hardcode who talks to who. Agents describe what they can do, and others find them by asking "who can do X?"
-- **They talk to each other** — A standard protocol so any agent can call any other agent. Like HTTP for AI agents.
-- **Security built in** — Every action can be checked against rules before it runs. Not an afterthought — it's part of the system.
-- **Agents that appear and disappear** — Need a specialist for one task? The system creates one, it does the job, delivers the result, and cleans up after itself. *(alpha)*
+👉 [Why ABI-Core](why-abi-core.md) — the opinions behind all of this, and the one thing I saved for last.
 
 ## Quick Start
 
@@ -154,7 +159,7 @@ abi-core add agent --name my-agent --description "My first agent" --with-web-int
 abi-core run
 ```
 
-That's it. You now have an AI agent running in a Docker container with an HTTP endpoint you can talk to.
+That's it: an AI agent in its own container, with an HTTP endpoint you can talk to. [Your First Project](getting-started/04-first-project.md) walks through the same steps slowly — including the questions the CLI asks you on the way.
 
 ## Learning Paths
 

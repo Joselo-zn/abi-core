@@ -354,7 +354,7 @@ python main.py
 ## Step 4: Talk to the planner
 
 ```bash
-curl -X POST http://localhost:8100/stream \
+curl -N -X POST http://localhost:8103/stream \
   -H "Content-Type: application/json" \
   -d '{"query": "Write a haiku about the ocean, then translate it to Spanish"}'
 ```
@@ -363,7 +363,7 @@ You'll see the planner's status updates stream in, then a result with both actio
 
 ## What happened
 
-1. Your `curl` hit the Planner's minimal `/stream` endpoint
+1. Your `curl` hit the Planner's minimal `/stream` endpoint on its web interface port (`8103`; `8100` is its A2A port)
 2. `plan_then_execute` called the `plan` step — one AI call, in-process, same as the single-agent version
 3. For each action, `call_executor` opened an `AgentInteractionFlow` and sent the action to the Executor's real A2A endpoint (`http://localhost:8101`)
 4. The Executor — a separate Python process — ran its `run` task, called `run_action`, and returned the outcome over A2A

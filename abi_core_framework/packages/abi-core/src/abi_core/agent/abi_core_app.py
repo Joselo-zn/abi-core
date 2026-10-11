@@ -60,6 +60,30 @@ from abi_core.common.retry import retry_with_backoff
 
 # ── Node type enum ──────────────────────────────────────────────
 
+
+def _mcp_call_through(tool_name: str, fn: Callable) -> Callable:
+    """The node function of an ``@agent.mcp_tool`` with a wrapper: run the
+    wrapper on the node's inputs, then call the MCP tool with the dict it
+    returns. Before, the node ran only the wrapper and never called the
+    tool (its output was the wrapper's return value)."""
+    import functools
+    import inspect
+
+    @functools.wraps(fn)
+    async def call(**kwargs):
+        args = fn(**kwargs)
+        if inspect.isawaitable(args):
+            args = await args
+        if not isinstance(args, dict):
+            raise TypeError(
+                f"@agent.mcp_tool('{tool_name}'): the wrapper must return a dict "
+                f"of arguments for the MCP call, got {type(args).__name__}"
+            )
+        from abi_core.common.semantic_tools import MCPToolkit
+        return await MCPToolkit().call(tool_name, **args)
+
+    return call
+
 class _NodeType:
     TASK = "task"
     STEP = "step"
@@ -467,6 +491,11 @@ class AbiCore:
                     result.update(chunk)
             return result
         elif inspect.iscoroutinefunction(node.fn):
+            # Same per-step cap the DAG applies (ToolGraphNode.timeout): a
+            # step called from a task must not lose the timeout it declared.
+            if node.timeout:
+                import asyncio
+                return await asyncio.wait_for(node.fn(**kwargs), timeout=node.timeout)
             return await node.fn(**kwargs)
         else:
             return node.fn(**kwargs)
@@ -872,6 +901,52 @@ class AbiCore:
             })
         return jobs
 
+    def sandboxed(self, fn: Callable) -> Callable:
+        """Let a step or task run code in the governed sandbox.
+
+        The decorated function must take a ``run_id`` argument: without one
+        it fails before running. Inside it, ``run_in_sandbox`` calls (with
+        ``SANDBOX_RUNTIME=service``) are signed with this agent's card
+        (``AGENT_CARD``) and tied to that run; ``sandbox-service`` then asks
+        OPA whether this agent may use the sandbox for this run. Put it
+        under ``@agent.step``/``@agent.task``::
+
+            @agent.step(name="review", input_map={"run_id": "$input.run_id"})
+            @agent.sandboxed
+            async def review(run_id):
+                result = await run_in_sandbox(...)
+
+        Spec: ephemeral-reviewer-pipeline/02-ephemeral-reviewer/02.5-governed-sandbox.md
+        """
+        import functools
+        import inspect
+
+        from abi_core.common.sandbox_service_client import sandbox_caller
+
+        signature = inspect.signature(fn)
+        if "run_id" not in signature.parameters:
+            raise TypeError(f"@agent.sandboxed: '{fn.__name__}' must take a run_id argument")
+
+        def _run_id(args, kwargs) -> str:
+            bound = signature.bind_partial(*args, **kwargs)
+            run_id = bound.arguments.get("run_id")
+            if not run_id:
+                raise ValueError(f"@agent.sandboxed: '{fn.__name__}' called without a run_id")
+            return str(run_id)
+
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def async_wrapper(*args, **kwargs):
+                with sandbox_caller(_run_id(args, kwargs)):
+                    return await fn(*args, **kwargs)
+            return async_wrapper
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            with sandbox_caller(_run_id(args, kwargs)):
+                return fn(*args, **kwargs)
+        return wrapper
+
     def tool(
         self,
         name: str,
@@ -935,7 +1010,7 @@ class AbiCore:
         authentication from the agent card.
 
         Can be used as a bare decorator (no function) or wrapping a
-        function that pre/post-processes the MCP call.
+        function that pre-processes the MCP call.
 
         Bare usage (no function — pure MCP call)::
 
@@ -944,12 +1019,16 @@ class AbiCore:
                 input_map={"query": "$input.user_query"},
             )
 
-        With wrapper function (pre/post processing)::
+        With wrapper function (pre-processing)::
 
             @agent.mcp_tool(name="bigquery_search")
             async def bigquery_search(query):
-                # pre-process, call is handled by MCPToolkit
+                # receives the node's inputs, returns the MCP call's arguments
                 return {"query": sanitize(query)}
+
+        The wrapper must return a dict: it becomes the arguments of the
+        MCP call, and the node's output (DAG and ``execute_step``) is the
+        tool's result, not the wrapper's return value.
 
         Args:
             name: MCP tool name (must match the tool registered in the
@@ -989,7 +1068,7 @@ class AbiCore:
                 # Remove the bare entry, re-add with fn
                 if node_entry in self._registered_nodes:
                     self._registered_nodes.remove(node_entry)
-                node_entry.fn = fn_or_none
+                node_entry.fn = _mcp_call_through(name, fn_or_none)
                 self._registered_nodes.append(node_entry)
                 return fn_or_none
             return fn_or_none

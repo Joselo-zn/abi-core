@@ -80,7 +80,32 @@ class AbiPlannerAgent(AbiAgent):
         if similar_plans:
             context = {**context, "similar_past_plans": similar_plans}
 
-        planning_query = config.build_planning_query(query, context)
+        # ── SDD Phase 2: technical design (always first) ─────────────
+        # Which files, which role, who depends on whom — decided in its own
+        # structured call BEFORE tasks exist, instead of improvised inside
+        # task generation. Always runs (user decision 2026-10-02: Plan before
+        # Tasks, even for single-file requests). A failure here degrades to
+        # the old single-call behavior rather than failing the plan. See
+        # .abi/specs/not-implemented/sdd-pipeline/01-planner-spec-plan-tasks-cycle.md.
+        from abi_core.common.plan_models import TechnicalDesign, apply_technical_design
+
+        design = None
+        try:
+            design = await invoke_structured(
+                config.LLM_CONFIG,
+                config.build_technical_design_query(query, context),
+                schema=TechnicalDesign,
+                system_prompt=config.TECHNICAL_DESIGN_PROMPT,
+            )
+            for f in design.files:
+                abi_logging(f"[📐] Design: {f.filename} [{f.role}] depends_on={f.depends_on}")
+        except Exception as e:
+            abi_logging(f"[⚠️] Technical design failed, planning without it: {e}", level="warning")
+
+        # ── SDD Phase 3: tasks, generated from the design ────────────
+        planning_query = config.build_planning_query(
+            query, context, design.model_dump() if design else None
+        )
         result = await invoke_structured(
             config.LLM_CONFIG,
             planning_query,
@@ -88,6 +113,17 @@ class AbiPlannerAgent(AbiAgent):
             thread_id=session_id,
             system_prompt=config.SYSTEM_PROMPT,
         )
+
+        # Dependencies come from the design, deterministically — not a
+        # second chance for the model to re-decide their direction.
+        if design and result.status == "ready" and result.plan:
+            for warning in apply_technical_design(result.plan, design):
+                abi_logging(f"[⚠️] Design/task mismatch: {warning}", level="warning")
+            for t in result.plan.tasks:
+                abi_logging(f"[📐] {t.task_id} ({t.target.tag if t.target else '?'}) deps={t.dependencies}")
+            # The full design travels with the plan (roles included), not
+            # just the dependencies copied above — the reviewer needs it.
+            result.plan.technical_design = design.model_dump()
 
         # `Plan.methodology`/`methodology_rationale` are still real schema
         # fields (PlannerOutput -> Plan) — the model fills them in on its

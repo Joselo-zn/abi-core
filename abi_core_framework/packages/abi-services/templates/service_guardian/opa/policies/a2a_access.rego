@@ -103,6 +103,25 @@ is_allowed_communication if {
     communication_rules[i].target == target_agent.name
 }
 
+# Ephemerals of the same plan run: its code agents and its reviewer talk to
+# each other (hand-off, questions), in both directions, and only within the
+# run. Names carry the run id: ephemeral-<run_id>-<task>-<ts> and
+# reviewer-<run_id> (ephemeral-reviewer-pipeline, user decision 2026-10-10).
+is_allowed_communication if {
+    same_run_pair(source_agent.name, target_agent.name)
+}
+
+is_allowed_communication if {
+    same_run_pair(target_agent.name, source_agent.name)
+}
+
+same_run_pair(code_agent, reviewer) if {
+    startswith(reviewer, "reviewer-")
+    run_id := trim_prefix(reviewer, "reviewer-")
+    run_id != ""
+    startswith(code_agent, concat("", ["ephemeral-", run_id, "-"]))
+}
+
 # ============================================
 # MAIN ALLOW RULE
 # ============================================

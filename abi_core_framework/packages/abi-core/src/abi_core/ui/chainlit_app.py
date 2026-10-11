@@ -29,8 +29,18 @@ from email.message import EmailMessage
 from pathlib import Path
 
 import chainlit as cl
+from chainlit.utils import utc_now
 
 from abi_core.client.agent_stream_client import AgentStreamClient
+from abi_core.ui.run_follow import (
+    FOLLOWED_RUN_KEY,
+    FOLLOWER_KEY,
+    HEARTBEAT_SECONDS,
+    read_stop_request,
+    request_stop,
+    utc_now_iso,
+)
+from abi_core.ui.run_progress import RunProgress, format_task_update, task_step_name
 
 # Suppress httpcore async generator cleanup warnings (cosmetic, non-blocking)
 warnings.filterwarnings("ignore", message=".*async generator ignored GeneratorExit.*")
@@ -75,6 +85,45 @@ def _install_bundled_elements() -> None:
 
 
 _install_bundled_elements()
+
+
+def _install_bundled_assets() -> None:
+    """Copy abi_core's bundled UI assets (assets/ → ./public/) if missing or
+    changed: the animated ABI avatars (public/avatars/abi_*.svg) and the
+    run-indicator stylesheet (public/abi/abi-run.css). Same approach as
+    _install_bundled_elements(). Only abi_core's own, abi-prefixed files are
+    written — a project's own CSS and translations are never touched. See
+    .abi/specs/not-implemented/ux/chainlit-run-progress-indicator.md.
+    """
+    def _copy_tree(src, dest: Path) -> None:
+        for item in src.iterdir():
+            target = dest / item.name
+            if item.is_dir():
+                _copy_tree(item, target)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            src_bytes = item.read_bytes()
+            if not target.exists() or target.read_bytes() != src_bytes:
+                target.write_bytes(src_bytes)
+
+    try:
+        _copy_tree(importlib.resources.files("abi_core.ui") / "assets", Path("public"))
+    except Exception as e:
+        # Non-fatal: the run indicator falls back to Chainlit's default
+        # avatar and loading dot.
+        from abi_core.common.utils import abi_logging
+
+        abi_logging(f"[⚠️] Could not install bundled UI assets: {e}", level="warning")
+
+
+_install_bundled_assets()
+
+# Avatars for the run's parent step, by state — public/avatars/abi_*.svg. A
+# failed step needs none: Chainlit swaps the avatar for its own error icon.
+_AVATAR_RUNNING = "abi_running"
+_AVATAR_IDLE = "abi_idle"
+# How often the running step's elapsed time is refreshed between updates.
+_TICK_SECONDS = 1.0
 
 
 def _install_ws_connect_tracer() -> None:
@@ -128,6 +177,11 @@ _PLAN_CONFIRM_SENTINELS = {
     "approve": "__plan_confirm_approve__",
     "reject": "__plan_confirm_reject__",
     "modify": "__plan_confirm_modify__",
+}
+
+_PLAN_REVIEW_INTRO = {
+    "es": "Revisá el plan antes de empezar.",
+    "en": "Review the plan before I start.",
 }
 
 
@@ -331,99 +385,262 @@ async def _stream_to_agent(query: str) -> None:
     # Parent step for the whole run; a child step opens per plan task
     # (meta.task_key) once execution reaches it, so each task stays visible
     # in the chat instead of being overwritten by the next one — see
-    # .abi/specs/chainlit-per-step-ui.md. Heartbeats with no task_key yet
-    # (routing/planning, before any task starts) update the parent.
-    processing_step = cl.Step(name="Processing", type="run")
-    await processing_step.send()
+    # .abi/specs/chainlit-per-step-ui.md. Updates that declare a
+    # meta.phase drive a readable timeline (RunProgress); older agents that
+    # don't still get the plain agent-name/content behavior.
+    #
+    # `start` is set by hand: Chainlit only assigns it in `async with`, and
+    # its frontend renders a step without `start` as already finished
+    # (muted, no shimmer) — see
+    # .abi/specs/not-implemented/ux/chainlit-run-progress-indicator.md (D1).
+    # parent_id by hand for the same reason: outside `async with` a Step gets
+    # no parent, while every cl.Message is parented to the current run
+    # (on_message) — the step then sorted below the answer it preceded.
+    progress = RunProgress(getattr(cl.context.session, "language", None))
+    current_run = cl.context.current_step
+    processing_step = cl.Step(
+        name=progress.header(), type="run", default_open=True, auto_collapse=True,
+        metadata={"avatarName": _AVATAR_RUNNING},
+        parent_id=current_run.id if current_run else None,
+    )
+    processing_step.start = utc_now()
+    # `abi_run` lets a page that comes back to this conversation find the
+    # run in the database and follow it (abi_core.ui.run_follow): state,
+    # the label without the elapsed time, and a heartbeat.
+    def _mark_running() -> None:
+        processing_step.metadata = {
+            "avatarName": _AVATAR_RUNNING,
+            "abi_run": {"state": "running", "label": progress.label(), "heartbeat_at": utc_now_iso()},
+        }
 
-    current_task_key = None
+    _mark_running()
+    await processing_step.send()
+    run_task = asyncio.current_task()
+    thread_id = getattr(cl.context.session, "thread_id", None)
+
+    # One child step per plan task, reused for every update of that task.
+    # Independent tasks run in parallel and their updates interleave, so
+    # "a different task_key than the last one" does NOT mean the previous
+    # task finished — a step closes only when its task leaves
+    # meta.running_task_keys, the phase moves on, or the run ends.
+    task_steps: dict = {}
     task_step = None
 
     final_content = ""
     actions_sent = False
     collected_elements = []
+    outcome = "done"
+    # Set once an update without meta.phase renames the step after its
+    # agent — the ticker must not overwrite that name.
+    legacy_status = False
 
-    async for parsed in _get_client().stream(query, identity_chain=_build_identity_chain()):
-        response_type = parsed.get("response_type", "")
-        content = parsed.get("content", "")
+    async def _tick_elapsed() -> None:
+        # Status updates only arrive on phase changes and every heartbeat
+        # interval (15s), so without this the elapsed time would sit frozen
+        # in between. Server-side on purpose — no custom JS in the page.
+        # Every tick goes to the screen only; the database gets the
+        # heartbeat every HEARTBEAT_SECONDS (plus every real change, written
+        # where it happens) — see chainlit-run-progress-resume.md (G).
+        ticks = 0
+        while True:
+            await asyncio.sleep(_TICK_SECONDS)
+            ticks += 1
+            if processing_step.end is not None:
+                return
+            try:
+                if await read_stop_request(thread_id, processing_step.id):
+                    # Stop pressed on a page that came back to this
+                    # conversation (it can't reach this task directly).
+                    run_task.cancel()
+                    return
+                if not legacy_status:
+                    processing_step.name = progress.header()
+                    if progress.phases:
+                        processing_step.output = progress.timeline()
+                if ticks % int(HEARTBEAT_SECONDS / _TICK_SECONDS) == 0:
+                    _mark_running()
+                    await processing_step.update()
+                elif not legacy_status:
+                    await cl.context.emitter.update_step(processing_step.to_dict())
+            except Exception:
+                return
 
-        if response_type == "status" and content:
-            meta = parsed.get("meta", {}) or {}
-            task_key = meta.get("task_key")
-            agent = meta.get("agent")
+    ticker = asyncio.create_task(_tick_elapsed())
 
-            if task_key and task_key != current_task_key:
-                current_task_key = task_key
-                task_step = cl.Step(
-                    name=meta.get("task_label") or task_key,
-                    type="run",
-                    parent_id=processing_step.id,
-                )
-                await task_step.send()
-            elif not task_key and agent:
-                # No plan task running yet (routing/planning/synthesis) —
-                # the parent step is the only one visible, so it should
-                # show who's actually working, not a static "Processing".
-                # Was lost when the single-step design became parent+child
-                # steps — see .abi/specs/chainlit-active-agent-label.md.
-                processing_step.name = agent
+    async def _close_task_steps(keep=()) -> None:
+        for key, step in task_steps.items():
+            if key not in keep and step.end is None:
+                step.end = utc_now()
+                await step.update()
 
-            target_step = task_step or processing_step
-            target_step.output = content
-            await target_step.update()
-        elif response_type == "element" and content:
-            element = _build_element(content)
-            if element is not None:
-                collected_elements.append(element)
-        elif response_type == "text" and content:
-            final_content = content
-        elif response_type == "data" and content:
-            # Final result payload (AgentResponse.result). Render something
-            # human-readable: pull "result" if present, otherwise stringify
-            # the payload.
-            if isinstance(content, dict):
-                final_content = str(content.get("result", content))
-            else:
-                final_content = str(content)
-        elif response_type == "input_required" and content:
-            meta = parsed.get("meta", {}) or {}
-            if meta.get("action_type") == "plan_confirmation":
-                actions = [
-                    cl.Action(name="plan_confirm", payload={"choice": "approve"}, label="✅ Aprobar"),
-                    cl.Action(name="plan_confirm", payload={"choice": "reject"}, label="❌ Rechazar"),
-                    cl.Action(name="plan_confirm", payload={"choice": "modify"}, label="✏️ Modificar"),
-                ]
-                await cl.Message(content=content, actions=actions).send()
-                # Kept so on_plan_confirm can remove() them once any one is
-                # clicked — otherwise all three stay active/clickable after
-                # the user already chose one (double-submit risk).
-                cl.user_session.set("pending_plan_actions", actions)
-                actions_sent = True
-            elif meta.get("questions"):
-                # Structured clarification questions (see
-                # .abi/specs/deterministic-clarification-answers.md) — render
-                # a real form instead of asking the user to type "q1: ...".
-                # Submitting it sends a deterministic sentinel the backend
-                # recognizes without an LLM call (same reasoning as the
-                # plan-confirmation buttons above).
+    async def _finish_run(run_outcome: str) -> None:
+        """Stop the run indicator: summary name, final timeline, idle
+        avatar, `end` set. Idempotent — called before a message that must
+        appear after the finished step (plan confirmation), and again in
+        `finally` for every other exit, including exceptions."""
+        if processing_step.end is not None:
+            return
+        ticker.cancel()
+        await _close_task_steps()
+        progress.finish()
+        failed = run_outcome == "failed"
+        if progress.phases or failed:
+            processing_step.name = progress.summary(run_outcome)
+        if progress.phases:
+            processing_step.output = progress.timeline(failed=failed)
+        processing_step.is_error = failed
+        processing_step.metadata = {"avatarName": _AVATAR_IDLE, "abi_run": {"state": run_outcome}}
+        processing_step.end = utc_now()
+        await processing_step.update()
+
+    try:
+        async for parsed in _get_client().stream(query, identity_chain=_build_identity_chain()):
+            response_type = parsed.get("response_type", "")
+            content = parsed.get("content", "")
+
+            if response_type == "status" and content:
+                meta = parsed.get("meta", {}) or {}
+                task_key = meta.get("task_key")
+                agent = meta.get("agent")
+                phase = meta.get("phase")
+
+                if task_key:
+                    task_step = task_steps.get(task_key)
+                    # A closed step for the same key means a retry round
+                    # re-ran that task — it gets a fresh step.
+                    if task_step is None or task_step.end is not None:
+                        task_step = cl.Step(
+                            name=task_step_name(
+                                progress.lang, meta.get("task_label"), task_key,
+                                meta.get("task_index"), meta.get("task_total"),
+                            ),
+                            type="run",
+                            parent_id=processing_step.id,
+                        )
+                        task_step.start = utc_now()
+                        await task_step.send()
+                        task_steps[task_key] = task_step
+
+                running = meta.get("running_task_keys")
+                if running is not None:
+                    await _close_task_steps(keep=set(running) | {task_key})
+
+                if phase:
+                    if phase != "executing":
+                        await _close_task_steps()
+                    # A task's own detail goes to its child step; the
+                    # parent timeline only shows run-level notes (e.g. a
+                    # retry), not whichever parallel task spoke last.
+                    progress.advance(
+                        phase, detail=None if task_key else meta.get("phase_detail"),
+                        task_index=meta.get("task_index"), task_total=meta.get("task_total"),
+                        running=meta.get("running_task_indices"),
+                    )
+                    processing_step.name = progress.header()
+                    processing_step.output = progress.timeline()
+                    _mark_running()
+                    if task_step is not None and task_key:
+                        task_step.output = format_task_update(
+                            meta.get("phase_detail") or content, progress.lang,
+                            meta.get("task_deliverable"),
+                        )
+                        await task_step.update()
+                    await processing_step.update()
+                    continue
+
+                legacy_status = True
+                if not task_key and agent:
+                    # No plan task running yet (routing/planning/synthesis) —
+                    # the parent step is the only one visible, so it should
+                    # show who's actually working, not a static "Processing".
+                    # See .abi/specs/chainlit-active-agent-label.md.
+                    processing_step.name = agent
+
+                target_step = task_step or processing_step
+                target_step.output = content
+                await target_step.update()
+            elif response_type == "element" and content:
+                element = _build_element(content)
+                if element is not None:
+                    collected_elements.append(element)
+            elif response_type == "text" and content:
                 final_content = content
-                collected_elements.append(cl.CustomElement(
-                    name="ClarificationForm",
-                    props={"questions": meta["questions"], "answers": {}},
-                ))
-            else:
-                # The agent needs clarification (or plain input); surface as
-                # text. The next message continues the same session (same
-                # token).
-                final_content = content
-        elif response_type == "error" and content:
-            _spawn_background(_notify_admin_of_error(content, _get_client()._token))
-            final_content = "❌ The system is currently unavailable. Please try again later."
-
-    if task_step is not None:
-        await task_step.update()
-    processing_step.output = "Done"
-    await processing_step.update()
+            elif response_type == "data" and content:
+                # Final result payload (AgentResponse.result). Render something
+                # human-readable: pull "result" if present, otherwise stringify
+                # the payload.
+                if isinstance(content, dict):
+                    final_content = str(content.get("result", content))
+                else:
+                    final_content = str(content)
+            elif response_type == "input_required" and content:
+                meta = parsed.get("meta", {}) or {}
+                if meta.get("action_type") == "plan_confirmation" and meta.get("plan_view"):
+                    # Structured review card (PlanReview.jsx) — answers via
+                    # the same "plan_confirm" action callback as the plain
+                    # buttons below. See
+                    # .abi/specs/not-implemented/ux/chainlit-plan-review-card.md.
+                    outcome = "plan_ready"
+                    await _finish_run(outcome)
+                    await cl.Message(
+                        content=_PLAN_REVIEW_INTRO.get(progress.lang, _PLAN_REVIEW_INTRO["en"]),
+                        elements=[cl.CustomElement(
+                            name="PlanReview",
+                            props={"view": meta["plan_view"], "lang": progress.lang, "state": "pending"},
+                        )],
+                    ).send()
+                    actions_sent = True
+                elif meta.get("action_type") == "plan_confirmation":
+                    outcome = "plan_ready"
+                    await _finish_run(outcome)
+                    actions = [
+                        cl.Action(name="plan_confirm", payload={"choice": "approve"}, label="✅ Aprobar"),
+                        cl.Action(name="plan_confirm", payload={"choice": "reject"}, label="❌ Rechazar"),
+                        cl.Action(name="plan_confirm", payload={"choice": "modify"}, label="✏️ Modificar"),
+                    ]
+                    await cl.Message(content=content, actions=actions).send()
+                    # Kept so on_plan_confirm can remove() them once any one is
+                    # clicked — otherwise all three stay active/clickable after
+                    # the user already chose one (double-submit risk).
+                    cl.user_session.set("pending_plan_actions", actions)
+                    actions_sent = True
+                elif meta.get("questions"):
+                    # Structured clarification questions (see
+                    # .abi/specs/deterministic-clarification-answers.md) — render
+                    # a real form instead of asking the user to type "q1: ...".
+                    # Submitting it sends a deterministic sentinel the backend
+                    # recognizes without an LLM call (same reasoning as the
+                    # plan-confirmation buttons above).
+                    outcome = "needs_input"
+                    final_content = content
+                    collected_elements.append(cl.CustomElement(
+                        name="ClarificationForm",
+                        props={"questions": meta["questions"], "answers": {}},
+                    ))
+                else:
+                    # The agent needs clarification (or plain input); surface as
+                    # text. The next message continues the same session (same
+                    # token).
+                    outcome = "needs_input"
+                    final_content = content
+            elif response_type == "error" and content:
+                outcome = "failed"
+                _spawn_background(_notify_admin_of_error(content, _get_client()._token))
+                final_content = "❌ The system is currently unavailable. Please try again later."
+    except asyncio.CancelledError:
+        # The user pressed stop — not a failure.
+        outcome = "stopped"
+        raise
+    except Exception:
+        outcome = "failed"
+        raise
+    finally:
+        # Always stop the run indicator — an exception mid-stream must not
+        # leave the step shimmering forever.
+        try:
+            await _finish_run(outcome)
+        except Exception:
+            pass
 
     if not actions_sent:
         # Created only now, with real content already in hand — previously
@@ -436,6 +653,27 @@ async def _stream_to_agent(query: str) -> None:
         await response_msg.send()
 
     await _sync_session_token_to_thread()
+
+
+@cl.on_stop
+async def on_stop():
+    """Stop pressed on a page that came back to a running conversation: the
+    run lives in another session (maybe another replica), so ask it through
+    the database — its ticker checks every second. On the page that started
+    the run, Chainlit already cancelled it; nothing to do here."""
+    run_id = cl.user_session.get(FOLLOWED_RUN_KEY)
+    thread_id = getattr(cl.context.session, "thread_id", None)
+    if run_id and thread_id:
+        await request_stop(thread_id, run_id)
+
+
+@cl.on_chat_end
+async def on_chat_end():
+    """Leaving a conversation again stops following its run (the run itself
+    is untouched)."""
+    follower = cl.user_session.get(FOLLOWER_KEY)
+    if follower is not None:
+        follower.cancel()
 
 
 @cl.on_message
@@ -459,6 +697,14 @@ async def on_plan_confirm(action: cl.Action):
     cl.user_session.set("pending_plan_actions", None)
 
     choice = action.payload.get("choice")
+    feedback = str(action.payload.get("feedback") or "").strip()
+    if choice == "modify" and feedback:
+        # PlanReview sends the requested change along with "modify" — one
+        # turn instead of modify → "¿qué querés cambiar?" → reply.
+        from abi_core.agent.plan_confirmation import PLAN_MODIFY_FEEDBACK_SENTINEL
+
+        await _stream_to_agent(json.dumps({"_sentinel": PLAN_MODIFY_FEEDBACK_SENTINEL, "feedback": feedback}))
+        return
     await _stream_to_agent(_PLAN_CONFIRM_SENTINELS.get(choice, _PLAN_CONFIRM_SENTINELS["reject"]))
 
 

@@ -17,18 +17,18 @@ Apache 2.0.
 No. Works on CPU. GPU makes inference faster but isn't required.
 
 **How much RAM?**
-4 GB minimum for `qwen3:latest`. 8 GB recommended if running multiple agents + Weaviate.
+`qwen3:latest` is about 5 GB on disk and needs roughly that much free RAM to run. Count 16 GB for a project with several agents, Weaviate and MinIO on the same machine — or use a smaller model (`qwen3:1.7b`, `qwen3:4b`) or a cloud provider.
 
 **Can I use cloud LLMs instead of Ollama?**
-Yes. Set `LLM_CONFIG` to `{"provider": "openai", "model": "gpt-4o", "api_key": "..."}`. Supports OpenAI, Gemini, Grok, Anthropic, Bedrock, Azure, Vertex.
+Yes. Set `LLM_PROVIDER`, `MODEL_NAME` and `LLM_API_KEY` on the agent in `compose.yaml` and install the provider's extra (`abi-core-ai[openai]`, ...). Supports OpenAI, Gemini, Grok, Anthropic, Bedrock, Azure, Vertex. See [Model Serving](production/01-model-serving.md#cloud-providers-no-ollama-needed).
 
 ## Models
 
 **Why qwen3:latest as default?**
-Good tool-calling support, small size (~2 GB), fast inference. Best balance for agent workloads.
+Good tool-calling support and reliable structured output at a size that runs on a laptop CPU. Swap it for any model your hardware or provider offers.
 
 **Can different agents use different models?**
-Yes. Each agent has its own `LLM_CONFIG` in `config/config.py`. One can use Ollama, another OpenAI.
+Yes. Each agent reads its own `LLM_PROVIDER`/`MODEL_NAME`. One can use Ollama, another OpenAI.
 
 **Which models support tool calling?**
 - qwen3:latest ✅ (excellent)

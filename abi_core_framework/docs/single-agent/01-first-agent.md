@@ -5,7 +5,7 @@ You have a project. Now let's write an actual agent with steps, a task, and an A
 ## Create the agent
 
 ```bash
-abi-core add agent greeter \
+abi-core add agent --name greeter \
   --description "Greets users and answers questions" \
   --with-web-interface
 ```
@@ -23,7 +23,6 @@ agents/greeter/
 ├── agent_greeter.py    ← Agent class (identity + AI model config)
 ├── steps.py            ← Your step functions
 ├── tasks.py            ← Your task functions
-├── prompts.py          ← All prompts live here
 ├── config/config.py    ← AI model, ports, env vars
 ├── web_interface.py    ← HTTP endpoints
 ├── main.py             ← Entry point: agent.run()
@@ -32,7 +31,7 @@ agents/greeter/
 
 ## Write a step
 
-A step is a function that does one thing — in this case, ask the AI to generate a greeting. Edit `agents/greeter/steps.py`:
+A step is a function that does one thing — in this case, ask the AI to generate a greeting. Replace the contents of `agents/greeter/steps.py`:
 
 ```python
 from app import agent
@@ -50,7 +49,7 @@ async def greet(text):
 
 ## Write the prompt
 
-Edit `agents/greeter/prompts.py`:
+The scaffold doesn't create a prompts file — add one. Create `agents/greeter/prompts.py`:
 
 ```python
 GREET_PROMPT = """You are a friendly assistant. The user said:
@@ -63,10 +62,9 @@ Respond warmly and helpfully. Keep it short.
 
 ## Write a task
 
-A task runs steps and sends progress updates to the user. Edit `agents/greeter/tasks.py`:
+A task runs steps and sends progress updates to the user. Replace the contents of `agents/greeter/tasks.py`:
 
 ```python
-import json
 from app import agent
 from abi_core.agent.agent_response import AgentResponse
 
@@ -74,8 +72,7 @@ from abi_core.agent.agent_response import AgentResponse
 @agent.task(name="greet_user", task_id="task-greet")
 async def greet_user(query):
     """Greet the user."""
-    data = json.loads(query) if isinstance(query, str) else query
-    text = data.get("text", "")
+    text = query  # the text exactly as the user sent it
 
     yield AgentResponse.status("Thinking...")
     result = await agent.execute_step("greet", text=text)
@@ -99,8 +96,8 @@ curl -X POST http://localhost:8002/stream \
 ## What happened
 
 1. The web interface received your HTTP request
-2. It wrapped your text into a JSON message: `{"route": "user_request", "text": "Hey there!"}`
-3. The task `greet_user` ran
+2. It resolved your session and passed your text, unchanged, to the agent
+3. The task `greet_user` ran with `query="Hey there!"`
 4. It called `agent.execute_step("greet")` which asked the AI model for a response
 5. The response streamed back to you in real-time
 
@@ -108,7 +105,7 @@ curl -X POST http://localhost:8002/stream \
 
 - Steps are simple functions. They receive data, call the AI, return a result.
 - Tasks run steps and send progress updates to the user.
-- Prompts go in `prompts.py`. Never write them inside your functions.
+- Keep prompts in their own file (`prompts.py`), not inline in your functions — easier to read, review, and change.
 - Config goes in `config/config.py`. Never hardcode addresses or model names.
 
 ## Next step

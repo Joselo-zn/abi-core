@@ -62,20 +62,21 @@ a session, then send its token as a bearer token on each request.
 
 ```bash
 # 1. Start a session — the backend returns an opaque token
-curl -X POST http://localhost:8000/session/start
+curl -X POST http://localhost:8002/session/start
 # → {"session_token": "abi_sess_7f3a…b2c1", "expires_at": 1780000000.0}
 
 # 2. Use the token on every request. The backend resolves it to a context_id;
 #    the body no longer needs (or can spoof) a context_id.
-curl -X POST http://localhost:8000/stream \
+curl -X POST http://localhost:8002/stream \
   -H "Authorization: Bearer abi_sess_7f3a…b2c1" \
   -H "Content-Type: application/json" \
   -d '{"query": "create a python pong game"}'
 
 # 3. A follow-up in the SAME session (same token) shares the context —
 #    e.g. answering a clarification from the previous turn.
-curl -X POST http://localhost:8000/stream \
+curl -X POST http://localhost:8002/stream \
   -H "Authorization: Bearer abi_sess_7f3a…b2c1" \
+  -H "Content-Type: application/json" \
   -d '{"query": "q1: use pygame"}'
 ```
 
@@ -115,7 +116,7 @@ didn't resolve:
 X-Session-Resolved: false
 ```
 
-`AgentStreamClient` (used by the bundled Chainlit UI and the TUI) checks this
+`AgentStreamClient` (used by the bundled Chainlit UI) checks this
 header and clears its cached token when it sees it, so the *next* message
 fetches a fresh one via `/session/start` instead of repeating the dead token
 forever. If you're driving `/stream` with your own HTTP client, check this
@@ -205,7 +206,7 @@ recent_text = format_conversation_summary(session_ctx.get("conversation_summary"
 ```
 
 ```{note}
-Availability isn't the same as correct use — putting the recent-conversation text in front of a model doesn't guarantee it merges relevant details instead of just pattern-matching the latest message. If you see that happen, add a short `SystemMessage` explaining *why* the block matters (a downstream call that only sees the field you write, nothing else) — that's what fixed it for the reference Orchestrator. See `.abi/specs/implemented/orchestrator-conversation-memory.md`.
+Availability isn't the same as correct use — putting the recent-conversation text in front of a model doesn't guarantee it merges relevant details instead of just pattern-matching the latest message. If you see that happen, add a short `SystemMessage` explaining *why* the block matters (a downstream call that only sees the field you write, nothing else) — that's what fixed it for the reference Orchestrator.
 ```
 
 ## Concurrency & latency (know the trade-offs)

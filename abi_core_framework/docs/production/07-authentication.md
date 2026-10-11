@@ -140,3 +140,7 @@ don't share the link beyond the one person it's for.
 Leave `OAUTH_GOOGLE_CLIENT_ID` unset and the UI behaves exactly as before —
 anonymous sessions, no persistence, nothing in this page applies. Turning
 auth on and off is a config-only change; no code to revert.
+
+## Next step
+
+👉 [Code Execution Sandbox](08-sandbox.md)

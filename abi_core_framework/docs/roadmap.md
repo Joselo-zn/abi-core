@@ -30,7 +30,6 @@ What's working today:
 What's being worked on:
 
 - 🔄 Capability matching (`abi_core.capabilities`) — task-centric model selection with measured operational envelopes; the matching/profiling logic is built and testable, but not yet wired into any agent's model selection
-- 🔄 TUI improvements — interactive terminal dashboard
 - 🔄 Result validation — verify agent outputs against schemas
 - 🔄 Swarm knowledge base — persistent learning across sessions
 
@@ -57,9 +56,9 @@ Ideas and directions:
 | Built-in memory (`abi_core.memory`) | 🔶 Alpha |
 | Orchestrator/Planner/Builder reference agents | 🔶 Alpha |
 | Ephemeral agents | 🔶 Alpha |
-| Documentation | ✅ Complete |
+| Documentation | 🔄 Being expanded |
 | Examples | ✅ Published |
 
 ---
 
-*Last updated: September 2026*
+*Last updated: October 2026*

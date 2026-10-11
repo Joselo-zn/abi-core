@@ -61,7 +61,9 @@ never needs a framework code change again:
 """
 
 import asyncio
-from typing import Any, Dict
+import json
+import os
+from typing import Any, Dict, Optional
 
 
 def _extract_text(content: Any) -> str:
@@ -107,6 +109,74 @@ _PROVIDER_MAP = {
     "azure": ("azure_openai", "langchain-openai"),
     "vertex": ("google_vertexai", "langchain-google-vertexai"),
 }
+
+
+def parse_extra_params(raw: Optional[str], var: str = "LLM_EXTRA_PARAMS") -> Dict[str, Any]:
+    """Parse a JSON object of LangChain constructor kwargs from an env var.
+    Empty or unset: ``{}``. Invalid JSON, or JSON that is not an object,
+    raises ``ValueError`` naming the variable, so a bad value fails at
+    start-up instead of at the first model call."""
+    if raw is None or not raw.strip():
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{var} is not valid JSON: {e}") from e
+    if not isinstance(value, dict):
+        raise ValueError(f"{var} must be a JSON object, got {type(value).__name__}")
+    return value
+
+
+def llm_config_from_env(
+    *,
+    model_env: str = "MODEL_NAME",
+    default_model: str = "qwen3:latest",
+    default_ollama_host: str = "http://localhost:11434",
+    ollama_extra_params: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build an ``LLM_CONFIG`` for ``create_llm`` from the environment —
+    the one place every agent's config reads it from, so a parameter set
+    in the deployment reaches LangChain.
+
+    - ``LLM_PROVIDER`` (default ``ollama``), the model from ``model_env``.
+    - ``LLM_TEMPERATURE``: omitted unless set (Claude 4.7+ rejects any).
+    - ``LLM_BASE_URL``; without it, ``OLLAMA_HOST`` only for Ollama — a
+      hosted provider gets no base_url rather than the Ollama server's.
+    - ``LLM_API_KEY`` and the cloud keys (``AWS_REGION``,
+      ``AZURE_DEPLOYMENT``, ``AZURE_ENDPOINT``, ``VERTEX_PROJECT``,
+      ``VERTEX_LOCATION``); ``create_llm`` uses only its provider's.
+    - ``extra_params``: ``ollama_extra_params`` (Ollama only), then
+      ``LLM_EXTRA_PARAMS`` (a JSON object) over them — the environment wins.
+
+    An empty variable counts as unset (compose passes unset vars as "").
+    See .abi/specs/implemented/llm-params-from-config.md.
+    """
+    def env(name: str) -> Optional[str]:
+        value = os.getenv(name)
+        return value if value not in (None, "") else None
+
+    provider = (env("LLM_PROVIDER") or "ollama").strip().lower()
+    temperature = env("LLM_TEMPERATURE")
+    base_url = env("LLM_BASE_URL")
+    if base_url is None and provider == "ollama":
+        base_url = env("OLLAMA_HOST") or default_ollama_host
+
+    extra = dict(ollama_extra_params or {}) if provider == "ollama" else {}
+    extra.update(parse_extra_params(os.getenv("LLM_EXTRA_PARAMS")))
+
+    return {
+        "provider": provider,
+        "model": env(model_env) or default_model,
+        "temperature": float(temperature) if temperature is not None else None,
+        "base_url": base_url,
+        "api_key": env("LLM_API_KEY") or "",
+        "aws_region": env("AWS_REGION") or "us-east-1",
+        "azure_deployment": env("AZURE_DEPLOYMENT") or "",
+        "azure_endpoint": env("AZURE_ENDPOINT") or "",
+        "vertex_project": env("VERTEX_PROJECT") or "",
+        "vertex_location": env("VERTEX_LOCATION") or "us-central1",
+        "extra_params": extra,
+    }
 
 
 def create_llm(llm_config: Dict[str, Any]):
@@ -221,6 +291,75 @@ def create_llm(llm_config: Dict[str, Any]):
     return llm
 
 
+async def _stream_agent_with_timeout(agent_instance, inputs: dict, config: dict, chunk_timeout: float):
+    """Consume `agent.astream()` bounding EACH chunk's wait, instead of a
+    bare `async for` — same pattern as `abi_a2a.py::agent_connection()`'s
+    InactivityWatchdog. A single `asyncio.wait_for()` around the WHOLE
+    call can't recover if the underlying model call never yields control
+    back to the event loop (see Path A's own timeout comment below) — the
+    cancellation itself never completes. Bounding each chunk means a
+    genuinely stalled stream surfaces as a clear TimeoutError within
+    `chunk_timeout` seconds, and — just as important — leaves the event
+    loop free between chunks for the step's own heartbeat to actually run.
+    Reproduced live 2026-09-29: two ephemerals running this exact path
+    concurrently produced zero heartbeat ticks over a full 600s step
+    timeout — the event loop was blocked solid, not just slow.
+
+    `stream_mode="messages"`, not `"updates"` — confirmed live 2026-10-01
+    this distinction is the whole point, not a style choice. `"updates"`
+    only yields once a full graph node (e.g. the entire LLM call) finishes,
+    so a single generation that legitimately takes longer than
+    `chunk_timeout` (measured live: ~6.5 tok/s on CPU-only Ollama, a few
+    hundred tokens easily exceeds 120s) produced ZERO chunks the whole time
+    and got killed as "stalled" while `llama-server`'s own log showed it
+    steadily generating the entire way through — a false positive that then
+    discarded all that real progress on retry. `"messages"` yields a
+    `(message_chunk, metadata)` tuple per token (confirmed against the
+    installed langgraph==1.2.12: hundreds of chunks over the same call,
+    not one), so `chunk_timeout` now measures actual token-level
+    inactivity, not graph-step duration. See .abi/specs/not-implemented/
+    stream-mode-updates-false-stall-detection.md.
+
+    The FIRST chunk gets no `chunk_timeout` — confirmed live 2026-10-01:
+    with Ollama's single generation slot (`-np 1`) genuinely free, time to
+    first chunk was 10.3s, but a request queued behind another real
+    generation can legitimately wait as long as that other generation
+    takes (observed: 20+ minutes for a long file) before the slot frees up
+    at all — zero chunks the whole time, same as queueing in any
+    single-server system. That's a legitimate wait, not inactivity (same
+    "no importa que tarde" tradeoff already accepted for the outer
+    `node.timeout` backstop), so it isn't bounded here — the outer
+    `ToolGraphNode.timeout` backstop still covers "this request never gets
+    a turn at all". Only once streaming has genuinely begun does a gap
+    become suspicious enough to bound with `chunk_timeout`.
+
+    Raises `asyncio.TimeoutError` if a token stops arriving mid-stream
+    (never for the wait before the first one).
+    """
+    final = ""
+    stream_iter = agent_instance.astream(inputs, config=config, stream_mode="messages").__aiter__()
+    first_chunk = True
+    while True:
+        try:
+            if first_chunk:
+                chunk, _metadata = await stream_iter.__anext__()
+                first_chunk = False
+            else:
+                chunk, _metadata = await asyncio.wait_for(stream_iter.__anext__(), timeout=chunk_timeout)
+        except StopAsyncIteration:
+            break
+        msg_type = type(chunk).__name__
+        content = getattr(chunk, "content", "")
+        # Confirmed live: a tool's result streams as a plain `ToolMessage`
+        # (not `ToolMessageChunk`) even under stream_mode="messages" — must
+        # still be excluded from the accumulated final text, same as before.
+        if content and msg_type != "ToolMessage":
+            # Gemini streams content as a list of blocks, not a string —
+            # live 2026-10-10 every code agent crashed here on its final turn.
+            final += _extract_text(content)
+    return final
+
+
 async def invoke(
     llm_config: Dict[str, Any],
     prompt: str,
@@ -229,14 +368,28 @@ async def invoke(
     system_prompt: str = None,
     required_tools: list = None,
     call_timeout: float = None,
+    recursion_limit: int = None,
+    checkpointer: Any = None,
 ) -> str:
     """Unified LLM invocation with optional tool enforcement.
+
+    recursion_limit: max LangGraph steps for the tool-calling agent (Path
+    B). Each tool call costs two steps (model turn + tool node). Default 10
+    — enough for a one-file task, a guard against endless tool loops. A
+    caller whose task needs more calls (e.g. the integration reviewer:
+    read 5 files + write 5) must pass a budget sized to the work.
 
     Args:
         llm_config: Provider config dict for create_llm().
         prompt: The user/system message to send.
         tools: Optional list of LangChain tools.
-        thread_id: Optional session ID for conversation memory.
+        thread_id: Key of the tool-calling conversation (Path B) in
+            ``checkpointer``. On its own it keeps nothing between calls:
+            without a ``checkpointer`` each call gets a fresh
+            ``MemorySaver``, and a call without tools (Path A) ignores it.
+            For memory across requests, use ``checkpointer`` with the same
+            ``thread_id``, or the agent memory API
+            (``abi_core.memory``).
         system_prompt: Optional system instructions.
         required_tools: List of tool names that MUST be called.
             If declared, the framework enforces usage with retry + fallback.
@@ -245,6 +398,11 @@ async def invoke(
             same as everywhere else in this framework — pass it explicitly
             only for a call site proven to need it. See "Path A timeout"
             below for why this exists at all.
+        checkpointer: Optional LangGraph checkpointer for the tool-calling
+            agent (Path B), used with ``thread_id``. Default: a fresh
+            ``MemorySaver`` per call, so the conversation ends with the call.
+            Pass one that outlives the call to read the conversation back
+            later (a code agent answering the reviewer about what it did).
 
     Returns:
         The text content of the LLM response.
@@ -329,8 +487,9 @@ async def invoke(
         actual_tools = tracker.wrapped_tools
         enforced_system_prompt += get_enforcement_system_prompt(required_tools)
 
-    checkpointer = None
-    if thread_id:
+    if checkpointer is not None and not thread_id:
+        raise ValueError("invoke(checkpointer=...) needs a thread_id")
+    if checkpointer is None and thread_id:
         from langgraph.checkpoint.memory import MemorySaver
         checkpointer = MemorySaver()
 
@@ -343,23 +502,53 @@ async def invoke(
     abi_logging(f'CREATE AGENT CALLED WITH TOOLS {[t.name for t in actual_tools]}')
     inputs = {"messages": [{"role": "user", "content": prompt}]}
     config = {"configurable": {"thread_id": thread_id}} if thread_id else {}
-    config["recursion_limit"] = 10  # Prevent infinite tool call loops
+    # Prevent infinite tool call loops — sized by the caller when the task
+    # needs more than a handful of calls. A fixed 10 cut the integration
+    # reviewer off live (2026-10-04) after 4 reads + 1 write of 5 files.
+    config["recursion_limit"] = recursion_limit or 10
 
     final_response = None
-    async for chunk in agent.astream(inputs, config=config, stream_mode="updates"):
-        for _node, node_data in chunk.items():
-            if "messages" in node_data:
-                for msg in node_data["messages"]:
-                    msg_type = type(msg).__name__
-                    content = getattr(msg, "content", "")
-                    tool_calls = getattr(msg, "tool_calls", [])
-                    abi_logging(
-                        f"[🔄] Agent msg: type={msg_type}, "
-                        f"content={str(content)[:100] if content else '(empty)'}, "
-                        f"tool_calls={len(tool_calls)}"
-                    )
-                    if content and msg_type != "ToolMessage":
-                        final_response = content
+    if call_timeout is None:
+        # No cap unless the caller asks — same "prove it's needed per call
+        # site" rule as Path A. Genuinely unprotected against a stalled
+        # stream (see _stream_agent_with_timeout's docstring) if left
+        # unset; changing the default for every existing caller is out of
+        # scope here.
+        async for chunk in agent.astream(inputs, config=config, stream_mode="updates"):
+            for _node, node_data in chunk.items():
+                if "messages" in node_data:
+                    for msg in node_data["messages"]:
+                        msg_type = type(msg).__name__
+                        content = getattr(msg, "content", "")
+                        tool_calls = getattr(msg, "tool_calls", [])
+                        abi_logging(
+                            f"[🔄] Agent msg: type={msg_type}, "
+                            f"content={str(content)[:100] if content else '(empty)'}, "
+                            f"tool_calls={len(tool_calls)}"
+                        )
+                        if content and msg_type != "ToolMessage":
+                            final_response = _extract_text(content)
+    else:
+        try:
+            final_response = await _stream_agent_with_timeout(agent, inputs, config, call_timeout)
+        except asyncio.TimeoutError:
+            abi_logging(
+                f"[⚠️] Agent stream stalled (no chunk for {call_timeout}s) — "
+                "retrying once with a fresh agent",
+                level="warning",
+            )
+            retry_llm = create_llm(llm_config)
+            retry_agent = create_agent(
+                model=retry_llm, tools=actual_tools,
+                system_prompt=enforced_system_prompt, checkpointer=checkpointer,
+            )
+            try:
+                final_response = await _stream_agent_with_timeout(retry_agent, inputs, config, call_timeout)
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f"Agent stream stalled twice ({call_timeout}s each) — "
+                    "the model server appears stuck, not just slow."
+                )
 
     # ── Enforcement: check if required tools were used ──────────
     if tracker:
@@ -368,23 +557,35 @@ async def invoke(
             abi_logging(f"[⚠️] Required tools not used by LLM: {missing}. Retrying with enforcement...")
 
             # Retry: explicit instruction to use the tools
+            from abi_core.common.prompts.framework import ENFORCEMENT_RETRY_SYSTEM_PROMPT
             retry_prompt = tracker.get_enforcement_prompt(final_response or "")
             retry_agent = create_agent(
                 model=llm,
                 tools=actual_tools,
-                system_prompt="You MUST call the required tools. Do not explain. Just call them.",
+                system_prompt=ENFORCEMENT_RETRY_SYSTEM_PROMPT,
                 checkpointer=None,
             )
             retry_inputs = {"messages": [{"role": "user", "content": retry_prompt}]}
             retry_config = {"recursion_limit": 10}  # Prevent infinite loops
-            async for chunk in retry_agent.astream(retry_inputs, config=retry_config, stream_mode="updates"):
-                for _node, node_data in chunk.items():
-                    if "messages" in node_data:
-                        for msg in node_data["messages"]:
-                            msg_type = type(msg).__name__
-                            content = getattr(msg, "content", "")
-                            if content and msg_type != "ToolMessage":
-                                final_response = content
+            if call_timeout is None:
+                async for chunk in retry_agent.astream(retry_inputs, config=retry_config, stream_mode="updates"):
+                    for _node, node_data in chunk.items():
+                        if "messages" in node_data:
+                            for msg in node_data["messages"]:
+                                msg_type = type(msg).__name__
+                                content = getattr(msg, "content", "")
+                                if content and msg_type != "ToolMessage":
+                                    final_response = _extract_text(content)
+            else:
+                try:
+                    final_response = await _stream_agent_with_timeout(
+                        retry_agent, retry_inputs, retry_config, call_timeout
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        f"Agent enforcement-retry stream stalled ({call_timeout}s) — "
+                        "the model server appears stuck, not just slow."
+                    )
 
             # Check again after retry
             still_missing = tracker.get_missing()

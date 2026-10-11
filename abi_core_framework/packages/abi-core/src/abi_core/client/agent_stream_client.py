@@ -1,9 +1,8 @@
 """Low-level HTTP/SSE client for an ABI agent's web interface.
 
 One implementation of session handling + SSE parsing, shared by every UI
-(Chainlit, the TUI, future ones) instead of each reimplementing it. Extracted
-from abi_core.ui.chainlit_app after abi_core.tui.services.OrchestratorClient
-was found to have grown a second, session-less copy of the same logic.
+(Chainlit, future ones) instead of each reimplementing it. Extracted from
+abi_core.ui.chainlit_app.
 """
 
 import ast
@@ -89,7 +88,7 @@ class AgentStreamClient:
         authoritative server-side: the orchestrator derives context_id from
         it deterministically and never falls back to an anonymous session on
         failure. Omitted entirely (None) by callers that have no identity to
-        offer (the TUI, or chatui when no user is logged in) — those keep
+        offer (chatui when no user is logged in) — those keep
         using the opaque Bearer token below, unchanged.
 
         Connection/parse failures are surfaced as a single

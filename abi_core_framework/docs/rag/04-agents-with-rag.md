@@ -3,14 +3,7 @@
 Build an agent that answers questions using your own documents.
 
 ```{note}
-`store_document`/`search_documents` below are **not** built-in MCP tools — the Semantic
-Layer ships with agent/tool discovery tools only (`find_agent`, `recommend_agents`,
-`search_tool_registry`, ...). This page shows the pattern for adding your own document
-store: an `@mcp.tool`-decorated pair in the Semantic Layer's `main.py`, following the
-same shape as the built-in `register_tool`/`search_tool_registry`, backed by a Weaviate
-collection of your own. Add those two tools to the Semantic Layer first — then the
-`MCPToolkit` calls below work exactly as shown, since `MCPToolkit` dynamically proxies
-to whatever tool names the Semantic Layer's MCP server actually registers.
+`store_document`/`search_documents` are **not** built-in — the Semantic Layer ships with agent and tool discovery only. Add the two tools first, as shown in [Extending the Semantic Layer](../semantic-layer/04-extending-semantic-layer.md). After that, the `MCPToolkit` calls below work as written: `MCPToolkit` calls whatever tool names the Semantic Layer registers.
 ```
 
 ## The pattern
@@ -35,16 +28,11 @@ from abi_core.common.semantic_tools import MCPToolkit
 async def search_knowledge(question):
     """Search stored documents for relevant context."""
     toolkit = MCPToolkit()
-    results = await toolkit.search_documents(query=question, max_results=3)
+    found = await toolkit.search_documents(query=question, max_results=3)
+    docs = found if isinstance(found, list) else []  # a dict means {"error": ...}
 
-    if "error" in results:
-        return {"context": "", "sources": []}
-
-    # Combine relevant documents into context
-    context = "\n".join(
-        doc.get("content", "") for doc in results if isinstance(doc, dict)
-    )
-    return {"context": context, "sources": results}
+    context = "\n".join(doc["content"] for doc in docs)
+    return {"context": context, "sources": docs}
 
 
 @agent.step(name="answer_with_context")
@@ -67,15 +55,21 @@ Answer:"""
 And your `tasks.py`:
 
 ```python
-import json
 from app import agent
 from abi_core.agent.agent_response import AgentResponse
 
 
 @agent.task(name="ask", task_id="task-ask")
 async def ask(query):
-    data = json.loads(query) if isinstance(query, str) else query
-    question = data.get("text", "")
+    # "Index: <text>" stores a document; anything else is a question.
+    if query.startswith("Index:"):
+        stored = await agent.execute_step(
+            "index_document", content=query[len("Index:"):].strip(), metadata={"source": "chat"}
+        )
+        yield AgentResponse.result(stored)
+        return
+
+    question = query
 
     yield AgentResponse.status("Searching knowledge base...")
     knowledge = await agent.execute_step("search_knowledge", question=question)
@@ -99,7 +93,7 @@ async def ask(query):
 
 ## Indexing documents
 
-Create a step or script that stores your documents:
+Add this step to `steps.py` — the task above calls it for every message that starts with `Index:`:
 
 ```python
 @agent.step(name="index_document")
@@ -110,7 +104,7 @@ async def index_document(content, metadata):
     return result
 ```
 
-Call it to index your data:
+You can also call it from any other task or script to load documents in bulk:
 
 ```python
 await agent.execute_step(

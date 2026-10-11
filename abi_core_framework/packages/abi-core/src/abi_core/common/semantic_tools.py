@@ -22,6 +22,27 @@ from a2a.types import AgentCard
 AGENT_CARD_PATH = os.getenv('AGENT_CARD')
 _mcp_config = get_mcp_server_config()
 
+# (host, port, tool_name) -> whether the tool's structuredContent wraps its
+# return value as {"result": ...}. Read once per tool from its outputSchema.
+_wrapped_output: Dict[tuple, bool] = {}
+
+
+def _schema_wraps_result(tool_name: str, schema: Optional[dict]) -> bool:
+    """Whether a tool's outputSchema is the server's wrapper for a non-object
+    return (list, str, int, None...): fastmcp marks it with
+    ``x-fastmcp-wrap-result``; the MCP SDK's FastMCP names it ``<tool>Output``
+    with ``result`` as its only property. A tool that returns a real dict
+    with a ``result`` key has neither, so it is never unwrapped."""
+    if not schema:
+        return False
+    if schema.get("x-fastmcp-wrap-result"):
+        return True
+    return (
+        schema.get("title") == f"{tool_name}Output"
+        and set((schema.get("properties") or {}).keys()) == {"result"}
+        and schema.get("required") == ["result"]
+    )
+
 
 class MCPToolkit:
     """
@@ -218,6 +239,19 @@ class MCPToolkit:
                     if _has and mcp_response.content and isinstance(mcp_response.content, list) and hasattr(mcp_response.content[0], 'text'):
                         abi_logging(f"[📡] Response text: {mcp_response.content[0].text[:300]}")
 
+                    # Structured result first: the whole return value, also
+                    # when it is a list (content[0] holds only its first
+                    # element on the MCP SDK's FastMCP) or empty.
+                    structured = getattr(mcp_response, 'structuredContent', None)
+                    wraps = None
+                    if structured is not None and not getattr(mcp_response, 'isError', False):
+                        wraps = await self._wraps_result(mcp_session, tool_name)
+                    if wraps is not None:
+                        if wraps:
+                            structured = structured.get("result")
+                        abi_logging(f"[✅] Tool '{tool_name}' executed successfully")
+                        return {} if structured is None else structured
+
                     if hasattr(mcp_response, 'content') and mcp_response.content:
                         try:
                             # Parse response content
@@ -248,6 +282,25 @@ class MCPToolkit:
             abi_logging(f'[❌] Session error calling tool {tool_name}: {e}')
             return {"error": f"Session error: {str(e)}"}
     
+    async def _wraps_result(self, mcp_session, tool_name: str) -> Optional[bool]:
+        """Whether `tool_name`'s structuredContent is {"result": <value>}.
+        Asked once per tool (list_tools on the open session), then cached.
+        None when the schemas can't be read: the caller falls back to
+        parsing `content`."""
+        key = (self.mcp_config.host, self.mcp_config.port, tool_name)
+        if key not in _wrapped_output:
+            try:
+                listed = await mcp_session.list_tools()
+            except Exception as e:
+                abi_logging(f"[⚠️] Could not read output schemas: {e}", level="warning")
+                return None
+            for t in listed.tools:
+                _wrapped_output[(self.mcp_config.host, self.mcp_config.port, t.name)] = (
+                    _schema_wraps_result(t.name, getattr(t, "outputSchema", None))
+                )
+            _wrapped_output.setdefault(key, False)
+        return _wrapped_output[key]
+
     async def list_tools(self) -> List[str]:
         """
         List all available MCP tools from the server.
@@ -457,40 +510,46 @@ async def tool_find_agent(query: str, exclude_ephemeral: bool = False) -> Option
             return None
 
 @tool
-async def tool_list_agents(query: str) -> List[AgentCard]:
-    """List Agents that can complete especific task"""
-    
+async def tool_list_agents(query: str, max_agents: int = 5) -> List[AgentCard]:
+    """List Agents that can complete especific task.
+
+    Uses the semantic layer's `recommend_agents` tool (ranked semantic
+    search). It read `resource://agent_cards/list/{query}` before, which no
+    semantic layer defines (only `agent_cards/count` and
+    `agent_cards/{card_name}`), so it always failed.
+    """
+    agents = []
     async with client.init_session(
         _mcp_config.host,
         _mcp_config.port,
         _mcp_config.transport
     ) as mcp_session:
-        
+
         context = build_semantic_context_from_card(
             AGENT_CARD_PATH,
-            tool_name="list_agents",
+            tool_name="recommend_agents",
             query=query
         )
-        resource = f'resource://agent_cards/list/{query}'
         abi_logging(f"[🔍] Listing agents matching query {query}")
-        mcp_response = await client.find_resource(mcp_session, resource)
-        agents = []
-        if hasattr(mcp_response, 'content') and mcp_response.content:
-            try:
-                for content in mcp_response.content:
-                    agent_card_json = json.loads(content.text)
-                    # Skip service/tool cards
-                    if agent_card_json.get("service_id") or agent_card_json.get("service_type"):
-                        continue
-                    if not agent_card_json.get("capabilities"):
-                        continue
-                    agents.append(build_agent_card(agent_card_json)[0])
-                return agents
-            except Exception as e:
-                abi_logging(f'[X] Error parsing agent cards {e}')
-        else:
-            abi_logging(f'No Agents found')
+        mcp_response = await client.recommend_agents(mcp_session, query, max_agents, context)
+        if not (hasattr(mcp_response, 'content') and mcp_response.content):
+            abi_logging('No Agents found')
             return agents
+        try:
+            results = json.loads(mcp_response.content[0].text)
+            for item in results or []:
+                agent_card_json = item.get("agent") if isinstance(item, dict) else None
+                if not isinstance(agent_card_json, dict):
+                    continue
+                # Skip service/tool cards
+                if agent_card_json.get("service_id") or agent_card_json.get("service_type"):
+                    continue
+                if not agent_card_json.get("capabilities"):
+                    continue
+                agents.append(build_agent_card(agent_card_json)[0])
+        except Exception as e:
+            abi_logging(f'[X] Error parsing agent cards {e}')
+    return agents
 
 
 @tool

@@ -9,8 +9,9 @@ from uuid import uuid4
 
 import httpx
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
+from langgraph.config import get_stream_writer
 
 from a2a.client import Client, ClientFactory, ClientConfig
 from abi_core.common.utils import get_mcp_server_config, abi_logging
@@ -173,6 +174,11 @@ class AgentInteractionFlow:
         # .abi/specs/chainlit-per-step-ui.md.
         self.current_node_key: Optional[str] = None
         self.current_node_label: Optional[str] = None
+        # node_keys that have produced output and not finished yet, in start
+        # order. Independent plan tasks run in parallel, so "the current
+        # node" alone can't tell a UI which tasks are still running — see
+        # .abi/specs/not-implemented/ux/chainlit-run-progress-indicator.md.
+        self.running_node_keys: list[str] = []
 
     def add_node(self, node) -> None:
         """Add a node to the workflow graph"""
@@ -211,10 +217,27 @@ class AgentInteractionFlow:
                 # This should be set by the orchestrator when creating the workflow
                 raise ValueError("source_card not provided in node attributes")
             
+            # Live progress — emitted via LangGraph's custom stream mode as
+            # each chunk arrives (heartbeats included), not just accumulated
+            # here. Without this, run_workflow()'s only view of this node
+            # was its final return value — LangGraph has no visibility into
+            # a node's own internal yields otherwise, so nothing reached the
+            # user until the ENTIRE node (the whole ephemeral task, possibly
+            # many minutes) finished. Confirmed live 2026-10-01: a real
+            # execution produced zero new SSE lines over 15 real minutes of
+            # monitoring, despite the ephemeral emitting a heartbeat every
+            # 15s the whole time — this was the actual chokepoint, one level
+            # above the stream_mode="updates" LLM-call bug fixed earlier
+            # today. `(node.id, event)` so run_workflow() can attribute each
+            # live chunk to the right task even with multiple nodes running
+            # in parallel. See .abi/specs/not-implemented/
+            # workflow-node-buffers-until-completion.md.
+            writer = get_stream_writer()
             results = []
             async for event in node.run_node(query, task_id, context_id, source_card):
                 results.append(event)
-                
+                writer((node.id, event))
+
                 # Check for pause condition — new client yields (Task, UpdateEvent) or Message
                 if isinstance(event, tuple) and len(event) == 2:
                     task, update = event
@@ -283,14 +306,22 @@ class AgentInteractionFlow:
     def compile(self):
         """Compile the LangGraph"""
         if not self.compiled_graph:
-            # Set entry point (first node with no incoming edges)
+            # Every node with no incoming edges is its own entry point — NOT
+            # just the first one. `set_entry_point` wires only a single
+            # node to START; a plan whose tasks have no dependencies
+            # between them at all (real "Strategy: Parallel", confirmed
+            # live 2026-09-30) produces MULTIPLE such nodes, and the other
+            # 4 of 5 were silently unreachable in the compiled graph —
+            # never connected to START at all, so LangGraph never invoked
+            # them, no error, no log line, nothing. Same treatment finish
+            # nodes already get below (a loop, not "the first one").
             entry_nodes = [
                 node_id for node_id in self.nodes.keys()
                 if not any(node_id == to_id for _, to_id in self._get_edges())
             ]
-            
-            if entry_nodes:
-                self.graph_builder.set_entry_point(entry_nodes[0])
+
+            for entry_node in entry_nodes:
+                self.graph_builder.add_edge(START, entry_node)
             
             # Set finish points (nodes with no outgoing edges)
             finish_nodes = [
@@ -334,29 +365,42 @@ class AgentInteractionFlow:
         
         self.state = Status.RUNNING
         
-        # Stream workflow execution
-        async for event in graph.astream(initial_state):
-            # Extract node results and yield chunks
-            for node_id, node_state in event.items():
-                if node_id in self.nodes and 'results' in node_state:
-                    node = self.nodes[node_id]
+        # Stream workflow execution — both modes, not just the default.
+        # "custom" carries each node's own live chunks (written by
+        # node_function via get_stream_writer(), see add_node above) the
+        # instant they happen; "updates" only fires once a node's entire
+        # run finishes, used here purely for pause/completion detection,
+        # never to re-yield content (that already went out live via
+        # "custom" — re-yielding it here would duplicate every chunk). See
+        # .abi/specs/not-implemented/workflow-node-buffers-until-completion.md.
+        async for mode, data in graph.astream(initial_state, stream_mode=["custom", "updates"]):
+            if mode == "custom":
+                node_id, chunk = data
+                node = self.nodes.get(node_id)
+                if node:
                     self.current_agent_name = (
                         node.target_agent_card.name
                         if getattr(node, 'target_agent_card', None) else None
                     )
                     self.current_node_key = node.node_key
                     self.current_node_label = node.node_label
-                    node_results = node_state['results'].get(node_id, [])
-                    for chunk in node_results:
-                        yield chunk
-                
-                # Check for pause
+                    if node.node_key not in self.running_node_keys:
+                        self.running_node_keys.append(node.node_key)
+                yield chunk
+                continue
+
+            # mode == "updates" — pause/completion signal only.
+            for node_id, node_state in data.items():
+                node = self.nodes.get(node_id)
+                if node and node.node_key in self.running_node_keys:
+                    self.running_node_keys.remove(node.node_key)
                 if node_state.get('status') == Status.PAUSED.value:
                     self.state = Status.PAUSED
                     self.paused_node_id = node_state.get('paused_node_id')
                     return
-        
+
         # Workflow completed
+        self.running_node_keys = []
         self.state = Status.COMPLETED
 
     def set_node_attribute(self, node_id, attribute, value):

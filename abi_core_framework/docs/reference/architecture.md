@@ -81,7 +81,7 @@ AbiCore (app runner)
 AbiAgent (base class)
   ├── stream() → Main execution path
   ├── LLM (via create_llm + LLM_CONFIG)
-  ├── Checkpointer (conversation memory)
+  ├── Session backend (per-session context)
   └── A2A Server (auto-started by agent_factory)
 ```
 
@@ -97,8 +97,8 @@ AbiAgent (base class)
 
 ```
 1. HTTP POST /stream {"query": "..."}
-2. web_interface._wrap_user_query() → {"route": "...", "text": "..."}
-3. agent.stream(query=json_string)
+2. web_interface resolves the session token → context_id
+3. agent.stream(query=<the text, unchanged>, context_id=..., task_id=...)
 4. _resolve_task(task_id) → finds the right task function
 5. task function runs:
    - yield AgentResponse.status("...")  → SSE event to client
@@ -119,7 +119,7 @@ my-project/
 │   │   ├── steps.py         ← @agent.step functions
 │   │   ├── tasks.py         ← @agent.task functions
 │   │   ├── tools.py         ← @agent.tool functions
-│   │   ├── prompts.py       ← All prompts
+│   │   ├── models.py        ← Pydantic input/output models
 │   │   ├── config/config.py ← LLM_CONFIG, ports, env vars
 │   │   ├── web_interface.py ← FastAPI endpoints
 │   │   ├── agent_cards/     ← Agent card JSON

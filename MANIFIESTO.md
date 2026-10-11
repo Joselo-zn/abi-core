@@ -133,12 +133,12 @@ Every principle in this manifesto is enforced in the ABI-Core framework:
 
 | Manifesto Principle | How It's Implemented |
 |---|---|
-| Humans retain veto power | Guardian agent validates every query via OPA before execution. Plan Confirmation (next milestone) lets users approve/reject plans. Emergency shutdown always available. |
+| Humans retain veto power | Guardian agent validates every query via OPA before execution. Plan Confirmation lets users approve, reject or modify a plan before anything runs. Emergency shutdown always available. |
 | Unsupervised self-replication prohibited | Immutable OPA core policy `deny_self_replication` auto-generated at startup. Agents cannot modify it. |
 | Immutable log of all communications | Audit logs record every A2A interaction, every OPA decision, every MCP tool call. |
 | No direct access to firewall/ingress/egress | Agents run in isolated Docker containers. Network access controlled by Docker Compose network policies. |
 | Defined limits on disk write capacity | Ephemeral agents (Zombies) write to `/app/workspace` only. Artifacts go to MinIO. Container dies after task. |
-| No agent may request internet access | All LLM inference is local (Ollama). No external API calls. Semantic layer is internal. |
+| No agent may request internet access | Local-first: inference runs on Ollama by default and the semantic layer is internal. Cloud model providers are an explicit, per-agent opt-in. |
 | Rules cannot be altered by agents | OPA core policies are immutable. Guardian enforces them. Agents have no write access to policy files. |
 | Distributed reasoning with consensus | Orchestrator runs parallel triage + Guardian gate. Planner decomposes. Builder creates. Zombie executes. No single agent decides everything. |
 | Specialized roles + interdependence | Orchestrator coordinates, Planner plans, Builder builds, Guardian guards, Zombie executes. Each has a defined scope. |

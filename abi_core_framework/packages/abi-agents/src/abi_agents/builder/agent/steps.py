@@ -46,6 +46,13 @@ def parse_spec(builder_spec, task_id, task_type, plan_context_id=""):
     llm_config_override = builder_spec.get("llm_config", {})
     artifact_keys = builder_spec.get("artifact_keys", [])
     target_tag = builder_spec.get("target_tag", "")
+    # The run's reviewer (ephemeral-reviewer-pipeline 02.3): same zombie,
+    # another role, tied to the plan run. Its model defaults to the
+    # integration reviewer's, like the repair it replaces.
+    role = (builder_spec.get("role") or "code").strip().lower()
+    run_id = builder_spec.get("run_id", "")
+    if role == "reviewer" and not llm_config_override.get("model") and os.getenv("INTEGRATION_REVIEWER_MODEL"):
+        llm_config_override = {**llm_config_override, "model": os.getenv("INTEGRATION_REVIEWER_MODEL")}
 
     needs_tool_creation = task_type == "create_tools_and_execute" or len(tools_to_create) > 0
 
@@ -68,6 +75,8 @@ def parse_spec(builder_spec, task_id, task_type, plan_context_id=""):
         "artifact_keys": artifact_keys,
         "target_tag": target_tag,
         "plan_context_id": plan_context_id,
+        "role": role,
+        "run_id": run_id,
     }
 
 
@@ -146,7 +155,19 @@ def generate_config(verification):
 
     task_id = verification["task_id"]
     timestamp = int(time.time())
-    agent_name = f"ephemeral-{task_id}-{timestamp}".replace("_", "-")
+    role = verification.get("role", "code")
+    run_id = verification.get("run_id", "")
+    if role == "reviewer":
+        if not run_id:
+            return {"status": "error", "message": "a reviewer needs the plan's run_id", "task_id": task_id}
+        # Known name: code agents find their run's reviewer by it (02.2).
+        agent_name = f"reviewer-{run_id}"
+    elif run_id:
+        # The run's id in the name: the A2A policy allows ephemeral-<run_id>-*
+        # <-> reviewer-<run_id> only (same run), user decision 2026-10-10.
+        agent_name = f"ephemeral-{run_id}-{task_id}-{timestamp}".replace("_", "-")
+    else:
+        agent_name = f"ephemeral-{task_id}-{timestamp}".replace("_", "-")
     port = 11440 + (hash(agent_name) % 100)
 
     abi_logging(f"[🔧] Step 3a: Generating config for '{agent_name}' on port {port}")
@@ -169,26 +190,88 @@ def generate_config(verification):
         "artifact_keys": verification.get("artifact_keys", []),
         "target_tag": verification.get("target_tag", ""),
         "plan_context_id": verification.get("plan_context_id", ""),
+        "role": role,
+        "run_id": run_id,
         # Library tools — all BASE_TOOLS for ephemeral agents
         "library_tools_resolved": ["write_file", "read_file", "run_shell", "list_files"],
     }
 
-    # Pre-build agent card JSON so the ephemeral can write it to disk
-    config["agent_card_json"] = json.dumps({
+    # Pre-build agent card JSON so the ephemeral can write it to disk.
+    # container_url: Docker DNS locally, the run.app URL on Cloud Run —
+    # deterministic, so it is known before the ephemeral exists.
+    from abi_core.common.container_runtime import container_url
+
+    card = {
         "id": f"agent://{agent_name}",
         "name": agent_name,
         "description": f"Ephemeral agent for task {task_id}",
-        "url": f"http://{agent_name}:{port}",
+        "url": container_url(agent_name, port),
         "version": "1.0.0",
         "auth": {
             "method": "hmac_sha256",
             "key_id": f"agent://{agent_name}-default",
             "shared_secret": f"ephemeral-{agent_name}-{task_id}",
         },
-    })
+    }
+    card.update(_role_card_fields(role, run_id))
+    config["agent_card_json"] = json.dumps(card)
 
     abi_logging(f"[✅] Config generated: {agent_name}")
     return config
+
+
+def _role_card_fields(role: str, run_id: str) -> dict:
+    """Card fields of the run's reviewer: the sandbox permission the
+    abi/sandbox policy checks (only as reviewer-<run_id>, 02.5)."""
+    if role != "reviewer":
+        return {}
+    return {
+        "description": f"Reviewer of plan run {run_id}",
+        "security": {"allowed_actions": ["run_sandbox"]},
+        "metadata": {"role": "reviewer", "run_id": run_id},
+    }
+
+
+def _role_env(config: dict) -> dict:
+    """Env of the run's reviewer: its role, its run, the governed sandbox."""
+    if config.get("role") != "reviewer":
+        return {}
+    return {
+        "ZOMBIE_ROLE": "reviewer",
+        "RUN_ID": config.get("run_id", ""),
+        "SANDBOX_RUNTIME": "service",
+        "SANDBOX_SERVICE_URL": os.getenv("SANDBOX_SERVICE_URL", ""),
+    }
+
+
+def _ephemeral_llm_params_env(eph_provider: str, override: dict) -> dict:
+    """The ephemeral's LLM_EXTRA_PARAMS / LLM_TEMPERATURE.
+
+    EPHEMERAL_LLM_EXTRA_PARAMS (a JSON object) first; without it, the
+    Builder's own LLM_EXTRA_PARAMS only when the ephemeral runs on the same
+    provider — the parameters are provider-specific. The task's
+    builder_spec["llm_config"] goes on top: its extra_params win, and its
+    temperature becomes LLM_TEMPERATURE. Invalid JSON raises ValueError.
+    See .abi/specs/implemented/llm-params-from-config.md."""
+    from abi_core.agent.llm_provider import parse_extra_params
+
+    builder_provider = (os.getenv("LLM_PROVIDER") or "ollama").strip().lower()
+    if os.getenv("EPHEMERAL_LLM_EXTRA_PARAMS"):
+        params = parse_extra_params(os.getenv("EPHEMERAL_LLM_EXTRA_PARAMS"), "EPHEMERAL_LLM_EXTRA_PARAMS")
+    elif eph_provider == builder_provider:
+        params = parse_extra_params(os.getenv("LLM_EXTRA_PARAMS"))
+    else:
+        params = {}
+
+    task_params = override.get("extra_params") or {}
+    if not isinstance(task_params, dict):
+        raise ValueError(f"builder_spec llm_config.extra_params must be an object, got {type(task_params).__name__}")
+    params = {**params, **task_params}
+
+    env = {"LLM_EXTRA_PARAMS": json.dumps(params)} if params else {}
+    if override.get("temperature") is not None:
+        env["LLM_TEMPERATURE"] = str(float(override["temperature"]))
+    return env
 
 
 # ── Step 3b: Build Container ───────────────────────────────────
@@ -203,7 +286,26 @@ async def build_container(config):
     if config.get("status") == "error":
         return config
 
-    from abi_core.common.container_runtime import run_container
+    from abi_core.common.container_runtime import container_url, run_container
+
+    # Ephemerals can run on a different LLM provider than the Builder itself
+    # (e.g. Ollama for the swarm, Gemini for ephemerals) — EPHEMERAL_LLM_*
+    # override the Builder's own LLM_* for the ephemeral only.
+    # `or`, not a getenv default: compose passes an unset var as "".
+    eph_provider = (os.getenv("EPHEMERAL_LLM_PROVIDER") or os.getenv("LLM_PROVIDER") or "ollama").strip().lower()
+    # Provider SDKs are optional extras of abi-core-ai named after the
+    # provider; the ephemeral image only has Ollama's.
+    eph_extra = f"[{eph_provider}]" if eph_provider in {
+        "gemini", "openai", "anthropic", "grok", "bedrock", "vertex"} else ""
+    eph_llm_env = {"LLM_PROVIDER": eph_provider}
+    if eph_provider != "ollama":
+        # Hosted provider: the ephemeral needs the key (and an endpoint only
+        # if one is set). Accepted risk while ephemerals still have run_shell
+        # and network: use a dedicated, rate-limited key for ephemerals.
+        eph_llm_env["LLM_API_KEY"] = os.getenv("EPHEMERAL_LLM_API_KEY") or os.getenv("LLM_API_KEY", "")
+        if os.getenv("EPHEMERAL_LLM_BASE_URL"):
+            eph_llm_env["LLM_BASE_URL"] = os.getenv("EPHEMERAL_LLM_BASE_URL")
+    eph_llm_env.update(_ephemeral_llm_params_env(eph_provider, config.get("llm_config_override") or {}))
 
     agent_name = config["agent_name"]
     port = config["port"]
@@ -231,13 +333,24 @@ async def build_container(config):
             "TOOLS": tools_json,
             "LIBRARY_TOOLS": json.dumps(config.get("library_tools_resolved", [])),
             "ARTIFACT_KEYS": artifact_keys_json,
-            "MODEL_NAME": os.getenv("EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "qwen3:latest")),
+            # The model ensure_model_available resolved (and pulled) for this
+            # task — a builder_spec["llm_config"]["model"] override, else
+            # EPHEMERAL_MODEL_NAME. It used to read the env var directly, so
+            # a per-task override was pulled and then never used.
+            "MODEL_NAME": config.get("model_used") or os.getenv(
+                "EPHEMERAL_MODEL_NAME", os.getenv("MODEL_NAME", "qwen3:latest")),
             "OLLAMA_HOST": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-            "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "ollama"),
+            **eph_llm_env,
             "MCP_HOST": os.getenv("MCP_HOST", "localhost"),
             "MCP_PORT": os.getenv("MCP_PORT", "10100"),
             "MCP_TRANSPORT": os.getenv("MCP_TRANSPORT", "streamable-http"),
             "SEMANTIC_LAYER_HOST": os.getenv("SEMANTIC_LAYER_HOST", ""),
+            # The A2A validator checks every outgoing call against Guardian/OPA.
+            # Without these it went to localhost and, in strict mode, denied
+            # every call an ephemeral made (send_link, the reviewer's
+            # questions) — live 2026-10-09. Ephemerals only received calls
+            # before the reviewer pipeline.
+            **{k: os.environ[k] for k in ("OPA_URL", "GUARDIAN_URL") if os.environ.get(k)},
             "ARTIFACT_ENDPOINT": os.getenv("ARTIFACT_ENDPOINT", ""),
             "ARTIFACT_ACCESS_KEY": os.getenv("ARTIFACT_ACCESS_KEY", ""),
             "ARTIFACT_SECRET_KEY": os.getenv("ARTIFACT_SECRET_KEY", ""),
@@ -251,22 +364,41 @@ async def build_container(config):
             # this back via get_session_context to learn its place in the
             # overall plan (objective, sibling tasks, dependencies).
             "PLAN_CONTEXT_ID": config.get("plan_context_id", ""),
+            # Same session backend the Orchestrator writes process_context
+            # and inter-task contracts to. Without these the ephemeral fell
+            # back to an in-memory backend — its reads of PLAN_CONTEXT_ID /
+            # dependency contracts always came back empty, and the contract
+            # it wrote on completion died with the container. Confirmed
+            # live 2026-10-03: never worked in production since the feature
+            # shipped. See .abi/fixes/2026-10-03-cross-file-integration-context.md.
+            "SESSION_BACKEND": os.getenv("SESSION_BACKEND", "memory"),
+            "SESSION_REDIS_URL": os.getenv("SESSION_REDIS_URL", os.getenv("REDIS_URL", "")),
             "AGENT_MEMORY_URL": os.getenv("AGENT_MEMORY_URL", "http://abi-swarm-agent-memory:8000"),
             "SERVICE_MODULE": "",
             "SERVICE_COMMAND": (
-                f"pip install --quiet --no-cache-dir --upgrade abi-core-ai && "
+                f"pip install --quiet --no-cache-dir --upgrade 'abi-core-ai{eph_extra}' && "
                 f"cp -r {site_packages}/{zombie_pkg}/* /app/ && "
                 f"python3 main.py"
             ),
             "PYTHONPATH": "/app",
+            **_role_env(config),
         },
         network=os.getenv("DOCKER_NETWORK", "abi_network"),
         port=port,
-        health_check_url=f"http://{agent_name}:{port}/health",
-        health_timeout=60,
+        health_check_url=f"{container_url(agent_name, port)}/health",
+        # Generous on purpose: the start-up pip install alone took 69s live
+        # (2026-10-05) and a 60s budget aborted a healthy ephemeral. The
+        # wait ends early if the container dies (check_container_health),
+        # so a broken start-up still fails fast.
+        health_timeout=int(os.getenv("EPHEMERAL_HEALTH_TIMEOUT", "300")),
     )
 
     if result["status"] in ("error", "unhealthy"):
+        # Don't leave it behind: an unhealthy ephemeral was found still
+        # running 22 minutes after the Builder gave up on it.
+        if result["status"] == "unhealthy":
+            from abi_core.common.container_runtime import destroy_container
+            await destroy_container(agent_name)
         return {
             "status": "error",
             "message": result.get("error", f"Container '{agent_name}' is {result['status']} (health check failed)"),
@@ -279,12 +411,14 @@ async def build_container(config):
         "agent_name": agent_name,
         "container_id": result.get("container_id", ""),
         "port": port,
-        "url": result.get("url", f"http://{agent_name}:{port}"),
+        "url": result.get("url") or container_url(agent_name, port),
         "system_prompt": config["system_prompt"],
         "tools_resolved": config["tools_resolved"],
         "tools_created": [],
         "ephemeral": config["ephemeral"],
         "task_id": config["task_id"],
+        "role": config.get("role", "code"),
+        "run_id": config.get("run_id", ""),
     }
 
 
@@ -335,6 +469,7 @@ async def register_card(build_result):
             "shared_secret": f"ephemeral-{agent_name}-{task_id}",
         },
     }
+    agent_card.update(_role_card_fields(build_result.get("role", "code"), build_result.get("run_id", "")))
 
     # Register in semantic layer via MCP
     try:

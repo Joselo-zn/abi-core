@@ -18,6 +18,7 @@ Design rules:
   memory failure never blocks agent execution (local vs global resilience).
 """
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -215,10 +216,22 @@ async def recall_memory_context(
         return ""
 
     try:
-        prompt_data = await client.memory_prompt(
-            query=query,
-            session_id=sid,
-            long_term_search={"text": query, "limit": long_term_limit},
+        # 30s timeout — measured live against a real AMS (2026-09-30): cold
+        # call 0.36s, warm 0.04s, 5 concurrent calls (simulating 5 parallel
+        # ephemerals) maxed at 0.10s each. AMS doesn't show the same
+        # contention profile as Ollama under concurrency (retrieval, not
+        # generation) — 30s is a ~80x margin over the worst case measured,
+        # not a guessed number. A timeout here degrades the same as any
+        # other failure (except Exception below returns ""), never blocks
+        # the caller. See .abi/specs/not-implemented/
+        # analyze-and-execute-inactivity-vs-wallclock-timeout.md.
+        prompt_data = await asyncio.wait_for(
+            client.memory_prompt(
+                query=query,
+                session_id=sid,
+                long_term_search={"text": query, "limit": long_term_limit},
+            ),
+            timeout=30.0,
         )
         for msg in prompt_data.get("messages", []):
             if msg.get("role") == "system" and msg.get("content"):

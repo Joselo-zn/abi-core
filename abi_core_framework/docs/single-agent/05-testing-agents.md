@@ -14,28 +14,43 @@ curl -X POST http://localhost:8002/stream \
   -d '{"query": "Hello"}'
 ```
 
-## Test with Python
+## Talk to it from Python
+
+`AgentStreamClient` (`abi_core.client.agent_stream_client`) is the same client the bundled Chainlit UI uses. It starts a session once, sends the token on every message, decodes each streamed event into a plain dict, and fetches a fresh token if the old one expired. Use one instance per conversation:
 
 ```python
-import requests
+import asyncio
+from abi_core.client.agent_stream_client import AgentStreamClient
 
-def ask(query, context_id="test"):
-    resp = requests.post(
-        "http://localhost:8002/stream",
-        json={"query": query, "context_id": context_id}
-    )
-    return resp.json()
 
-# Test basic response
-result = ask("What is 2 + 2?")
-print(result)
+async def ask(client, query):
+    """Send a query; print progress as it streams; return the final answer."""
+    answer = None
+    async for event in client.stream(query):
+        print(event.get("response_type", "-"), "→", event.get("content"))
+        if event.get("is_task_completed"):
+            answer = event.get("content")
+    return answer
 
-# Test memory
-ask("My name is Ana", context_id="mem-test")
-result = ask("What's my name?", context_id="mem-test")
-assert "Ana" in str(result)
-print("✅ Memory works")
+
+async def main():
+    client = AgentStreamClient("http://localhost:8002")
+
+    print(await ask(client, "What is 2 + 2?"))
+
+    # Same client = same session = same conversation
+    await ask(client, "My name is Ana")
+    answer = await ask(client, "What's my name?")
+    assert "Ana" in str(answer)
+    print("✅ Memory works")
+
+
+asyncio.run(main())
 ```
+
+Each event has the shape `AgentResponse` produces on the server: `response_type` (`status`, `text`, `data`, `input_required`, `error`), `content`, and optional `meta`. The final answer is the event with `is_task_completed: True`; the stream then closes with a short `{"content": "Stream completed successfully"}` notice. A connection failure comes back as one `{"response_type": "error", ...}` event instead of an exception, so you can treat every item the same way.
+
+The memory check only passes if your agent stores the conversation — see [Agents with Memory](04-agents-with-memory.md).
 
 ## View logs
 
@@ -77,10 +92,13 @@ docker exec <ollama-container> ollama list
 docker compose ps
 ```
 
-**LLM timeout** — The model is too large for your hardware. Try a smaller model in `config.py`:
-```python
-LLM_CONFIG = {"provider": "ollama", "model": "qwen2.5:1.5b"}
+**LLM timeout** — The model is too large for your hardware. Try a smaller model:
+
+```bash
+docker exec ollama ollama pull qwen3:1.7b
 ```
+
+Then set `MODEL_NAME=qwen3:1.7b` on the agent in `compose.yaml` and restart it (`docker compose up -d <agent>`).
 
 ## Next step
 

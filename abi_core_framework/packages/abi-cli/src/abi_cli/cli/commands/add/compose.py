@@ -244,44 +244,6 @@ def _update_compose_with_service(compose_file, service_name, service_type, servi
                 'networks': [network_name],
                 'depends_on': []
             }
-        elif service_type == 'guardian':
-            service_definition = {
-                'build': f'./services/{service_name}',
-                'container_name': f'{project_name}-{service_key}',
-                'ports': [f'{available_port}:{available_port}'],
-                'environment': [
-                    'ABI_ROLE=Guardian Service',
-                    'ABI_NODE=ABI Node',
-                    f'OPA_URL=http://{project_name}-opa:8181',
-                    'GUARDIAN_PORT=' + str(available_port),
-                    # Entrypoint variables for Ollama (embeddings)
-                    'START_OLLAMA=false',
-                    'LOAD_MODELS=false',
-                    'SERVICE_MODULE=main',
-                    f'SERVICE_PORT={available_port}'
-                ],
-                'volumes': ['./logs:/app/logs'],
-                'networks': [network_name],
-                'depends_on': []
-            }
-        elif service_type == 'guardian-native':
-            service_definition = {
-                'build': f'./services/{service_name}',
-                'container_name': f'{project_name}-{service_key}',
-                'ports': [f'{available_port}:{available_port}'],
-                'environment': [
-                    f'OPA_URL=http://{project_name}-opa:8181',
-                    'GUARDIAN_PORT=' + str(available_port),
-                    'AGENT_CARDS_BASE=/app/agent_cards',
-                    'OLLAMA_HOST=http://ollama:11434'
-                ],
-                'volumes': [
-                    './agent_cards:/app/agent_cards:ro',
-                    './logs:/app/logs'
-                ],
-                'networks': [network_name],
-                'depends_on': ['ollama'] if 'ollama' in services else []
-            }
         elif service_type == 'mcp-api':
             service_definition = {
                 'build': f'./services/{service_name}',

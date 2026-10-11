@@ -87,11 +87,15 @@ ABI-Core supports multiple AI model providers through one config dict:
 | Provider | Config |
 |----------|--------|
 | Ollama (local) | `{"provider": "ollama", "model": "qwen3:latest"}` |
-| OpenAI | `{"provider": "openai", "model": "gpt-4o", "api_key": "..."}` |
-| Gemini | `{"provider": "gemini", "model": "gemini-pro", "api_key": "..."}` |
-| Grok | `{"provider": "grok", "model": "grok-1", "api_key": "..."}` |
-| Anthropic | `{"provider": "anthropic", "model": "claude-sonnet-4-20250514", "api_key": "..."}` |
-| Bedrock | `{"provider": "bedrock", "model": "anthropic.claude-3-sonnet"}` |
+| OpenAI | `{"provider": "openai", "model": "<openai-model-id>", "api_key": "..."}` |
+| Gemini | `{"provider": "gemini", "model": "<gemini-model-id>", "api_key": "..."}` |
+| Grok | `{"provider": "grok", "model": "<grok-model-id>", "api_key": "..."}` |
+| Anthropic | `{"provider": "anthropic", "model": "claude-opus-5-5", "api_key": "..."}` |
+| Bedrock | `{"provider": "bedrock", "model": "<bedrock-model-id>", "aws_region": "us-east-1"}` |
+| Azure OpenAI | `{"provider": "azure", "model": "<deployment-model>", "azure_deployment": "...", "azure_endpoint": "...", "api_key": "..."}` |
+| Vertex AI | `{"provider": "vertex", "model": "<vertex-model-id>", "vertex_project": "...", "vertex_location": "us-central1"}` |
+
+In a generated agent you don't write this dict yourself: `config/config.py` builds it from environment variables (`LLM_PROVIDER`, `MODEL_NAME`, `LLM_API_KEY`, `LLM_EXTRA_PARAMS`), so switching provider is a change in `compose.yaml` — see [Model Serving](../production/01-model-serving.md#cloud-providers-no-ollama-needed). Use the exact model id your provider lists — ids change faster than any documentation. Cloud providers need their extra installed: `pip install "abi-core-ai[<provider>]"` (`azure` uses the `openai` extra; `providers` installs them all).
 
 Switch providers by changing the dict. No code changes.
 

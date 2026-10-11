@@ -18,7 +18,7 @@ abi-core create project --name <name> [OPTIONS]
 | `--model-serving` | `centralized` or `distributed` |
 
 ```bash
-abi-core create project my-app \
+abi-core create project --name my-app \
   --with-semantic-layer \
   --with-guardian \
   --model-serving centralized
@@ -42,13 +42,13 @@ abi-core add agent --name <name> [OPTIONS]
 | `--with-web-interface` | Add HTTP/SSE endpoints |
 
 ```bash
-abi-core add agent analyst \
+abi-core add agent --name analyst \
   --description "Analyzes financial data" \
   --model qwen3:latest \
   --with-web-interface
 ```
 
-Creates: `agents/<name>/` with app.py, steps.py, tasks.py, tools.py, prompts.py, config/, Dockerfile, agent_cards/.
+Creates: `agents/<name>/` with app.py, agent_<name>.py, steps.py, tasks.py, tools.py, models.py, config/, main.py, requirements.txt, Dockerfile, agent_cards/ (plus web_interface.py with `--with-web-interface`).
 
 ### `abi-core add service`
 
@@ -59,10 +59,28 @@ abi-core add service <type> [--name <name>] [--domain <domain>]
 | Type | Description |
 |------|-------------|
 | `semantic-layer` | AI agent discovery and routing service (fixed name `semantic_layer`). Shortcut: `abi-core add semantic-layer`. |
-| `guardian` | Security policy enforcement service (placeholder) |
-| `guardian-native` | Native Guardian service based on abi-core guardial |
 | `mcp-api` | FastMCP/API central connection point service |
 | `agent-memory` | Short/long-term memory — provisions Redis 8 + Agent Memory Server (AMS) and wires `AGENT_MEMORY_URL` into existing (and future) agents. Works for any agent, not just a swarm. See [Environment Variables → Agent Memory](environment-variables.md#agent-memory-redis-ams). |
+
+### `abi-core add agent-card`
+
+```bash
+abi-core add agent-card --name <name> [--description "..."] [--model qwen3:latest] [--url http://<host>:<port>] [--tasks task_a,task_b]
+```
+
+Creates only the agent card — the JSON identity other agents discover in the Semantic Layer — for an agent that already exists or runs outside this project. `abi-core add agent` already creates one for its agent; use this to register something else, or to regenerate a card after `abi-core remove agent-card`.
+
+### `abi-core add policies`
+
+```bash
+abi-core add policies --name <name> [--domain <domain>]
+```
+
+Creates a starter Rego file, `policies/<name>.rego` at the project root, with package `<name>.custom`, and records it in `.abi/runtime.yaml`.
+
+```{warning}
+As generated, this file is never applied. OPA only loads `services/guardian/opa/policies/`, and Guardian only reads the `abi.custom` package. To use it, change its first line to `package abi.custom`, move it to `services/guardian/opa/policies/`, and restart OPA — or write the file there yourself, as shown in [Policy Development](../security/03-policy-development.md).
+```
 
 ### `abi-core add chainlit`
 
@@ -105,10 +123,11 @@ abi-core run [OPTIONS]
 
 | Option | Description |
 |--------|-------------|
-| `--logs` | Show container output |
-| `--build` | Rebuild containers first |
+| `--build` | Rebuild images first (`docker compose up --build`) |
+| `--logs` | Stay in the foreground and stream every container's output. `Ctrl+C` stops the stack (`docker compose down`) |
+| `-d`, `--detach` | Start in the background without the closing summary (background is already the default without `--logs`) |
 
-Equivalent to `docker compose up -d`.
+Without `--logs`, it runs `docker compose up -d` and prints the project's services and ports.
 
 ---
 
@@ -151,21 +170,21 @@ permanent Docker service in `compose.yaml`.
 
 | Command | Description |
 |---------|-------------|
-| `abi-core provision-models` | Pull LLM + embedding models into Ollama |
+| `abi-core provision-models [--force]` | Pull the project's LLM and embedding models into Ollama (per agent in `distributed` mode). `--force` downloads them again |
 | `abi-core status` | Show running services and ports |
 | `abi-core info` | Show project configuration |
-| `abi-core remove agent <name>` | Remove an agent |
-| `abi-core remove service <name>` | Remove a service |
-| `abi-core remove agent-card <name>` | Remove only an agent's card from the semantic layer (e.g. to regenerate it), leaving the agent itself in place |
+| `abi-core remove agent <name> [--force] [--dry-run] [--keep-compose] [--keep-runtime]` | Remove an agent. `--dry-run` shows what would go; `--keep-compose`/`--keep-runtime` leave those files untouched |
+| `abi-core remove service <name> [--force] [--dry-run]` | Remove a service |
+| `abi-core remove agent-card <name> [--force]` | Remove only an agent's card from the Semantic Layer (e.g. to regenerate it), leaving the agent itself in place |
 
 ---
 
 ## Typical workflow
 
 ```bash
-abi-core create project my-app --with-semantic-layer
+abi-core create project --name my-app --with-semantic-layer
 cd my-app
-abi-core add agent my-agent --description "..." --with-web-interface
+abi-core add agent --name my-agent --description "..." --with-web-interface
 docker compose up ollama -d
 abi-core provision-models
 docker compose up --build -d

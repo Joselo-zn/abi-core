@@ -59,8 +59,7 @@ def _generate_agent_card(name, description, model, url, tasks):
         "supportedTasks": tasks,
         "llmConfig": {
             "provider": "ollama",
-            "model": model,
-            "temperature": 0.1
+            "model": model
         },
         "tools": [],
         "functions": [],

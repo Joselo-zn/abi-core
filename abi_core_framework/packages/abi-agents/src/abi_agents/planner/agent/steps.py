@@ -149,7 +149,11 @@ async def assign_agents(plan_data):
             )
             continue
 
-        found_agent = await tool_find_agent.ainvoke(task_desc)
+        # Never an ephemeral: it belongs to one plan run. Ephemerals now live
+        # past their answer (code agents until the reviewer is done, the
+        # reviewer until the Orchestrator confirms) — live 2026-10-09 a new
+        # run's task went to the previous run's reviewer.
+        found_agent = await tool_find_agent.ainvoke({"query": task_desc, "exclude_ephemeral": True})
 
         if found_agent:
             agent_name = (

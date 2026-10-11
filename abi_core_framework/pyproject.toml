@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "abi-core-ai"
-version = "1.13.47"
+version = "1.13.73"
 description = "Agent-Based Infrastructure Core - Runtime and CLI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -64,7 +64,6 @@ dependencies = [
     "psutil>=7.2.0",
     "boto3>=1.43.91",
     "docker>=7.2.0",
-    "textual>=8.2.8",
     # write_pdf (BASE_TOOLS, library_tools.py) — fixed, audited PDF
     # generation tool. See .abi/specs/planner-direct-tool-pdf.md.
     "fpdf2>=2.8.0",
@@ -82,6 +81,11 @@ dev = [
 semantic = [
     "weaviate-client>=4.0.0",
     "numpy>=1.24.0",
+]
+
+# Cloud Run backend for ephemerals (CONTAINER_RUNTIME=cloudrun)
+gcp = [
+    "google-cloud-run>=0.16.0",
 ]
 
 security = [
@@ -173,8 +177,9 @@ abi_core = [
     "**/*.rego",
     "**/*.sh",
     "**/*.md",
-    "**/*.tcss",
     "**/*.jsx",
+    "**/*.svg",
+    "**/*.css",
     "**/Dockerfile",
     "**/requirements.txt"
 ]

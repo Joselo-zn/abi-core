@@ -2,11 +2,11 @@ import asyncio
 import json
 from collections.abc import AsyncIterable
 
-from abi_core.common.utils import abi_logging, format_plan_summary
+from abi_core.common.utils import abi_logging, build_plan_view, format_plan_summary
 from abi_core.common.workflow import Status
 from abi_core.common.semantic_tools import tool_find_agent
 from abi_core.agent.agent import AbiAgent, _HeartbeatDone
-from abi_core.agent.agent_response import AgentResponse
+from abi_core.agent.agent_response import AgentResponse, RunPhase
 from abi_core.agent.routing_tools import build_routing_decision_schema, format_system_state
 from abi_core.memory import MEMORY_TOOLS, add_long_term_memory
 
@@ -232,10 +232,12 @@ class AbiOrchestratorAgent(AbiAgent):
 
         yield AgentResponse.status(
             "Calling planner...", agent=self.agent_name, context_id=context_id, task_id=task_id,
+            phase=RunPhase.PLANNING.value,
         )
         planner_results = None
         async for item in self._run_with_heartbeat(
             call_planner(query, context_id, task_id), context_id, task_id, "Planning...",
+            phase=RunPhase.PLANNING.value,
         ):
             if isinstance(item, _HeartbeatDone):
                 planner_results = item.value
@@ -276,7 +278,13 @@ class AbiOrchestratorAgent(AbiAgent):
         await self.record_pending_plan(context_id, plan, query)
         await self._record_plan_methodology(context_id, plan)
         await self.record_conversation_turn(context_id, query, summary, window=config.CONVERSATION_WINDOW)
-        yield AgentResponse.input_required(summary, action_type="plan_confirmation")
+        # `summary` stays the text contract (routing LLM, memory, text-only
+        # clients); `plan_view` is structured data for the review card —
+        # see .abi/specs/not-implemented/ux/chainlit-plan-review-card.md.
+        yield AgentResponse.input_required(
+            summary, action_type="plan_confirmation",
+            plan_view=build_plan_view(plan, model_status),
+        )
 
     async def stream(
         self, query: str, context_id: str, task_id: str
@@ -300,6 +308,7 @@ class AbiOrchestratorAgent(AbiAgent):
                 agent=self.agent_name,
                 context_id=context_id,
                 task_id=task_id,
+                phase=RunPhase.ANALYZING.value,
             )
 
             session_ctx = await self.get_session_context(context_id)
@@ -310,7 +319,9 @@ class AbiOrchestratorAgent(AbiAgent):
                 "session_context": session_ctx,
             })
             dag_result = None
-            async for item in self._run_with_heartbeat(dag_coro, context_id, task_id, "Processing..."):
+            async for item in self._run_with_heartbeat(
+                dag_coro, context_id, task_id, "Processing...", phase=RunPhase.ANALYZING.value,
+            ):
                 if isinstance(item, _HeartbeatDone):
                     dag_result = item.value
                 else:
@@ -430,7 +441,7 @@ class AbiOrchestratorAgent(AbiAgent):
                 result_holder = {}
                 async for item in self._run_with_heartbeat(
                     self._reasoning_turn(contract, context_id, task_id, result_holder),
-                    context_id, task_id, "Thinking...",
+                    context_id, task_id, "Thinking...", phase=RunPhase.ROUTING.value,
                 ):
                     if not isinstance(item, _HeartbeatDone):
                         yield item
@@ -456,6 +467,17 @@ class AbiOrchestratorAgent(AbiAgent):
                 # it at all (not just empty) — structurally impossible for
                 # the model to write real content into the wrong field.
                 outcome = decision.outcome
+                # Which action the model committed to was never logged —
+                # reproduced live 2026-10-03: six build requests in a row got
+                # answer_directly (copied verbatim from a prior turn in the
+                # conversation history) and nothing after "Gate decision"
+                # showed it; had to be reconstructed from Redis.
+                abi_logging(
+                    f"[🧭] Routing decision: action={outcome.action} "
+                    f"valid={contract['valid_actions']} "
+                    f"history_turns={len(session_ctx.get('conversation_summary') or [])} "
+                    f"detail={(getattr(outcome, 'objective', None) or getattr(outcome, 'decision', None) or getattr(outcome, 'text', None) or '')[:120]!r}"
+                )
 
                 if outcome.action == "create_plan":
                     async for r in self._call_planner_and_respond(outcome.objective or query, context_id, task_id):
@@ -521,8 +543,78 @@ class AbiOrchestratorAgent(AbiAgent):
                     )
                     return
                 await self.clear_pending_plan(context_id)
-                from steps import build_workflow
-                build_result = await build_workflow({"plan": stored_plan}, context_id, task_id)
+                from steps import build_workflow, launch_reviewer, plan_needs_reviewer
+
+                # context_id is the CONVERSATION's id, not this plan's: every
+                # plan in the same chat shares it, and every plan names its
+                # tasks task_1..task_N. Found 2026-10-03: two Space Invaders
+                # runs in one chat wrote their inter-task contracts to the
+                # same keys. run_id scopes contracts — and the project folder
+                # — to this plan run; written once, here, before any agent
+                # exists (the reviewer needs it at creation).
+                import uuid
+                run_id = uuid.uuid4().hex[:12]
+
+                # Project folder for this run (ephemeral-reviewer-pipeline
+                # 02.1): the plan as the Planner sent it, technical design
+                # inside.
+                try:
+                    from abi_core.common import project_store
+                    key = await project_store.save_json(run_id, "plan", "plan.json", stored_plan)
+                    abi_logging(f"[📁] Project folder: {key}")
+                except Exception as e:
+                    abi_logging(f"[⚠️] Could not write plan to project folder: {e}", level="warning")
+
+                # The run's reviewer first (02.4, user decision 2026-10-08):
+                # with retries; code agents are created only once it is
+                # ready, or not at all.
+                reviewer_card = {}
+                if plan_needs_reviewer(stored_plan):
+                    yield AgentResponse.status(
+                        "Creando el revisor del plan...", agent=self.agent_name,
+                        context_id=context_id, task_id=task_id, phase=RunPhase.BUILDING.value,
+                    )
+                    async for item in self._run_with_heartbeat(
+                        launch_reviewer(stored_plan, run_id, context_id, task_id), context_id, task_id,
+                        "Creando el revisor del plan...", phase=RunPhase.BUILDING.value,
+                    ):
+                        if isinstance(item, _HeartbeatDone):
+                            reviewer_card = item.value or {}
+                        else:
+                            yield item
+                    if not reviewer_card:
+                        msg = "No se pudo crear el revisor del plan, así que no se lanzaron los agentes de código."
+                        await self.record_error(context_id, "reviewer_launch_failed", msg)
+                        yield AgentResponse.error(msg)
+                        return
+
+                # process-awareness.md (Tier 3): one write, keyed by this
+                # plan's context_id — every ephemeral reads it back via
+                # get_session_context. `reviewer` tells code agents there is
+                # one and whom to hand their work to (02.2).
+                stored_tasks = stored_plan.get("tasks", [])
+                await self.update_session_context(context_id, {
+                    "process_context": {
+                        "run_id": run_id,
+                        "reviewer": reviewer_card.get("name"),
+                        "objective": stored_plan.get("objective", ""),
+                        "total_tasks": len(stored_tasks),
+                        "tasks": [
+                            {
+                                "task_id": t.get("task_id", "?"),
+                                "description": t.get("description", "")[:100],
+                                "dependencies": t.get("dependencies", []),
+                            }
+                            for t in stored_tasks
+                        ],
+                    },
+                })
+
+                yield AgentResponse.status(
+                    "Preparing agents...", agent=self.agent_name,
+                    context_id=context_id, task_id=task_id, phase=RunPhase.BUILDING.value,
+                )
+                build_result = await build_workflow({"plan": stored_plan, "run_id": run_id}, context_id, task_id)
 
                 if "gate_passthrough" in build_result:
                     yield AgentResponse.error(build_result["gate_passthrough"].get("message", "Unexpected gate passthrough"))
@@ -545,28 +637,6 @@ class AbiOrchestratorAgent(AbiAgent):
             # Log execution plan summary
             tasks = plan.get("tasks", [])
 
-            # process-awareness.md (Tier 3, ams-long-term-memory-no-consumer.md):
-            # one write, keyed by this plan's own context_id — every ephemeral
-            # spawned for this plan gets that same context_id threaded through
-            # Builder (steps.py::build_workflow's build_query) and reads this
-            # same blob back via get_session_context, instead of each getting
-            # a static per-task copy. Reuses session_backend (Redis) — no new
-            # storage.
-            await self.update_session_context(context_id, {
-                "process_context": {
-                    "objective": plan.get("objective", ""),
-                    "total_tasks": len(tasks),
-                    "tasks": [
-                        {
-                            "task_id": t.get("task_id", "?"),
-                            "description": t.get("description", "")[:100],
-                            "dependencies": t.get("dependencies", []),
-                        }
-                        for t in tasks
-                    ],
-                },
-            })
-
             abi_logging(f"[📋] Executing plan: '{plan.get('objective', '')}' — {len(tasks)} tasks")
             for t in tasks:
                 tid = t.get("task_id", "?")
@@ -580,15 +650,49 @@ class AbiOrchestratorAgent(AbiAgent):
 
             from abi_core.common.a2a_response import A2AResponse
 
+            def _task_meta(task_list):
+                # Same execution-order numbering and titles as the plan
+                # review card, so "paso 2 de 5" is row 2 of what the user
+                # approved.
+                steps = {s["task_id"]: s for s in build_plan_view({"tasks": task_list})["steps"]}
+                step = steps.get(workflow.current_node_key) or {}
+                # Independent tasks run in parallel: say which ones are
+                # still running, not just which one sent this update.
+                running = [k for k in workflow.running_node_keys if k in steps]
+                return {
+                    "phase": RunPhase.EXECUTING.value,
+                    "task_key": workflow.current_node_key,
+                    "task_label": step.get("title") or workflow.current_node_label,
+                    "task_index": step.get("index"),
+                    "task_total": len(task_list),
+                    "task_deliverable": (step.get("deliverable") or {}).get("tag"),
+                    "running_task_keys": running,
+                    "running_task_indices": sorted(steps[k]["index"] for k in running),
+                }
+
             results = []
             async for chunk in workflow.run_workflow():
                 results.append(chunk)
                 resp = A2AResponse.parse(chunk)
-                if resp and resp.text:
+                # `resp.status_message` — not just `resp.text` — because a
+                # heartbeat ("Executing pipeline...", emitted every 15s by
+                # the ephemeral's own _run_with_heartbeat) arrives as a
+                # status_update event, and A2AResponse.parse() puts THAT
+                # text in status_message, not text (text is only populated
+                # for artifact/message events). Confirmed live 2026-10-01:
+                # heartbeats were firing exactly every 15s the whole time,
+                # silently dropped right here because this check only ever
+                # looked at resp.text — a 16-minute real task showed zero
+                # intermediate UI updates and ended in Chainlit's own
+                # "No response received." despite the backend working the
+                # entire time. See .abi/specs/not-implemented/
+                # orchestrator-drops-status-update-heartbeats.md.
+                text = (resp.text or resp.status_message) if resp else None
+                if text:
                     yield AgentResponse.status(
-                        resp.text, agent=workflow.current_agent_name or self.agent_name,
-                        task_key=workflow.current_node_key, task_label=workflow.current_node_label,
+                        text, agent=workflow.current_agent_name or self.agent_name,
                         context_id=context_id, task_id=task_id,
+                        phase_detail=text, **_task_meta(tasks),
                     )
                 # else: intermediate A2A protocol event with no user-facing
                 # text (e.g. a raw StreamResponse) — skip it. Yielding the raw
@@ -596,9 +700,97 @@ class AbiOrchestratorAgent(AbiAgent):
                 # object to the client, crashing the UI with "'str' object
                 # has no attribute 'get'".
 
+            # ── Phase 2.5: deterministic deliverable contract check ──────
+            # .abi/specs/not-implemented/deterministic-deliverable-contract-verification.md
+            # Reproduced live 2026-09-30: workflow.state reached COMPLETED
+            # with zero real artifacts uploaded, and synthesis (free-text
+            # LLM generation, below) fabricated a full "success" summary
+            # instead of reporting it. Verify by code — never by trusting
+            # the ephemeral's own "status": "completed" or asking an LLM to
+            # judge — before synthesis is ever allowed to run.
+            from steps import check_deliverable_contracts, transitive_dependents, build_workflow as _build_workflow
+
+            current_nodes = build_result.get("nodes", {})
+            current_tasks = tasks
+            max_retries = 2
+            retry_round = 0
+
+            # With a reviewer, a missing deliverable is the reviewer's to
+            # write; the deliverable check runs on its report (verify_run).
+            while not reviewer_card and workflow.state == Status.COMPLETED:
+                failed_ids = check_deliverable_contracts(current_tasks, current_nodes, results)
+                if not failed_ids:
+                    break
+
+                retry_round += 1
+                affected_ids = transitive_dependents(failed_ids, current_tasks)
+                for fid in sorted(failed_ids):
+                    # Deterministic, Orchestrator-generated text — never an
+                    # LLM call. See the spec's point 2/3, confirmed with the
+                    # user.
+                    retry_note = f"{fid} no produjo el archivo esperado, reintentando con un nuevo agente..."
+                    yield AgentResponse.status(
+                        retry_note, agent=self.agent_name, context_id=context_id, task_id=task_id,
+                        phase=RunPhase.EXECUTING.value, phase_detail=retry_note,
+                    )
+
+                if retry_round > max_retries:
+                    # Stop. Don't fabricate anything, don't decide on the
+                    # user's behalf — reuse the existing plan-confirmation
+                    # flow (approve = retry same plan, reject = cancel,
+                    # modify = different approach) instead of a parallel
+                    # mechanism. Point 2, confirmed with the user.
+                    failure_note = (
+                        f"No se pudieron completar estas tareas tras {max_retries} intentos: "
+                        f"{', '.join(sorted(affected_ids))}. ¿Querés reintentar el mismo plan, "
+                        "o preferís un enfoque distinto?"
+                    )
+                    await self.record_pending_plan(context_id, plan, plan.get("objective", ""))
+                    await self.update_session_context(
+                        context_id, {"pending_plan_query": plan.get("objective", "")}
+                    )
+                    yield AgentResponse.status(failure_note, agent=self.agent_name,
+                                                context_id=context_id, task_id=task_id,
+                                                phase=RunPhase.EXECUTING.value,
+                                                phase_detail=failure_note)
+                    yield AgentResponse.input_required(failure_note)
+                    return
+
+                # Rebuild only the affected sub-plan — tasks that already
+                # passed their contract keep their real artifacts, no need
+                # to redo what genuinely worked.
+                affected_tasks = [t for t in current_tasks if t.get("task_id") in affected_ids]
+                reduced_plan = {**plan, "tasks": affected_tasks}
+                yield AgentResponse.status(
+                    "Preparing agents...", agent=self.agent_name,
+                    context_id=context_id, task_id=task_id, phase=RunPhase.BUILDING.value,
+                )
+                rebuild_result = await _build_workflow({"plan": reduced_plan, "run_id": run_id}, context_id, task_id)
+                if "error" in rebuild_result:
+                    await self.record_error(context_id, "retry_error", rebuild_result["error"])
+                    yield AgentResponse.error(rebuild_result["error"])
+                    return
+
+                workflow = rebuild_result["workflow"]
+                current_nodes = {**current_nodes, **rebuild_result.get("nodes", {})}
+                current_tasks = affected_tasks
+                async for chunk in workflow.run_workflow():
+                    results.append(chunk)
+                    resp = A2AResponse.parse(chunk)
+                    # Same status_message fallback as the main loop above —
+                    # see its comment for why.
+                    text = (resp.text or resp.status_message) if resp else None
+                    if text:
+                        yield AgentResponse.status(
+                            text, agent=workflow.current_agent_name or self.agent_name,
+                            context_id=context_id, task_id=task_id,
+                            phase_detail=text, **_task_meta(current_tasks),
+                        )
+
             # ── Phase 3: Synthesize results ──────────────────────
             if workflow.state == Status.COMPLETED:
-                abi_logging(f"[✅] Workflow completed with {len(results)} results")
+                abi_logging(f"[✅] Workflow completed with {len(results)} results, "
+                             f"{retry_round} retry round(s)")
 
                 # Extract artifact URLs from agent responses
                 from abi_core.common.artifact_store import generate_download_urls, format_artifact_links
@@ -613,17 +805,63 @@ class AbiOrchestratorAgent(AbiAgent):
                     except Exception:
                         pass
 
-                await generate_download_urls(artifacts)
+                # One entry per filename, the latest upload. A Phase 2.5
+                # retry, or a task that rewrote one of its input files, uploads
+                # the same filename again — live 2026-10-06 the answer listed
+                # game.py, player.py and assets.py twice each.
+                from steps import merge_artifacts as _latest_per_file
+                artifacts = _latest_per_file([], artifacts)
+
+                integration = None
+                missing_deliverables = []
+                reviewer_report = None
+                if reviewer_card:
+                    # ── The run's reviewer (02.4) ─────────────────────
+                    # The reviewer has the code agents' work; ask for its
+                    # report, verify it (2.5 + 2.6 on the run's folder), send
+                    # the findings back to the same reviewer for another round
+                    # or confirm. The Orchestrator never repairs.
+                    from steps import review_with_reviewer, run_artifacts
+
+                    async for item in review_with_reviewer(
+                        reviewer_card, plan, run_id, context_id, task_id,
+                        self._run_with_heartbeat, self.agent_name,
+                    ):
+                        if isinstance(item, tuple):
+                            integration, missing_deliverables, reviewer_report = item
+                        else:
+                            yield item
+
+                    # The user's links: the run's final files.
+                    artifacts = await run_artifacts(run_id) or artifacts
+                    await generate_download_urls(artifacts)
+                else:
+                    await generate_download_urls(artifacts)
+                    # ── Phase 2.6: integration review (report only) ───
+                    # No reviewer (fewer than two .py files): the review still
+                    # reports; nobody repairs. See steps.review_deliverables.
+                    from steps import review_deliverables
+
+                    async for item in self._run_with_heartbeat(
+                        review_deliverables(artifacts, run_id), context_id, task_id,
+                        "Verificando que los archivos funcionen juntos...",
+                        phase=RunPhase.EXECUTING.value,
+                    ):
+                        if isinstance(item, _HeartbeatDone):
+                            integration = item.value
+                        else:
+                            yield item
 
                 # Build synthesis prompt
-                from abi_core.common.context_loader import build_execution_prompt
-
                 artifacts_paths = [
                     f"{art.get('filename', '?')}: {art.get('download_url', art.get('url', ''))}"
                     for art in artifacts
                 ]
 
-                synthesis_query = config.build_synthesis_prompt(plan, len(results), artifacts_paths)
+                synthesis_query = config.build_synthesis_prompt(
+                    plan, len(results), artifacts_paths,
+                    integration_report=integration.as_text() if integration else None,
+                )
 
                 from abi_core.agent.llm_provider import invoke as llm_invoke
 
@@ -639,14 +877,19 @@ class AbiOrchestratorAgent(AbiAgent):
                     # too tight for real contention, not just a stuck call.
                     # One retry with a fresh client before surfacing an error
                     # instead of hanging forever.
+                    # The role prompt carries the synthesis rules (grounded,
+                    # honest about failures, don't contradict the verified
+                    # appendices). It used to reach only the tool-calling
+                    # turn, never this call. Spec: persistent-agent-prompts.md.
                     return await llm_invoke(
                         config.LLM_CONFIG, synthesis_query, thread_id=context_id,
-                        call_timeout=2000,
+                        system_prompt=config.SYSTEM_PROMPT, call_timeout=2000,
                     )
 
                 synthesis = None
                 async for item in self._run_with_heartbeat(
                     _synthesize(), context_id, task_id, "Synthesizing results...",
+                    phase=RunPhase.SYNTHESIZING.value,
                 ):
                     if isinstance(item, _HeartbeatDone):
                         synthesis = item.value
@@ -671,6 +914,32 @@ class AbiOrchestratorAgent(AbiAgent):
                 if artifacts and missing_a_link:
                     final_response += format_artifact_links(artifacts)
 
+                # Same principle as the link check above: the summary is
+                # free text from a model, the review is verified by code.
+                # Errors are appended verbatim — never left to the model. So
+                # is "unverified" (the set never ran in the sandbox): that is
+                # not a pass. getattr: older abi-core-ai has no such field.
+                integration_failed = bool(integration and integration.errors)
+                integration_unverified = bool(
+                    integration and not integration.errors
+                    and getattr(integration, "execution_unverified", False)
+                )
+                if integration_failed or integration_unverified:
+                    final_response += "\n\n" + integration.as_text()
+                if missing_deliverables:
+                    final_response += "\n\n❌ Entregables que no se produjeron: " + ", ".join(missing_deliverables)
+                    integration_failed = True
+                from steps import reviewer_note, handoff_errors
+                note = reviewer_note(reviewer_report, await handoff_errors(run_id) if reviewer_card else None)
+                if note:
+                    final_response += "\n\n" + note
+                outcome = (
+                    "COMPLETED WITH INTEGRATION ERRORS" if integration_failed
+                    else "COMPLETED, INTEGRATION UNVERIFIED" if integration_unverified
+                    else "COMPLETED BY REVIEWER" if (reviewer_report or {}).get("missing_written")
+                    else "SUCCESS"
+                )
+
                 # Fase 2D (ams-long-term-memory-no-consumer.md): write this
                 # plan's outcome to long-term memory so a future planning
                 # pass can recall it (Fase 2B). context_id=task_id, matching
@@ -683,11 +952,20 @@ class AbiOrchestratorAgent(AbiAgent):
                     f"{t.get('task_id', '?')}: {t.get('description', '')[:60]}"
                     for t in tasks
                 )
+                # AMS rejects any entity containing a comma (used as its own
+                # storage delimiter) — reproduced live 2026-09-30: a normal
+                # natural-language objective ("...movement, maze, ghosts...")
+                # made every single Fase 2D write fail silently (logged as a
+                # warning, never surfaced). `task` maps directly to
+                # `entities`, so it must be comma-free; the real objective
+                # text (with commas) still goes in `content`, unaffected.
+                task_entity = objective[:50].replace(",", ";")
                 await add_long_term_memory(
                     topic="plan_execution",
-                    task=objective[:50],
+                    task=task_entity,
                     content=(
-                        f"Plan '{objective}' with {len(tasks)} tasks: SUCCESS. "
+                        f"Plan '{objective}' with {len(tasks)} tasks: "
+                        f"{outcome}. "
                         f"Tasks: {task_summaries}"
                     ),
                     context_id=task_id,

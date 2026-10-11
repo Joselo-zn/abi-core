@@ -7,18 +7,18 @@ agent or an ABI Swarm project alike. It is under active development and the
 API may change between releases.
 ```
 
-The [previous page](04-agents-with-memory.md) covered **conversation memory** — the LLM remembering messages in a thread. This page covers the **built-in memory API**: explicit functions to store and recall information across steps, tasks, and sessions, backed by the Agent Memory Server (AMS).
+The [previous page](04-agents-with-memory.md) covered **session memory** — the recent turns of a conversation, kept in the session context. This page covers the **built-in memory API**: explicit functions to store and recall information across steps, tasks, and sessions, backed by the Agent Memory Server (AMS).
 
 ## Two kinds of memory
 
-| | Conversation memory (`thread_id`) | Built-in memory API (AMS) |
+| | Session memory (session context) | Built-in memory API (AMS) |
 |---|---|---|
-| Scope | One agent's LLM thread | System-wide, shared across agents |
-| Persistence | In-process (lost on restart) | Redis-backed (survives restarts) |
-| Control | Implicit (LLM sees history) | Explicit (you choose what to store) |
+| Scope | One session of one agent | System-wide, shared across agents |
+| Persistence | `SESSION_BACKEND`: in-process by default, Redis optional | Redis-backed (survives restarts) |
+| Control | You put the recent turns in the prompt | You choose what to store and recall |
 | Types | Conversation only | Short-term + long-term semantic |
 
-Use conversation memory for chat continuity. Use the built-in API when you need to **deliberately** save a result, a decision, or a piece of state and recall it later — possibly from a different agent.
+Use session memory for chat continuity. Use the built-in API when you need to **deliberately** save a result, a decision, or a piece of state and recall it later — possibly from a different agent.
 
 ## Short-term vs long-term
 
@@ -151,8 +151,7 @@ spontaneously reach for a memory tool on requests that didn't need it, and a
 single one of those calls could consume the *entire* reasoning timeout by itself
 (reproduced twice with the same query — two long-term-memory writes alone ate the
 full 180s budget before routing was ever decided), or return a garbled narrative
-about a "failed" save that then corrupted the next decision. See
-`.abi/issues/2026-09-09-fase1-memory-tools-lento.md`.
+about a "failed" save that then corrupted the next decision.
 
 For a decision with real consequences (routing, plan approval, anything
 latency-sensitive), prefer loading memory **deterministically in code** — call

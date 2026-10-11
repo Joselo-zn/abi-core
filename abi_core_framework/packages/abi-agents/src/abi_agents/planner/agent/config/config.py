@@ -10,9 +10,10 @@ from typing import Optional
 
 from a2a.types import AgentCard
 from abi_core.common.agent_card_loader import load_agent_card
-from abi_core.common.prompts import PLANNER_COT_INSTRUCTIONS
+from abi_core.common.prompts import PLANNER_COT_INSTRUCTIONS, TECHNICAL_DESIGN_INSTRUCTIONS
 
-from prompts import build_planning_query, build_direct_tool_content_prompt
+from prompts import build_planning_query, build_direct_tool_content_prompt, build_technical_design_query
+from abi_core.agent.llm_provider import llm_config_from_env
 
 
 class AgentConfig:
@@ -32,27 +33,10 @@ class AgentConfig:
     OLLAMA_HOST: str = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
     
     # LLM Configuration (unified dict for create_llm)
-    LLM_CONFIG: dict = {
-        "provider": os.getenv("LLM_PROVIDER", "ollama"),
-        "model": os.getenv("MODEL_NAME", "qwen3:latest"),
-        # None (unset) lets create_llm() omit temperature entirely, so the
-        # provider uses its own default — required for e.g. Claude models
-        # with extended thinking, which reject any explicit temperature
-        # other than 1. Set LLM_TEMPERATURE explicitly to override.
-        "temperature": float(os.environ["LLM_TEMPERATURE"]) if os.getenv("LLM_TEMPERATURE") else None,
-        "base_url": os.getenv("LLM_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
-        "api_key": os.getenv("LLM_API_KEY", ""),
-        "aws_region": os.getenv("AWS_REGION", "us-east-1"),
-        "azure_deployment": os.getenv("AZURE_DEPLOYMENT", ""),
-        "azure_endpoint": os.getenv("AZURE_ENDPOINT", ""),
-        "vertex_project": os.getenv("VERTEX_PROJECT", ""),
-        "vertex_location": os.getenv("VERTEX_LOCATION", "us-central1"),
-        # Provider- or model-generation-specific kwargs forwarded as-is to
-        # the LangChain chat model constructor (e.g. Claude's `thinking`,
-        # Gemini's `thinking_budget`/`thinking_level`, Azure's
-        # `api_version`). Edit this dict directly for your deployment.
-        "extra_params": {},
-    }
+    # LLM settings from the environment (LLM_PROVIDER, MODEL_NAME, LLM_BASE_URL,
+    # LLM_API_KEY, LLM_TEMPERATURE, LLM_EXTRA_PARAMS — a JSON object passed
+    # as-is to the LangChain model). See abi_core.agent.llm_provider.
+    LLM_CONFIG: dict = llm_config_from_env()
     
     # Logging
     LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
@@ -87,7 +71,9 @@ class AgentConfig:
     # all prompt content through config instead of importing prompt modules
     # directly.
     SYSTEM_PROMPT: str = PLANNER_COT_INSTRUCTIONS
+    TECHNICAL_DESIGN_PROMPT: str = TECHNICAL_DESIGN_INSTRUCTIONS
     build_planning_query = staticmethod(build_planning_query)
+    build_technical_design_query = staticmethod(build_technical_design_query)
     build_direct_tool_content_prompt = staticmethod(build_direct_tool_content_prompt)
 
     @classmethod

@@ -151,11 +151,11 @@ user_has_access if {
 # User permissions database (can be extended or loaded from external data)
 user_permissions := {
     "admin@example.com": {
-        "allowed_tools": ["find_agent", "register_agent", "list_agents", "check_agent_capability", "check_agent_health"],
+        "allowed_tools": ["find_agent", "register_agent", "list_agents", "check_agent_capability", "check_agent_health", "recommend_agents"],
         "role": "admin"
     },
     "user@example.com": {
-        "allowed_tools": ["find_agent", "list_agents", "check_agent_capability", "check_agent_health"],
+        "allowed_tools": ["find_agent", "list_agents", "check_agent_capability", "check_agent_health", "recommend_agents"],
         "role": "user"
     },
     "developer@example.com": {

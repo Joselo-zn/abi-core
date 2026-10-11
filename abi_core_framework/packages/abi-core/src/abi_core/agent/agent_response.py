@@ -13,7 +13,26 @@ Usage inside a task:
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
+
+
+class RunPhase(str, Enum):
+    """Closed set of run phases a status update can declare via ``phase=``.
+
+    Clients (e.g. abi_core.ui.chainlit_app) map these to human-readable,
+    localized labels — the free-text ``message`` stays for logs and for
+    clients that don't understand phases. Pass ``.value`` so ``meta`` stays
+    plain JSON. See
+    .abi/specs/not-implemented/ux/chainlit-run-progress-indicator.md.
+    """
+
+    ANALYZING = "analyzing"
+    ROUTING = "routing"
+    PLANNING = "planning"
+    BUILDING = "building"
+    EXECUTING = "executing"
+    SYNTHESIZING = "synthesizing"
 
 
 class AgentResponse:
@@ -21,7 +40,17 @@ class AgentResponse:
 
     @staticmethod
     def status(message: str, *args, **kwargs) -> dict:
-        """Emit a status update — visible to the client but not a final result."""
+        """Emit a status update — visible to the client but not a final result.
+
+        Every keyword argument lands in ``meta`` unchanged. Keys with a known
+        meaning to the bundled Chainlit UI (all optional):
+
+        - ``phase``: a ``RunPhase`` value — which stage of the run this is.
+        - ``phase_detail``: short free text shown under the active phase/step.
+        - ``task_key`` / ``task_label``: the plan task this update belongs to.
+        - ``task_index`` / ``task_total``: 1-based position of that task.
+        - ``agent``: the agent that produced the update.
+        """
         return {
             "response_type": "status",
             "content": message,

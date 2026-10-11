@@ -49,6 +49,17 @@ abi_logging("[✅] Step completed")
 abi_logging("[❌] Error: ...")
 ```
 
+## Log lines worth knowing (Orchestrator)
+
+The lines that answer "what did the system decide, and why":
+
+| Where | Line | What it tells you |
+|-------|------|-------------------|
+| Orchestrator | `[🚦] Gate decision: action=...` | Deterministic routing (plan confirmation, clarification answer) or handoff to the LLM reasoning turn |
+| Orchestrator | `[🧭] Routing decision: action=... valid=[...] history_turns=N detail='...'` | What the LLM chose in the reasoning turn (`create_plan`, `answer_directly`, ...), the options it had, and how much conversation history it saw |
+| Orchestrator | `[🔨] Creating workflow with N tasks` | The approved plan is being turned into running agents |
+| Ephemeral | `[🔑] Session backend: redis (...)` | The ephemeral shares the Orchestrator's session store (required for tasks to build on each other) |
+
 ## Artifact Store logs
 
 If `LOG_TO_ARTIFACT_STORE=true`, agent execution logs are uploaded to MinIO for long-term storage:
@@ -62,13 +73,13 @@ environment:
 
 Access via MinIO console: `http://localhost:9001`
 
-## Security metrics
+## Security decisions
+
+Guardian doesn't expose a metrics endpoint. Every allow/deny decision is written to the logs — see [Audit & Compliance](../security/05-audit-compliance.md):
 
 ```bash
-curl http://localhost:11438/v1/tools/get_security_metrics
+docker compose logs -f <project>-guardian
 ```
-
-Returns request counts, blocked requests, average risk scores, and active agents.
 
 ## Next step
 

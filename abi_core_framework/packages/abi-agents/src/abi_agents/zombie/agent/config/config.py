@@ -4,6 +4,7 @@ import json
 import os
 
 from a2a.types import AgentCard, AgentCapabilities, AgentSkill, AgentInterface
+from abi_core.agent.llm_provider import llm_config_from_env
 
 
 class ZombieConfig:
@@ -11,6 +12,11 @@ class ZombieConfig:
 
     # Agent Identity
     ZOMBIE_MODE: str = os.getenv("ZOMBIE_MODE", "idle")
+    # "code" (default) or "reviewer" — same zombie, another set of tasks
+    # (ephemeral-reviewer-pipeline 02.3). RUN_ID: the plan run a reviewer
+    # belongs to; its project folder is projects/<RUN_ID>/.
+    ZOMBIE_ROLE: str = os.getenv("ZOMBIE_ROLE", "code").strip().lower()
+    RUN_ID: str = os.getenv("RUN_ID", "")
     AGENT_NAME: str = os.getenv("AGENT_NAME", "zombie")
     AGENT_PORT: int = int(os.getenv("AGENT_PORT", "11440"))
     AGENT_DISPLAY_NAME: str = AGENT_NAME
@@ -20,12 +26,19 @@ class ZombieConfig:
     SYSTEM_PROMPT: str = os.getenv("SYSTEM_PROMPT", "You are a generic ABI agent.")
     WORKSPACE: str = "/app/workspace"
 
-    # Wall-clock cap for the analyze_and_execute step (the LLM tool-calling
-    # turn that actually does the work). Separate from the DAG-wide cap
-    # (ABI_DAG_MAX_WAIT) — this is per-attempt, tunable per deployment since
-    # it depends on the model/hardware doing the real work (e.g. a large
-    # model on CPU needs much longer than the previous shared 180s default).
-    EXECUTION_TIMEOUT: float = float(os.getenv("EXECUTION_TIMEOUT", "600"))
+    # Backstop for the analyze_and_execute step — NOT the mechanism that
+    # decides "this is taking too long" anymore (that's wrong: a flat
+    # wall-clock cap killed genuinely-progressing work under concurrent
+    # Ollama load, confirmed live 2026-09-30, 5 parallel tasks all cut at
+    # exactly 600s while still producing real chunks). The real bounding now
+    # happens at the point of actual work — call_timeout=120.0 per LLM
+    # stream chunk (llm_provider.py) and a 30s timeout on the AMS memory
+    # call (memory/operations.py) — both inactivity-based, not duration-
+    # based. 3600s is a last-resort net for something genuinely infinite
+    # that neither of those catches (e.g. a tool-calling loop that never
+    # converges), not a budget for normal work. See .abi/specs/
+    # not-implemented/analyze-and-execute-inactivity-vs-wallclock-timeout.md.
+    EXECUTION_TIMEOUT: float = float(os.getenv("EXECUTION_TIMEOUT", "3600"))
 
     # Tools (JSON list of MCP tool names)
     _TOOLS_JSON: str = os.getenv("TOOLS", "[]")
@@ -52,33 +65,14 @@ class ZombieConfig:
     MODEL_NAME: str = os.getenv("MODEL_NAME", "qwen3:latest")
     OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")
-    LLM_CONFIG: dict = {
-        "provider": LLM_PROVIDER,
-        "model": MODEL_NAME,
-        # None (unset) lets create_llm() omit temperature entirely, so the
-        # provider uses its own default — required for e.g. Claude models
-        # with extended thinking, which reject any explicit temperature
-        # other than 1. Set LLM_TEMPERATURE explicitly to override.
-        "temperature": float(os.environ["LLM_TEMPERATURE"]) if os.getenv("LLM_TEMPERATURE") else None,
-        "base_url": os.getenv("LLM_BASE_URL", OLLAMA_HOST),
-        "api_key": os.getenv("LLM_API_KEY", ""),
-        # Provider- or model-generation-specific kwargs forwarded as-is to
-        # the LangChain chat model constructor (e.g. Claude's `thinking`,
-        # Gemini's `thinking_budget`/`thinking_level`, Azure's
-        # `api_version`). Edit this dict directly for your deployment.
-        #
-        # reasoning=False when on Ollama: qwen3 has "thinking" mode ON by
-        # default — measured elsewhere in this framework at ~277s/call vs
-        # ~13s with it off, for a MUCH shorter structured-output call than
-        # real code generation. Confirmed live: an EPHEMERAL_MODEL_NAME=
-        # qwen3:latest agent hit its own EXECUTION_TIMEOUT (600s) on
-        # analyze_and_execute without this — not a timeout-value problem,
-        # a thinking-mode-left-on problem. Only valid for ChatOllama; gated
-        # on the provider so it's a no-op for other providers. See
-        # .abi/tsd/2026-09-09-routing-decision-model-profiling.md
-        # (abi-core repo).
-        "extra_params": {"reasoning": False} if LLM_PROVIDER == "ollama" else {},
-    }
+    # LLM settings from the environment (LLM_PROVIDER, MODEL_NAME, LLM_BASE_URL,
+    # LLM_API_KEY, LLM_TEMPERATURE, LLM_EXTRA_PARAMS — a JSON object passed
+    # as-is to the LangChain model). See abi_core.agent.llm_provider.
+    # reasoning=False on Ollama: qwen3's thinking mode ON hit EXECUTION_TIMEOUT
+    # (600s) on analyze_and_execute — see
+    # .abi/tsd/2026-09-09-routing-decision-model-profiling.md. LLM_EXTRA_PARAMS
+    # overrides it.
+    LLM_CONFIG: dict = llm_config_from_env(ollama_extra_params={"reasoning": False})
 
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

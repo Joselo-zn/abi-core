@@ -10,12 +10,15 @@ from abi_core.common.semantic_tools import MCPToolkit
 toolkit = MCPToolkit()
 
 # Call any tool as a method
-result = await toolkit.find_agent(query="analyze data")
-result = await toolkit.store_document(content="...", metadata={...})
-result = await toolkit.my_custom_tool(param1="value", param2=123)
+result = await toolkit.find_agent(query="analyze data")          # built-in
+result = await toolkit.search_tool_registry(query="parse a PDF")  # built-in
+result = await toolkit.store_document(content="...")              # one you added
+
 ```
 
 That's it. The toolkit handles MCP sessions, HMAC auth, response parsing, and error handling.
+
+The main tools the Semantic Layer ships with are `find_agent`, `recommend_agents`, `check_agent_capability`, `register_agent`, `unregister_agent`, `register_tool`, `get_tool`, `update_tool`, `delete_tool`, `search_tool_registry` and `echo_tool`. Any other name on this page (`store_document`, `calculate_metrics`, `bigquery_search`, `my_custom_tool`) stands for a tool you add yourself — see [Extending the Semantic Layer](04-extending-semantic-layer.md).
 
 ## How it works
 
@@ -24,8 +27,8 @@ When you call `toolkit.some_tool(...)`:
 1. Opens an MCP session to the Semantic Layer
 2. Builds auth context from your agent card (HMAC)
 3. Calls the tool with your parameters
-4. Parses the JSON response
-5. Returns a dict (or `{"error": "..."}` on failure)
+4. Returns the tool's value: its structured result when the server sends one (a list comes back whole, an empty list as `[]`), otherwise the JSON in the response
+5. On failure, returns `{"error": "..."}`
 
 ## Explicit call
 
@@ -93,6 +96,8 @@ else:
 ## Using in steps
 
 ```python
+import json
+
 from app import agent
 from abi_core.common.semantic_tools import MCPToolkit
 

@@ -11,20 +11,20 @@ Two agents:
 ## Step 1: Create the project
 
 ```bash
-abi-core create project multi-demo --with-semantic-layer
+abi-core create project --name multi-demo --with-semantic-layer
 cd multi-demo
 ```
 
 ## Step 2: Add the agents
 
 ```bash
-abi-core add agent coordinator \
+abi-core add agent --name coordinator \
   --description "Receives requests and delegates to specialized agents" \
   --with-web-interface
 
 # Tasks: coordinate_request
 
-abi-core add agent researcher \
+abi-core add agent --name researcher \
   --description "Researches topics and provides detailed answers"
 
 # Tasks: research_topic
@@ -32,7 +32,7 @@ abi-core add agent researcher \
 
 ## Step 3: Write the Researcher
 
-Edit `agents/researcher/steps.py`:
+Replace the contents of `agents/researcher/steps.py`:
 
 ```python
 from app import agent
@@ -51,18 +51,16 @@ Include key facts, context, and implications. 2-3 paragraphs max."""
     return {"answer": result}
 ```
 
-Edit `agents/researcher/tasks.py`:
+Replace the contents of `agents/researcher/tasks.py`:
 
 ```python
-import json
 from app import agent
 from abi_core.agent.agent_response import AgentResponse
 
 
 @agent.task(name="research_topic", task_id="task-research")
 async def research_topic(query):
-    data = json.loads(query) if isinstance(query, str) else query
-    topic = data.get("text", data.get("topic", ""))
+    topic = query  # plain text, as the coordinator sent it
 
     yield AgentResponse.status("Researching...")
     result = await agent.execute_step("research", topic=topic)
@@ -71,10 +69,9 @@ async def research_topic(query):
 
 ## Step 4: Write the Coordinator
 
-Edit `agents/coordinator/steps.py`:
+Replace the contents of `agents/coordinator/steps.py`:
 
 ```python
-import json
 from app import agent
 from config import config
 from abi_core.common.semantic_tools import tool_find_agent
@@ -95,7 +92,7 @@ async def delegate(worker, message, source_card):
         "message": {
             "messageId": "delegate-001",
             "role": "user",
-            "parts": [{"text": json.dumps({"text": message})}],
+            "parts": [{"kind": "text", "text": message}],
         }
     }
 
@@ -111,10 +108,9 @@ async def delegate(worker, message, source_card):
     return {"response": response_text}
 ```
 
-Edit `agents/coordinator/tasks.py`:
+Replace the contents of `agents/coordinator/tasks.py`:
 
 ```python
-import json
 from app import agent
 from abi_core.agent.agent_response import AgentResponse
 from config import AGENT_CARD
@@ -122,8 +118,7 @@ from config import AGENT_CARD
 
 @agent.task(name="coordinate_request", task_id="task-coordinate")
 async def coordinate_request(query):
-    data = json.loads(query) if isinstance(query, str) else query
-    text = data.get("text", "")
+    text = query
 
     # Find a worker
     yield AgentResponse.status("🔍 Finding the right agent...")

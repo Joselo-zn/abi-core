@@ -7,7 +7,7 @@ A vector database stores text in a way that lets you search by meaning instead o
 ABI-Core uses Weaviate. It's included automatically when you add the Semantic Layer:
 
 ```bash
-abi-core create project my-app --with-semantic-layer
+abi-core create project --name my-app --with-semantic-layer
 # Weaviate runs on port 8080 (mapped to 8081 on host)
 ```
 

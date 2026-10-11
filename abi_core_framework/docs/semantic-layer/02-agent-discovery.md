@@ -33,6 +33,20 @@ directly) to read the address.
 
 The search is semantic — "examine revenue" matches an agent described as "analyzes sales data".
 
+Pass `exclude_ephemeral=True` to leave ephemeral agents — the ones created on demand for a single plan — out of the search. Use it whenever you're looking for a long-lived agent to hand new work to: an ephemeral belongs to the run that created it.
+
+```python
+agent_card = await tool_find_agent.ainvoke({"query": "planner", "exclude_ephemeral": True})
+```
+
+To look up one ephemeral by its exact name, use the semantic layer's MCP tool `get_ephemeral_card`; it returns the card without its `auth` block:
+
+```python
+from abi_core.common.semantic_tools import MCPToolkit
+
+card = await MCPToolkit().call("get_ephemeral_card", agent_name="<ephemeral-agent-name>")
+```
+
 ## Find multiple agents
 
 ```python
@@ -40,11 +54,15 @@ from abi_core.common.agent_card_loader import get_agent_url
 from abi_core.common.semantic_tools import tool_list_agents
 
 agents = await tool_list_agents.ainvoke("share opinions and discuss topics")
-# Returns a list of AgentCard objects
+# Returns a list of AgentCard objects, best match first (up to 5)
+
+agents = await tool_list_agents.ainvoke({"query": "share opinions", "max_agents": 10})
 
 for agent in agents:
     print(f"{agent.name} at {get_agent_url(agent)}")
 ```
+
+`tool_list_agents` calls the semantic layer's `recommend_agents` tool, so the [semantic access policy](../security/02-opa-policies.md) checks `recommend_agents`: if your agent card restricts `security.allowed_mcp_tools`, include it.
 
 ## Check if an agent is alive
 
@@ -74,14 +92,14 @@ This means:
 ```python
 from abi_core.common.semantic_tools import tool_register_agent
 
-await tool_register_agent.ainvoke({
+await tool_register_agent.ainvoke({"agent_card_dict": {
     "id": "agent://new_agent",
     "name": "new_agent",
     "description": "Does something new",
     "url": "http://new-agent:8005",
     "supportedTasks": ["new_task"],
     "auth": {"method": "hmac_sha256", "key_id": "...", "shared_secret": "..."}
-})
+}})
 ```
 
 This is how the Builder agent registers ephemeral agents dynamically.

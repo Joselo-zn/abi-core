@@ -38,15 +38,15 @@ Use `$node_name.key` to wire outputs between steps:
 
 ## Across multiple agents
 
-The Planner produces tasks with `depends_on` arrays. The Orchestrator respects them:
+The Planner produces tasks with `dependencies` arrays. The Orchestrator respects them:
 
 ```json
 {
   "tasks": [
-    {"task_id": "1", "description": "Get data", "depends_on": []},
-    {"task_id": "2", "description": "Analyze", "depends_on": ["1"]},
-    {"task_id": "3", "description": "Visualize", "depends_on": ["1"]},
-    {"task_id": "4", "description": "Report", "depends_on": ["2", "3"]}
+    {"task_id": "task_1", "description": "Get data", "dependencies": []},
+    {"task_id": "task_2", "description": "Analyze", "dependencies": ["task_1"]},
+    {"task_id": "task_3", "description": "Visualize", "dependencies": ["task_1"]},
+    {"task_id": "task_4", "description": "Report", "dependencies": ["task_2", "task_3"]}
   ]
 }
 ```
@@ -56,9 +56,22 @@ Execution:
 2. Tasks 2 and 3 run in parallel (both depend only on 1)
 3. Task 4 waits for both 2 and 3
 
-### How a multi-dependency wait is actually built
+### Waiting for several dependencies
 
-Task 4 above has two dependencies (`"2"` and `"3"`), and it must run exactly once, only after both finish — not once per dependency. `build_workflow` (`orchestrator/agent/steps.py`) builds this by collecting *all* of a task's dependency ids first and calling `AgentInteractionFlow.add_edge` **once**, passing the full list (`add_edge(["2", "3"], "4")`), instead of once per dependency. This matters because of how the underlying `StateGraph.add_edge` (LangGraph) works: it only creates a real "wait for all" join when every predecessor is passed together in one call. Calling `add_edge` once per dependency — even targeting the same node — registers each call as its own independent trigger, so the target would fire once per call instead of once after all predecessors complete. This was a real, reproduced bug (a task with 3 dependencies ran 3 times, one with 4 ran 4 times, each firing as soon as its first dependency alone finished) and is now fixed: `add_edge` accepts `str | list[str]`, and every caller with more than one dependency for the same target must group them into a single call. See `AgentInteractionFlow.add_edge`'s docstring in `abi_core/common/workflow.py` for the full detail.
+If you build a workflow yourself, pass all of a node's dependencies to `add_edge` **in one call**:
+
+```python
+# analyze, visualize and report are InteractionFlowNode objects already added with add_node()
+workflow.add_edge([analyze.id, visualize.id], report.id)   # report runs once, after both
+```
+
+Edges use each node's `id`. Calling `add_edge(analyze.id, report.id)` and then `add_edge(visualize.id, report.id)` creates two independent triggers: `report` would run twice, each time as soon as one of its dependencies finished. One call with the full list creates a real "wait for all" join.
+
+### What a dependent task receives
+
+In ABI Swarm, a task that depends on others starts with their output already in its workspace — the actual files, downloaded from the [Artifact Store](../production/05-artifact-store.md) — plus a description of what those files expose, so it uses them instead of rewriting them.
+
+That handover goes through the shared session store. Set `SESSION_BACKEND=redis` and `SESSION_REDIS_URL` on the Orchestrator **and on the Builder**: the Builder passes them on to every agent it creates. Without them, each new agent falls back to its own in-memory store and works blind to the others — see [Environment Variables](../reference/environment-variables.md#session-management).
 
 ## Programmatic parallelism in tasks
 

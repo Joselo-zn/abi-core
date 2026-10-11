@@ -19,7 +19,7 @@ import asyncio
 import json
 
 from app import agent
-from abi_core.common.utils import abi_logging, format_plan_summary, format_conversation_summary
+from abi_core.common.utils import abi_logging, format_plan_summary, format_conversation_summary, plan_execution_order
 from abi_core.common.a2a_response import A2AResponse
 from abi_core.common.semantic_tools import tool_find_agent, MCPToolkit
 from abi_core.common.workflow import AgentInteractionFlow, InteractionFlowNode
@@ -207,6 +207,10 @@ async def classify_query(query, context_id="", session_context=None):
     sentinel_result = classify_plan_confirmation_sentinel(query, session_context)
     if sentinel_result is not None:
         abi_logging(f"[🔁] Plan confirmation sentinel: {sentinel_result['classification']} for session '{context_id}'")
+        if sentinel_result["classification"] == "plan_modify_feedback":
+            # Modify-with-feedback in one step (PlanReview card) — same
+            # gate path as a reply to "¿qué querés cambiar?" below.
+            return {"classification": "plan_modification_feedback", "feedback": sentinel_result["feedback"]}
         return sentinel_result
 
     # ── Deterministic check: free-text reply to "¿qué querés cambiar?" ──
@@ -500,7 +504,17 @@ def build_routing_contract(query: str, session_ctx: dict, pending_clarification:
     pending_plan = session_ctx.get("pending_plan")
 
     if pending_plan:
-        valid_actions = ["resolve_pending_plan", "answer_directly"]
+        # No `answer_directly` escape here — deliberately. Reproduced live
+        # 2026-09-30: with a plan pending, 7 of 7 free-text replies
+        # ("comienza", "listo", "ya crea el maldito juego", ...) picked
+        # answer_directly and produced chatty acknowledgment text instead
+        # of ever resolving the plan — not a ~60% classification error,
+        # every single one dodged. Any free text while a plan is pending
+        # is *always* about that plan (approve/reject/modify) — there is
+        # no legitimate "just chat" case here, so the schema shouldn't
+        # offer one. Forces resolve_pending_plan's own approve/reject/
+        # modify sub-decision instead of a decision on whether to decide.
+        valid_actions = ["resolve_pending_plan"]
     elif pending_clarification:
         valid_actions = ["resolve_pending_clarification", "answer_directly"]
     else:
@@ -566,6 +580,13 @@ def extract_plan(planner_results):
     return {"plan": plan}
 
 
+def _topological_order(tasks: list) -> list:
+    """Execution order of a plan's tasks — now framework-owned
+    (abi_core.common.utils.plan_execution_order) so the plan review card
+    numbers tasks exactly as they run."""
+    return plan_execution_order(tasks)
+
+
 async def build_workflow(plan_result, context_id, task_id):
     """Build AgentInteractionFlow from the extracted plan.
 
@@ -595,10 +616,20 @@ async def build_workflow(plan_result, context_id, task_id):
     # ("build_and_execute"/"create_tools_and_execute"). System-wide (global)
     # visibility is handled separately by orchestrator.py, which persists the
     # methodology to short-term memory when the plan is first confirmed.
-    methodology_block = f"[Metodología del plan: {methodology}] {rationale}\n\n" if methodology else ""
+    from abi_core.common.prompts.orchestrator import build_methodology_note
+    methodology_block = build_methodology_note(methodology, rationale)
     workflow = AgentInteractionFlow()
     nodes = {}
-    tasks = plan.get("tasks", [])
+    # Dependencies first: a task's artifact keys are built from its
+    # dependencies' already-assigned agents (nodes[dep_id].target_agent_card
+    # below). In plan order, an entry point listed BEFORE its modules found
+    # none of them assigned yet and silently got artifacts=[] — reproduced
+    # live 2026-10-03: main.py (task_1, depending on task_2..task_5) started
+    # with an empty workspace and invented module names that didn't exist.
+    # Latent until the Planner's technical-design phase started putting the
+    # entry point first with real dependencies. See
+    # .abi/fixes/2026-10-03-cross-file-integration-context.md.
+    tasks = _topological_order(plan.get("tasks", []))
     ephemeral_agents = []
 
     abi_logging(f"[🔨] Creating workflow with {len(tasks)} tasks")
@@ -632,14 +663,29 @@ async def build_workflow(plan_result, context_id, task_id):
         task_type = task.get("type", "execute")
         target = task.get("target", {})
 
-        # Collect artifact keys from dependency targets
+        # Collect artifact keys from dependency targets. The real upload
+        # key is f"{agent_name}/{filename}" (see upload_workspace_artifacts)
+        # — agent_name is the dependency's EPHEMERAL's dynamic name
+        # (e.g. "ephemeral-task-1-1790724300"), only known after that
+        # ephemeral was actually built, never at planning time. Using just
+        # the bare filename tag here was the real bug: download_artifacts
+        # always 404'd — invisible before because download_artifacts
+        # itself didn't exist until today. Dependencies are processed
+        # earlier in this same loop, so nodes[dep_id] (with the real
+        # agent card) is already populated by the time we get here.
         dep_artifact_keys = []
         for dep_id in task.get("dependencies", []):
             dep_task = next((t for t in tasks if t.get("task_id") == dep_id), None)
             if dep_task and dep_task.get("target", {}).get("type") == "file":
                 dep_tag = dep_task["target"]["tag"]
-                # Key format matches what synthesize_and_report uploads
-                dep_artifact_keys.append(dep_tag)
+                dep_node = nodes.get(dep_id)
+                if dep_node and dep_node.target_agent_card:
+                    dep_artifact_keys.append(f"{dep_node.target_agent_card.name}/{dep_tag}")
+                else:
+                    abi_logging(
+                        f"[⚠️] Task {tid}: dependency '{dep_id}' has no known "
+                        "agent yet — skipping its artifact key"
+                    )
 
         if task_type == "execute":
             agents = task.get("agents", [])
@@ -683,14 +729,27 @@ async def build_workflow(plan_result, context_id, task_id):
             abi_logging(f"[✅] Task {tid}: execute → {target.name}")
 
         elif task_type in ("build_and_execute", "create_tools_and_execute"):
-            builder_spec = task.get("builder_spec", {})
+            # Shallow copy — build_workflow gets called again per retry round
+            # (see orchestrator.py's Phase 2.5 cascade) on the SAME task dict
+            # objects (affected_tasks filters current_tasks by reference, it
+            # doesn't copy them). Mutating task["builder_spec"] in place made
+            # methodology_block get prepended again each round, on top of
+            # what the previous round already prepended — confirmed live
+            # 2026-09-30: a task retried 9 times carried 9 stacked copies of
+            # the same boilerplate prefix ahead of its real instruction.
+            builder_spec = dict(task.get("builder_spec", {}))
             # Pass artifact keys from dependencies and target tag
             if dep_artifact_keys:
                 builder_spec["artifact_keys"] = dep_artifact_keys
             if target and target.get("tag"):
                 builder_spec["target_tag"] = target["tag"]
-            if methodology_block:
-                builder_spec["system_prompt"] = methodology_block + builder_spec.get("system_prompt", "")
+            # The run's id names the code agent (ephemeral-<run_id>-…): the
+            # A2A policy lets it talk only to its own run's reviewer.
+            if plan_result.get("run_id"):
+                builder_spec["run_id"] = plan_result["run_id"]
+            # No methodology block for ephemerals: it is the Planner's framing,
+            # not an instruction for writing a file; they get their role prompt
+            # instead (ephemeral-reviewer-pipeline spec 04, decision 1).
             abi_logging(f"[🏗️] Task {tid}: {task_type} → calling builder (artifacts={dep_artifact_keys})")
 
             build_query = json.dumps({
@@ -789,6 +848,8 @@ async def build_workflow(plan_result, context_id, task_id):
             # Structured JSON, not prose — the methodology block (free text)
             # doesn't apply here, the Planner's entrypoint parses this as JSON.
             node_desc = direct_query
+        elif task_type in ("build_and_execute", "create_tools_and_execute"):
+            node_desc = desc  # ephemerals: no methodology block (spec 04, decision 1)
         else:
             node_desc = methodology_block + desc if methodology_block else desc
         node = InteractionFlowNode(
@@ -829,4 +890,437 @@ async def build_workflow(plan_result, context_id, task_id):
         "workflow": workflow,
         "plan": plan,
         "ephemeral_agents": ephemeral_agents,
+        # deterministic-deliverable-contract-verification.md — so the
+        # caller can check which real agent uploaded which artifact,
+        # instead of trusting a flat, unindexed results list.
+        "nodes": nodes,
     }
+
+
+# ── Deterministic deliverable contract check ──────────────────────
+# .abi/specs/not-implemented/deterministic-deliverable-contract-verification.md
+#
+# Reproduced live 2026-09-30: a 5-task workflow reported COMPLETED with
+# zero real artifacts uploaded, and synthesis (free-text LLM generation)
+# fabricated a full "success" summary instead of reporting the failure.
+# These three functions verify by code — never by trusting the
+# ephemeral's own "status": "completed" or asking an LLM to judge —
+# whether each task's actual output satisfies what the Planner assigned
+# it, before synthesis is ever allowed to run.
+
+def _task_own_artifacts(tid: str, results: list, nodes: dict) -> list:
+    """Artifacts uploaded specifically by this task's own ephemeral.
+
+    `results` is a flat, unindexed list of every A2A chunk from every task
+    in the workflow — matched here by agent name (`art["agent"]`, set by
+    `upload_workspace_artifacts`) against `nodes[tid]`'s real, dynamically
+    assigned agent card name.
+    """
+    from abi_core.common.a2a_response import A2AResponse
+
+    node = nodes.get(tid)
+    if not node or not getattr(node, "target_agent_card", None):
+        return []
+    agent_name = node.target_agent_card.name
+    own = []
+    for r in results:
+        try:
+            resp = A2AResponse.parse(r)
+            if resp and resp.data:
+                for art in resp.data.get("uploaded_artifacts", []):
+                    if art.get("agent") == agent_name:
+                        own.append(art)
+        except Exception:
+            pass
+    return own
+
+
+def _code_artifacts(artifacts: list) -> list:
+    """The plan's .py files and README, one per filename (the latest — a
+    Phase 2.5 retry re-uploads the same file)."""
+    return [a for a in merge_artifacts([], artifacts)
+            if a.get("filename", "").endswith(".py") or a.get("filename", "").lower().startswith("readme")]
+
+
+async def _download_files(artifacts: list) -> dict:
+    from abi_core.common.artifact_store import ArtifactStore
+
+    store = ArtifactStore()
+    files = {}
+    for art in artifacts:
+        key = art.get("key") or f"{art.get('agent', 'unknown')}/{art.get('filename', '')}"
+        try:
+            files[art["filename"]] = (await store.download(key)).decode("utf-8", errors="replace")
+        except Exception as e:
+            abi_logging(f"[⚠️] Integration review: could not download '{key}': {e}", level="warning")
+    return files
+
+
+# ── The run's reviewer (ephemeral-reviewer-pipeline 02.4) ──────
+# The Orchestrator orchestrates and verifies; the reviewer repairs. Replaces
+# the one-call repair the Orchestrator ran itself (repair_deliverables,
+# 1.13.66–1.13.68), which broke "one entity, one task".
+
+REVIEWED_TYPES = ("build_and_execute", "create_tools_and_execute")
+
+
+def code_targets(plan: dict) -> list:
+    """Files the plan's code agents deliver (code tasks with a target)."""
+    return [(t.get("target") or {}).get("tag") for t in (plan or {}).get("tasks", [])
+            if t.get("type") in REVIEWED_TYPES and (t.get("target") or {}).get("tag")]
+
+
+def plan_needs_reviewer(plan: dict) -> bool:
+    """Same threshold as the integration review: at least two .py files to
+    integrate. A single-file plan has nothing to integrate."""
+    return sum(1 for f in code_targets(plan) if f.endswith(".py")) >= 2
+
+
+def _builder_response(results: list) -> dict:
+    for resp in A2AResponse.from_results(results):
+        if resp.data:
+            return resp.data
+        if resp.text:
+            try:
+                parsed = json.loads(resp.text)
+                if isinstance(parsed, dict) and ("agent" in parsed or "agent_card" in parsed):
+                    return parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return {}
+
+
+async def launch_reviewer(plan: dict, run_id: str, context_id: str, task_id: str) -> dict:
+    """Ask the Builder for the run's reviewer, before any code agent, with
+    retries (user decision, 2026-10-08). Returns its card (registered and
+    healthy — the Builder health-checks it) or {} if it never got ready."""
+    import asyncio
+    import os
+
+    attempts = int(os.getenv("REVIEWER_LAUNCH_ATTEMPTS", "3"))
+    builder_card = await find_infra_agent("builder", plan_tasks=plan.get("tasks", []))
+    if not builder_card:
+        abi_logging("[❌] Reviewer: Builder agent not found", level="error")
+        return {}
+    build_query = json.dumps({
+        "task_id": "reviewer",
+        "task_type": "build_and_execute",
+        "builder_spec": {"role": "reviewer", "run_id": run_id,
+                         "system_prompt": f"Reviewer of plan run {run_id}"},
+        "description": f"Reviewer of plan run {run_id}",
+        "context_id": context_id,
+    })
+    for attempt in range(1, attempts + 1):
+        flow = AgentInteractionFlow()
+        node = InteractionFlowNode(task=build_query, source_agent_card=AGENT_CARD, target_agent_card=builder_card,
+                                   node_key="build_reviewer", node_label="Build the run's reviewer")
+        flow.add_node(node)
+        flow.set_node_attributes(node.id, {"context_id": context_id, "task_id": task_id, "query": build_query})
+        flow.set_source_card(AGENT_CARD)
+        results = []
+        try:
+            async for chunk in flow.run_workflow():
+                results.append(chunk)
+        except Exception as e:
+            abi_logging(f"[⚠️] Reviewer launch attempt {attempt}/{attempts} failed: {e}", level="warning")
+        response = _builder_response(results)
+        if response.get("status") == "ready" and response.get("agent_card"):
+            abi_logging(f"[🔍] Reviewer ready: {response['agent_card'].get('name')} (attempt {attempt})")
+            return response["agent_card"]
+        abi_logging(f"[⚠️] Reviewer launch attempt {attempt}/{attempts}: "
+                    f"{response.get('message') or 'no usable answer from the Builder'}", level="warning")
+        if attempt < attempts:
+            await asyncio.sleep(5)
+    return {}
+
+
+async def reviewer_request(reviewer_card: dict, body: dict, context_id: str):
+    """One A2A request to the reviewer; yields its stream (statuses for the
+    UI, then its answer)."""
+    import uuid
+    from abi_core.common.abi_a2a import agent_connection
+
+    payload = {"message": {"role": "user", "parts": [{"kind": "text", "text": json.dumps(body)}],
+                           "messageId": uuid.uuid4().hex, "contextId": context_id}}
+    async for chunk in agent_connection(AGENT_CARD, build_agent_card(reviewer_card)[0], payload):
+        yield chunk
+
+
+async def run_files(run_id: str) -> dict:
+    """The run's current set: code/ and docs/, with review/repaired/ on top."""
+    from abi_core.common import project_store
+
+    files = {}
+    for area in ("code", "docs", "review/repaired"):
+        for name in await project_store.list_area(run_id, area):
+            files[name] = (await project_store.load(run_id, area, name)).decode("utf-8", errors="replace")
+    return files
+
+
+async def run_artifacts(run_id: str) -> list:
+    """Download artifacts for the run's final files: the reviewer's version
+    when there is one, else the code agent's."""
+    from abi_core.common import project_store
+
+    by_name = {}
+    for area in ("code", "docs", "review/repaired"):
+        for name in await project_store.list_area(run_id, area):
+            by_name[name] = {"filename": name, "key": project_store.project_key(run_id, area, name),
+                             "agent": "reviewer" if area == "review/repaired" else "code-agent"}
+    return list(by_name.values())
+
+
+async def verify_run(plan: dict, run_id: str):
+    """Phase 2.5 + 2.6 on the run's folder: every deliverable exists, and the
+    set works together (static + entry point in the governed sandbox).
+    Returns (IntegrationReport or None, missing filenames)."""
+    import os
+    from abi_core.common.integration_review import review_files
+    from abi_core.common.sandbox_service_client import sandbox_caller
+
+    files = await run_files(run_id)
+    missing = sorted(set(code_targets(plan)) - set(files))
+    with sandbox_caller(run_id):
+        report = await review_files(
+            files, run_sandbox=os.getenv("INTEGRATION_REVIEW_SANDBOX", "true").strip().lower() == "true",
+        )
+    if report:
+        abi_logging(f"[🔍] Verification: errors={len(report.errors)} missing={missing} "
+                    f"sandbox={'yes' if report.layer2_ran else report.layer2_skipped}")
+    return report, missing
+
+
+async def review_with_reviewer(reviewer_card: dict, plan: dict, run_id: str, context_id: str, task_id: str,
+                               run_with_heartbeat, agent_name: str):
+    """The run's review loop (02.4): ask the reviewer for its report, verify
+    it on the run's folder (2.5 + 2.6), send the findings back to the same
+    reviewer — up to INTEGRATION_REPAIR_ROUNDS times — and finally tell it
+    to leave. Yields AgentResponse statuses for the UI, then one tuple
+    (IntegrationReport or None, missing filenames, the reviewer's last
+    report or None)."""
+    import os
+    from abi_core.agent.agent import _HeartbeatDone
+    from abi_core.agent.agent_response import AgentResponse, RunPhase
+
+    def status(text, agent):
+        return AgentResponse.status(text, agent=agent, context_id=context_id, task_id=task_id,
+                                    phase=RunPhase.EXECUTING.value, phase_detail=text)
+
+    max_rounds = int(os.getenv("INTEGRATION_REPAIR_ROUNDS", "3"))
+    reviewer_name = reviewer_card.get("name", "reviewer")
+    body = {"caller": "orchestrator"}
+    integration, missing = None, []
+    last_report = None
+    review_round = 0
+    while True:
+        report = None
+        try:
+            async for chunk in reviewer_request(reviewer_card, body, context_id):
+                resp = A2AResponse.parse(chunk)
+                if resp and resp.data and resp.data.get("caller") == "reviewer":
+                    report = resp.data
+                text = (resp.text or resp.status_message) if resp else None
+                if text and not (resp and resp.data):
+                    yield status(text, reviewer_name)
+        except Exception as e:
+            abi_logging(f"[⚠️] Reviewer request failed: {e}", level="warning")
+        if report:
+            last_report = report
+            abi_logging(
+                f"[🔍] Reviewer report (round {report.get('round')}): repaired={sorted(report.get('repaired') or {})} "
+                f"failed_agents={report.get('failed_agents')} missing_written={report.get('missing_written')}"
+            )
+
+        verify_note = "Verificando el trabajo del revisor..."
+        yield status(verify_note, agent_name)
+        async for item in run_with_heartbeat(verify_run(plan, run_id), context_id, task_id, verify_note,
+                                             phase=RunPhase.EXECUTING.value):
+            if isinstance(item, _HeartbeatDone):
+                integration, missing = item.value
+            else:
+                yield item
+
+        problems = bool(missing) or bool(integration and integration.errors)
+        if not problems or report is None or review_round >= max_rounds:
+            break
+        review_round += 1
+        errors_text = "\n".join(filter(None, [
+            f"Missing deliverables (write them): {', '.join(missing)}" if missing else "",
+            integration.as_text() if integration else "",
+        ]))
+        resend_note = (f"La verificación encontró problemas — se los reenvío al revisor "
+                       f"(ronda {review_round}/{max_rounds})...")
+        abi_logging(f"[🔍] {resend_note}")
+        yield status(resend_note, agent_name)
+        body = {"caller": "orchestrator", "errors": errors_text}
+
+    # The reviewer leaves only on the Orchestrator's word — also after the
+    # last round: the remaining findings go to the user.
+    try:
+        async for _ in reviewer_request(reviewer_card, {"caller": "orchestrator", "confirmed": True}, context_id):
+            pass
+    except Exception as e:
+        abi_logging(f"[⚠️] Could not confirm to the reviewer ({e}); its own timeout ends it", level="warning")
+    yield (integration, missing, last_report)
+
+
+async def handoff_errors(run_id: str) -> list:
+    """Code agents whose hand-off to the reviewer the A2A policy denied —
+    each one records it in the run's folder (review/handoff-<task_id>.json)
+    and ends instead of retrying."""
+    from abi_core.common import project_store
+
+    out = []
+    try:
+        for name in await project_store.list_area(run_id, "review"):
+            if name.startswith("handoff-") and name.endswith(".json"):
+                out.append(await project_store.load_json(run_id, "review", name))
+    except Exception as e:
+        abi_logging(f"[⚠️] Could not read hand-off errors for {run_id}: {e}", level="warning")
+    return out
+
+
+def reviewer_note(report: dict, handoffs: list = None) -> str:
+    """What the user must know about how the files were produced — appended
+    verbatim, never left to the synthesis model. Live 2026-10-09 all five
+    code agents failed, the reviewer wrote every file, and the answer read
+    as a normal success. Also the A2A policy denials between code agents and
+    the reviewer (user decision 2026-10-10: stop at the first denial, go on,
+    report it)."""
+    lines = []
+    labels = {"a2a_policy_denied": "la política A2A la negó",
+              "a2a_invalid_request": "el mensaje fue rechazado como inválido"}
+
+    def by_kind(items, key):
+        groups = {}
+        for it in items:
+            groups.setdefault(it.get("kind", "a2a_policy_denied"), set()).add(it.get(key, "?"))
+        return groups
+
+    for kind, who in sorted(by_kind(handoffs or [], "task_id").items()):
+        lines.append(f"⛔ Entrega al revisor fallida ({labels.get(kind, kind)}): "
+                     f"{', '.join(sorted(who))}. El revisor trabajó sin su entrega.")
+    for kind, who in sorted(by_kind((report or {}).get("communication_errors") or [], "to").items()):
+        lines.append(f"⛔ El revisor no pudo preguntar ({labels.get(kind, kind)}) a: {', '.join(sorted(who))}.")
+    if not report:
+        return "\n".join(lines)
+    failed = report.get("failed_agents") or []
+    written = report.get("missing_written") or []
+    if failed:
+        lines.append(f"⚠️ Agentes de código que fallaron: {', '.join(failed)}.")
+    if written:
+        lines.append(f"✍️ Archivos escritos por el revisor (sus agentes no los entregaron): {', '.join(written)}.")
+    return "\n".join(lines)
+
+
+def merge_artifacts(current: list, repaired: list) -> list:
+    """Replace files by name with the reviewer's versions; keep the rest."""
+    by_name = {a.get("filename"): a for a in repaired}
+    merged = [by_name.pop(a.get("filename"), a) for a in current]
+    return merged + list(by_name.values())
+
+
+async def review_deliverables(artifacts: list, run_id: str = None):
+    """Phase 2.6 — do the delivered files work *together*?
+
+    Phase 2.5 (check_deliverable_contracts) only proves each file exists.
+    Reproduced live 2026-10-03: a 5-file Space Invaders plan passed 2.5,
+    every file compiled, and the game crashed on its first frame
+    (TypeError: 'EnemyFleet' has no len()) — and synthesis reported
+    success. This downloads the plan's code files and runs the integration
+    review: static checks (AST) + the entry point in the sandbox. No LLM
+    involved. Returns an IntegrationReport, or None when there is nothing
+    to integrate (< 2 .py files) or the review is disabled.
+
+    INTEGRATION_REVIEW=false disables it; INTEGRATION_REVIEW_SANDBOX=false
+    keeps only the static layer. See
+    .abi/specs/not-implemented/sdd-pipeline/07-deliverable-integration-review.md
+
+    `run_id` ties the sandbox run to this plan run: with
+    SANDBOX_RUNTIME=service, sandbox-service only runs it for a known run,
+    signed with the Orchestrator's card, and audits it in the run's project
+    folder (ephemeral-reviewer-pipeline 02.5). Without it the service
+    denies, and the review reports the execution as unverified.
+    """
+    import os
+    if os.getenv("INTEGRATION_REVIEW", "true").strip().lower() != "true":
+        return None
+
+    def _wanted(name: str) -> bool:
+        return name.endswith(".py") or name.lower().startswith("readme")
+
+    wanted = [a for a in artifacts if _wanted(a.get("filename", ""))]
+    if sum(1 for a in wanted if a["filename"].endswith(".py")) < 2:
+        return None
+
+    from abi_core.common.integration_review import review_files
+
+    # Later artifacts win: a retried task re-uploads the same filename.
+    files = await _download_files(_code_artifacts(artifacts))
+
+    from contextlib import nullcontext
+    from abi_core.common.sandbox_service_client import sandbox_caller
+
+    try:
+        with sandbox_caller(run_id) if run_id else nullcontext():
+            report = await review_files(
+                files,
+                run_sandbox=os.getenv("INTEGRATION_REVIEW_SANDBOX", "true").strip().lower() == "true",
+            )
+    except Exception as e:
+        abi_logging(f"[⚠️] Integration review failed (non-blocking): {e}", level="warning")
+        return None
+
+    if report:
+        abi_logging(
+            f"[🔍] Integration review: entry={report.entry_point} errors={len(report.errors)} "
+            f"warnings={len(report.warnings)} sandbox={'yes' if report.layer2_ran else report.layer2_skipped}"
+        )
+        for f in report.errors:
+            abi_logging(f"[🔍]   ❌ {f.as_text()}")
+    return report
+
+
+def check_deliverable_contracts(tasks: list, nodes: dict, results: list) -> list:
+    """Which task_ids failed to produce their assigned file deliverable.
+
+    A task with `target.type == "file"` must have uploaded an artifact
+    whose filename matches `target.tag` — no LLM judgment involved. Tasks
+    without a file target (e.g. `execute` against an existing agent) have
+    nothing to verify here and are skipped.
+    """
+    failed = []
+    for task in tasks:
+        target = task.get("target") or {}
+        if target.get("type") != "file":
+            continue
+        tid = task.get("task_id")
+        tag = target.get("tag")
+        own_artifacts = _task_own_artifacts(tid, results, nodes)
+        if not any(a.get("filename") == tag for a in own_artifacts):
+            failed.append(tid)
+    return failed
+
+
+def transitive_dependents(failed_ids: list, tasks: list) -> set:
+    """Every task that depends on any of `failed_ids`, directly or through
+    another already-affected task.
+
+    Integrity rule confirmed with the user, 2026-09-30: a rebuilt
+    dependency invalidates everything downstream of it, whether or not its
+    real contract (extract_python_contract) actually changed — no
+    comparison, no exception.
+    """
+    affected = set(failed_ids)
+    changed = True
+    while changed:
+        changed = False
+        for task in tasks:
+            tid = task.get("task_id")
+            if tid in affected:
+                continue
+            deps = task.get("dependencies", [])
+            if any(d in affected for d in deps):
+                affected.add(tid)
+                changed = True
+    return affected

@@ -391,6 +391,13 @@ async def on_chat_resume(thread: dict) -> None:
     client = AgentStreamClient(agent_url, token=token)
     cl.user_session.set("abi_stream_client", client)
 
+    # A run that was still going when the user left this conversation keeps
+    # running; follow it from here. See
+    # .abi/specs/not-implemented/ux/chainlit-run-progress-resume.md.
+    from abi_core.ui.run_follow import start_following
+
+    start_following(thread)
+
 
 # ── Custom routes: invite links, waiting-list form, admin page ─────────
 

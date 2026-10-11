@@ -11,13 +11,13 @@ The agent from [Plan and Execute](08-plan-and-execute.md) plans, then runs — n
 ## What you'll build
 
 The same `runner` agent from the previous page, now:
-1. Picking a decomposition methodology (WBS, SMART, GTD, Polya) before planning — the same technique the swarm's Planner uses
+1. Picking a decomposition methodology (WBS, SMART, GTD, Polya) before planning
 2. Showing the plan and waiting for a reply instead of executing immediately
 3. Handling three replies: approve → run it, reject → cancel, request changes → re-plan with feedback
 
 ## Pick a methodology first
 
-`select_methodology` asks the LLM which decomposition strategy fits the request, then hands that guidance to your prompt — same call the swarm's Planner makes, just importable directly:
+`select_methodology` asks the LLM which decomposition strategy fits the request, then hands that guidance to your prompt. It costs one extra model call per plan — skip it if latency matters more than plan shape:
 
 ```python
 # agents/runner/steps.py
@@ -158,7 +158,7 @@ pending plan to find. Before this page's `plan_confirmation_orphaned`
 classification existed, that meant your reply — "aprobado" — got planned
 as if *it* were the request:
 
-    $ curl -X POST .../stream -d '{"query": "aprobado"}'
+    $ curl -X POST .../stream -H "Content-Type: application/json" -d '{"query": "aprobado"}'
     → 📋 Plan Created — Objective: aprobado
        1. Define what 'aprobado' means in this context...
 
@@ -173,7 +173,7 @@ still to **use the session token**, not to rely on the friendlier error.
 Confirmation needs a session that survives across two separate requests — start one first:
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8002/session/start -d '{}' | jq -r .session_token)
+TOKEN=$(curl -s -X POST http://localhost:8002/session/start | jq -r .session_token)
 ```
 
 **Turn 1 — ask, get a plan back:**
@@ -181,6 +181,7 @@ TOKEN=$(curl -s -X POST http://localhost:8002/session/start -d '{}' | jq -r .ses
 ```bash
 curl -N -X POST http://localhost:8002/stream \
   -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{"query": "Write a haiku about the moon, then translate it to Italian"}'
 ```
 
@@ -200,6 +201,7 @@ data: 📋 Plan Created
 ```bash
 curl -N -X POST http://localhost:8002/stream \
   -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{"query": "looks good, go ahead"}'
 ```
 
@@ -213,12 +215,32 @@ That reply works in Spanish too — `{"query": "está perfecto, dale"}` behaves 
 
 ## What happened
 
-1. `select_methodology` picked a decomposition strategy before the actual planning call — same technique, same registry, the swarm's Planner uses
+1. `select_methodology` picked a decomposition strategy before the actual planning call
 2. The first turn planned, then stopped — `record_pending_plan` parked the plan in session context and the task yielded `input_required` instead of running anything
 3. The second turn's query ("looks good, go ahead") had no pending-plan-shaped content of its own — because a plan *was* pending, `classify_plan_confirmation_reply` sent it to the LLM to interpret, which recognized it as an approval
 4. Because the session token resolves to the same `context_id` on both requests, the plan recorded in turn 1 was still there in turn 2
 5. Only after classification came back `plan_confirmed` did the task actually loop over `execute_action`
 6. If there'd been no token — a fresh session on every request — `classify_plan_confirmation_reply` would have recognized the sentinel/short-word case as orphaned; for free text like "looks good", with no pending plan it just returns `None` and the reply gets planned as a (probably nonsensical) new request — the token is still what actually fixes this, not the classifier
+
+## A review card in the Chainlit UI
+
+In `abi-core ui chainlit`, a plan shows up as text plus three buttons. Pass a `plan_view` along with the `input_required` and it shows up as a review card instead: the objective, one short row per step in execution order (expand a row to see the full instruction the agent will get), and Approve / Modify / Reject inside the card. "Modify" opens a text box in the card, so the requested change goes back in the same turn, with no "what should change?" follow-up.
+
+```python
+from abi_core.common.utils import build_plan_view, format_plan_summary
+
+summary = format_plan_summary(plan)
+yield AgentResponse.input_required(
+    summary,
+    action_type="plan_confirmation",
+    plan_view=build_plan_view(plan, model_status),  # model_status is optional
+)
+```
+
+- `summary` is still what gets stored, what the routing LLM reads and what text-only clients show. The card is extra data, not a replacement.
+- `build_plan_view()` is deterministic (no LLM). It orders steps the way they will run (`plan_execution_order()`) and leaves out internal details such as methodology and infrastructure URLs. It only adds a notice when there is something to act on, such as a model that will be downloaded first.
+- Each step shows the task's `title` if the plan has one; otherwise a title derived from the description.
+- The card's Modify sends `{"_sentinel": "__plan_modify__", "feedback": "..."}` (`PLAN_MODIFY_FEEDBACK_SENTINEL`). `classify_plan_confirmation_sentinel` and `classify_plan_confirmation_reply` return it as `plan_modify_feedback`, the same classification a typed "no, make it shorter" produces, so a task that already handles that branch needs no changes.
 
 ## Key rules
 

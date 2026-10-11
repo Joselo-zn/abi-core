@@ -15,7 +15,7 @@ MinIO is where agents save files — reports, logs, generated documents, images.
 MinIO is added automatically when you create a project with `--with-semantic-layer`:
 
 ```bash
-abi-core create project my-app --with-semantic-layer
+abi-core create project --name my-app --with-semantic-layer
 # MinIO runs on port 9000 (API) and 9001 (console)
 ```
 
@@ -100,11 +100,9 @@ url = await store.upload("task_1/report.pdf", pdf_bytes)
 
 ## Download artifacts into an agent
 
-A task that `depends_on` another task's output needs that prior task's files
+A task that depends on another task's output (its `dependencies` in the plan) needs that prior task's files
 in its own local workspace before it can build on them — not just know their
-MinIO keys. `download_artifacts` does that download step; it's what
-`context_loader.load_agent_context` calls internally to populate the
-`artifacts` list an ephemeral agent sees for a given `ARTIFACT_KEYS`:
+MinIO keys. `download_artifacts` does that download step; it's how an ephemeral agent receives the files of the tasks it depends on:
 
 ```python
 from abi_core.common.artifact_store import download_artifacts
@@ -177,4 +175,4 @@ data: {"conclusion": "Report generated successfully.",
 
 ## Next step
 
-👉 [CLI Reference](../reference/cli-reference.md)
+👉 [Background & Scheduled Tasks](06-background-and-scheduled-tasks.md)

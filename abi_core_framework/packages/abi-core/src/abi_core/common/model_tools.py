@@ -3,8 +3,7 @@ Model availability tools — framework-level, available to any ABI-Core agent.
 
 Not tied to a single hardcoded Ollama host: `list_available_models` returns a
 {model_name: host_url} registry, so the system can reason about *where* a
-model lives rather than assume one endpoint. Independent of `abi_core.tui`
-(alpha/experimental, not a dependency of anything else in the framework).
+model lives rather than assume one endpoint.
 """
 
 import json

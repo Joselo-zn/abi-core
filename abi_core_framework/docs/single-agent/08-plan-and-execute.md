@@ -12,7 +12,7 @@ An agent that:
 ## Create the agent
 
 ```bash
-abi-core add agent runner \
+abi-core add agent --name runner \
   --description "Plans and executes multi-step requests" \
   --with-web-interface
 ```
@@ -32,7 +32,7 @@ This adds the Agent Memory Server + Redis to `compose.yaml` and wires `AGENT_MEM
 
 ## Write the steps
 
-Edit `agents/runner/steps.py`:
+Replace the contents of `agents/runner/steps.py`:
 
 ```python
 from app import agent
@@ -73,7 +73,7 @@ async def execute_action(action, context_id):
 
 ## Write the task
 
-The task is what turns a variable-length plan into a loop of step calls. Edit `agents/runner/tasks.py`:
+The task is what turns a variable-length plan into a loop of step calls. Replace the contents of `agents/runner/tasks.py`:
 
 ```python
 from app import agent
