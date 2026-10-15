@@ -76,11 +76,13 @@ Creates only the agent card — the JSON identity other agents discover in the S
 abi-core add policies --name <name> [--domain <domain>]
 ```
 
-Creates a starter Rego file, `policies/<name>.rego` at the project root, with package `<name>.custom`, and records it in `.abi/runtime.yaml`.
+Creates a starter Rego file in `services/guardian/opa/policies/<name>.rego`, in the `abi.custom` package Guardian evaluates, and records it in `.abi/runtime.yaml`. The starter allows `read`/`query` in its domain and denies `delete`/`destroy`; every file in `abi.custom` adds its rules to the others. The project must have Guardian (`abi-core create project --with-guardian`); the command refuses otherwise. OPA reads policies at start-up, so restart it afterwards:
 
-```{warning}
-As generated, this file is never applied. OPA only loads `services/guardian/opa/policies/`, and Guardian only reads the `abi.custom` package. To use it, change its first line to `package abi.custom`, move it to `services/guardian/opa/policies/`, and restart OPA — or write the file there yourself, as shown in [Policy Development](../security/03-policy-development.md).
+```bash
+docker compose restart <project>-opa
 ```
+
+See [Policy Development](../security/03-policy-development.md) to write your own rules.
 
 ### `abi-core add chainlit`
 

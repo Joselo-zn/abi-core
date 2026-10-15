@@ -99,12 +99,12 @@ curl -N -X POST http://localhost:8002/stream \
 You'll see one `data:` line per update (`curl -N` prints them as they arrive). Each line wraps one `AgentResponse`:
 
 ```
-data: {"message": "{'response_type': 'status', 'content': 'Understanding your message...', 'is_task_completed': False, ...}", "type": "dict"}
-data: {"message": "{'response_type': 'status', 'content': 'Got it — this is a question...', 'is_task_completed': False, ...}", "type": "dict"}
-data: {"message": "{'response_type': 'data', 'content': {'intent': 'question', 'response': 'Machine learning is...'}, 'is_task_completed': True, ...}", "type": "dict"}
+data: {"message": {"response_type": "status", "content": "Understanding your message...", "is_task_completed": false, ...}, "type": "dict"}
+data: {"message": {"response_type": "status", "content": "Got it — this is a question...", "is_task_completed": false, ...}, "type": "dict"}
+data: {"message": {"response_type": "data", "content": {"intent": "question", "response": "Machine learning is..."}, "is_task_completed": true, ...}, "type": "dict"}
 ```
 
-`AgentResponse.status(...)` arrives as `response_type: status`, `AgentResponse.result(...)` as `response_type: data` with `is_task_completed: True`. You don't need to unpack this by hand — [`AgentStreamClient`](05-testing-agents.md#talk-to-it-from-python) does it for you. The rest of these docs abbreviate the stream as `event: status → "..."` / `event: result → {...}`.
+Each `message` is the `AgentResponse` itself: `AgentResponse.status(...)` arrives as `response_type: status`, `AgentResponse.result(...)` as `response_type: data` with `is_task_completed: true`. You don't need to unpack this by hand — [`AgentStreamClient`](05-testing-agents.md#talk-to-it-from-python) does it for you. The rest of these docs abbreviate the stream as `event: status → "..."` / `event: result → {...}`.
 
 ## What's different from the first agent
 

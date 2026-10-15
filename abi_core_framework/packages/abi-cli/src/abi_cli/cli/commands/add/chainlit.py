@@ -91,10 +91,13 @@ def add_chainlit(url, title, ui_dir):
     # Dynamic host port for the UI (don't collide with existing services).
     ui_host_port = _get_next_available_port(8500)
 
+    from ...banner import ABI_CORE_VERSION
+
     context = {
         'project_name': project_name,
         'ui_title': ui_title,
         'agent_url': url,
+        'abi_core_version': ABI_CORE_VERSION,
     }
 
     files = [

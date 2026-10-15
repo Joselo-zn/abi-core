@@ -20,7 +20,6 @@ class AgentConfig:
     # Server Configuration
     HOST: str = os.getenv("GUARDIAN_HOST", "0.0.0.0")
     AGENT_PORT: int = int(os.getenv("GUARDIAN_PORT", "11438"))
-    DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8080"))
 
     # OPA Configuration
     OPA_HOST: str = os.getenv("OPA_HOST", "0.0.0.0")

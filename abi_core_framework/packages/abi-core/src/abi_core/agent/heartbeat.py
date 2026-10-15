@@ -37,6 +37,12 @@ class HeartbeatTimeoutError(TimeoutError):
     """Raised by `emit_heartbeats_while` only when `max_wait` is given and
     elapses — same semantics as `AbiAgent._run_with_heartbeat`'s version."""
 
+    error_code = "timeout"
+
+    def __init__(self, message: str = "", max_wait: Optional[float] = None):
+        super().__init__(message)
+        self.max_wait = max_wait
+
 
 async def emit_heartbeats_while(
     coro: Awaitable[Any],
@@ -66,7 +72,8 @@ async def emit_heartbeats_while(
                 except (asyncio.CancelledError, Exception):
                     pass
                 raise HeartbeatTimeoutError(
-                    f"Task exceeded max_wait ({int(max_wait)}s) with no result."
+                    f"Task exceeded max_wait ({int(max_wait)}s) with no result.",
+                    max_wait=max_wait,
                 )
             wait_chunk = min(interval, remaining)
         else:

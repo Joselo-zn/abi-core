@@ -16,11 +16,11 @@ curl -X POST http://localhost:8002/stream \
 
 ## Talk to it from Python
 
-`AgentStreamClient` (`abi_core.client.agent_stream_client`) is the same client the bundled Chainlit UI uses. It starts a session once, sends the token on every message, decodes each streamed event into a plain dict, and fetches a fresh token if the old one expired. Use one instance per conversation:
+`AgentStreamClient` (`abi_core.client`) is the same client the bundled Chainlit UI uses. It starts a session once, sends the token on every message, decodes each streamed event into a plain dict, and fetches a fresh token if the old one expired. Use one instance per conversation:
 
 ```python
 import asyncio
-from abi_core.client.agent_stream_client import AgentStreamClient
+from abi_core.client import AgentStreamClient
 
 
 async def ask(client, query):

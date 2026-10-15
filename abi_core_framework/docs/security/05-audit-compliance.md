@@ -35,12 +35,7 @@ additionally carries a `risk_score` (0.0–1.0), since OPA's
 - **Artifact Store** — If `LOG_TO_ARTIFACT_STORE=true`, logs go to MinIO for long-term storage
 
 ```{note}
-`services/guardian/emergency_logs/` and Guardian's `emergency_shutdown()`
-persisting anything to it are part of an earlier Guardian implementation
-(`agent_deprecated/emergency_response.py.j2` in the scaffolding). The
-current `AbiGuardianAgent.emergency_shutdown()` flips an in-memory flag
-(blocks all further requests) and returns a result dict — it doesn't write
-to that directory.
+`AbiGuardianAgent.emergency_shutdown()` flips an in-memory flag that blocks every further request, and returns a result dict. It doesn't write logs of its own — decisions are in the container logs below.
 ```
 
 ## View logs

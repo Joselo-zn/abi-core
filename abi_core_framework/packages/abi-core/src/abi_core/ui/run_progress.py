@@ -44,7 +44,7 @@ _TEXT = {
         "and": "y",
         "step": "Paso {i}/{n} · {label}",
         "done": "Listo",
-        "plan_ready": "Plan listo",
+        "plan_ready": "Esperando tu confirmación",
         "needs_input": "Necesito tu respuesta",
         "failed": "Falló en: {label}",
         "stopped": "Detenido",
@@ -54,6 +54,8 @@ _TEXT = {
         "files_done": "✓ Archivos generados: {files}",
         "task_done": "✓ Listo",
         "task_failed": "✕ No se completó",
+        "error_timeout": "Esto está tardando más de lo esperado (más de {seconds}s): probablemente el modelo está sobrecargado. Intentá de nuevo.",
+        "error_timeout_plain": "Esto está tardando más de lo esperado: probablemente el modelo está sobrecargado. Intentá de nuevo.",
     },
     "en": {
         "working": "Working",
@@ -62,7 +64,7 @@ _TEXT = {
         "and": "and",
         "step": "Step {i}/{n} · {label}",
         "done": "Done",
-        "plan_ready": "Plan ready",
+        "plan_ready": "Waiting for your confirmation",
         "needs_input": "Your input is needed",
         "failed": "Failed at: {label}",
         "stopped": "Stopped",
@@ -72,6 +74,8 @@ _TEXT = {
         "files_done": "✓ Files created: {files}",
         "task_done": "✓ Done",
         "task_failed": "✕ Not completed",
+        "error_timeout": "This is taking longer than expected (over {seconds}s); the model is probably overloaded. Try again.",
+        "error_timeout_plain": "This is taking longer than expected; the model is probably overloaded. Try again.",
     },
 }
 
@@ -145,6 +149,19 @@ def ui_language(language: Optional[str]) -> str:
     """Map a browser/Chainlit language tag ("es-ES", "en-US", ...) to a
     supported label set."""
     return "es" if (language or "").lower().startswith("es") else "en"
+
+
+def error_message(lang: str, meta: Optional[dict]) -> Optional[str]:
+    """User-facing text for an error the agent tagged with ``meta.error_code``,
+    in the UI language; None for codes without a translation (the caller
+    keeps its generic message)."""
+    meta = meta or {}
+    if meta.get("error_code") == "timeout":
+        text = _TEXT[ui_language(lang)]
+        if meta.get("max_wait"):
+            return "⏱️ " + text["error_timeout"].format(seconds=meta["max_wait"])
+        return "⏱️ " + text["error_timeout_plain"]
+    return None
 
 
 def format_duration(seconds: float) -> str:

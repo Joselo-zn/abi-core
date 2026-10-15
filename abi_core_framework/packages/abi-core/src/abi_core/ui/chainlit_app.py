@@ -40,7 +40,7 @@ from abi_core.ui.run_follow import (
     request_stop,
     utc_now_iso,
 )
-from abi_core.ui.run_progress import RunProgress, format_task_update, task_step_name
+from abi_core.ui.run_progress import RunProgress, error_message, format_task_update, task_step_name
 
 # Suppress httpcore async generator cleanup warnings (cosmetic, non-blocking)
 warnings.filterwarnings("ignore", message=".*async generator ignored GeneratorExit.*")
@@ -182,6 +182,12 @@ _PLAN_CONFIRM_SENTINELS = {
 _PLAN_REVIEW_INTRO = {
     "es": "Revisá el plan antes de empezar.",
     "en": "Review the plan before I start.",
+}
+
+# Labels of the plain confirmation buttons (no plan_view), by UI language.
+_PLAN_CONFIRM_LABELS = {
+    "es": {"approve": "✅ Aprobar", "reject": "❌ Rechazar", "modify": "✏️ Modificar"},
+    "en": {"approve": "✅ Approve", "reject": "❌ Reject", "modify": "✏️ Modify"},
 }
 
 
@@ -593,10 +599,10 @@ async def _stream_to_agent(query: str) -> None:
                 elif meta.get("action_type") == "plan_confirmation":
                     outcome = "plan_ready"
                     await _finish_run(outcome)
+                    labels = _PLAN_CONFIRM_LABELS.get(progress.lang, _PLAN_CONFIRM_LABELS["en"])
                     actions = [
-                        cl.Action(name="plan_confirm", payload={"choice": "approve"}, label="✅ Aprobar"),
-                        cl.Action(name="plan_confirm", payload={"choice": "reject"}, label="❌ Rechazar"),
-                        cl.Action(name="plan_confirm", payload={"choice": "modify"}, label="✏️ Modificar"),
+                        cl.Action(name="plan_confirm", payload={"choice": choice}, label=labels[choice])
+                        for choice in ("approve", "reject", "modify")
                     ]
                     await cl.Message(content=content, actions=actions).send()
                     # Kept so on_plan_confirm can remove() them once any one is
@@ -626,7 +632,10 @@ async def _stream_to_agent(query: str) -> None:
             elif response_type == "error" and content:
                 outcome = "failed"
                 _spawn_background(_notify_admin_of_error(content, _get_client()._token))
-                final_content = "❌ The system is currently unavailable. Please try again later."
+                # A coded error (e.g. a timeout) gets its own text in the user's
+                # language; anything else keeps the generic message.
+                final_content = (error_message(progress.lang, parsed.get("meta"))
+                                 or "❌ The system is currently unavailable. Please try again later.")
     except asyncio.CancelledError:
         # The user pressed stop — not a failure.
         outcome = "stopped"

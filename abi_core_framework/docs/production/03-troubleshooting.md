@@ -51,8 +51,9 @@ instead of just switching models — see
 
 ## Timeout reported but the work finished anyway
 
-Symptoms: the user gets "Esto está tardando más de lo esperado... Intentá de
-nuevo", but the file/container/side effect the request was supposed to
+Symptoms: the user gets "This is taking longer than expected (over Ns); the
+model is probably overloaded. Try again." — or its Spanish version in the
+Chainlit UI — but the file/container/side effect the request was supposed to
 produce shows up moments later anyway.
 
 **Cause:** this isn't a bug in the timeout message — it's a real limit of how

@@ -47,7 +47,6 @@ class {{ project_name.title().replace('_', '').replace('-', '').replace(' ', '')
         self.guardian_host = os.getenv('GUARDIAN_HOST', '{{ guardian_host | default("localhost") }}')
         self.guardian_port = int(os.getenv('GUARDIAN_PORT', '{{ guardian_port | default("11438") }}'))
         self.max_risk_threshold = float(os.getenv('MAX_RISK_THRESHOLD', '{{ max_risk_threshold | default("0.7") }}'))
-        self.emergency_log_dir = os.getenv('EMERGENCY_LOG_DIR', '{{ emergency_log_dir | default("./logs/emergency") }}')
         {% endif %}
         
         # Domain-specific settings
@@ -93,7 +92,6 @@ class {{ project_name.title().replace('_', '').replace('-', '').replace(' ', '')
             'guardian_host': self.guardian_host,
             'guardian_port': self.guardian_port,
             'max_risk_threshold': self.max_risk_threshold,
-            'emergency_log_dir': self.emergency_log_dir,
             {% endif %}
             'domain': self.domain,
             {% if domain == 'finance' %}

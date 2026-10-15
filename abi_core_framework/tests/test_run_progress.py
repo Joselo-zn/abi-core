@@ -88,7 +88,7 @@ class TestRunProgress:
         progress.advance(RunPhase.PLANNING.value)
         clock.now = 34
         progress.finish()
-        assert progress.summary("plan_ready") == "Plan listo · 34s"
+        assert progress.summary("plan_ready") == "Esperando tu confirmación · 34s"
         assert progress.timeline() == "✓ Plan diseñado · 34s"
 
     def test_summary_failed_marks_last_phase(self, clock):

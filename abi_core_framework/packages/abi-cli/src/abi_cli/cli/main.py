@@ -7,7 +7,7 @@ import click
 import io
 from rich.console import Console
 
-from .banner import ABI_BANNER
+from .banner import ABI_BANNER, ABI_CORE_VERSION
 from .commands import create, add, remove, run, status, info, provision_models, capabilities, ui
 
 console = Console()
@@ -23,7 +23,7 @@ class RichGroup(click.Group):
         super().format_help(ctx, formatter)
 
 @click.group(cls=RichGroup)
-@click.version_option(version="1.4.0", prog_name="abi-core")
+@click.version_option(version=ABI_CORE_VERSION, prog_name="abi-core")
 def cli():
     """ABI Core - Agent-Based Infrastructure CLI
     

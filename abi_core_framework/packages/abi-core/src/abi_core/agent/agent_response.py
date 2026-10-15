@@ -14,7 +14,7 @@ Usage inside a task:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 
 class RunPhase(str, Enum):
@@ -111,14 +111,28 @@ class AgentResponse:
         }
 
     @staticmethod
-    def error(message: str) -> dict:
-        """Emit an error response."""
-        return {
+    def error(message: str, code: Optional[str] = None, **meta) -> dict:
+        """Emit an error response. ``code`` (e.g. "timeout") goes in
+        ``meta.error_code`` so a client can show its own, localized text;
+        ``message`` is the English text for everyone else."""
+        response = {
             "response_type": "error",
             "content": message,
             "is_task_completed": True,
             "require_user_input": False,
         }
+        if code:
+            response["meta"] = {"error_code": code, **meta}
+        return response
+
+    @staticmethod
+    def error_from(exc: BaseException) -> dict:
+        """Error response for an exception, with its ``error_code`` (and
+        ``max_wait``) when the exception declares one, like
+        HeartbeatTimeoutError."""
+        code = getattr(exc, "error_code", None)
+        extra = {"max_wait": int(exc.max_wait)} if getattr(exc, "max_wait", None) else {}
+        return AgentResponse.error(str(exc), code, **extra)
 
     @staticmethod
     def input_required(prompt: str, *args, **kwargs) -> dict:

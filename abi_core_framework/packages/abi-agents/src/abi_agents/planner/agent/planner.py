@@ -355,4 +355,4 @@ class AbiPlannerAgent(AbiAgent):
 
         except Exception as e:
             abi_logging(f"[❌] Error in planner: {e}")
-            yield AgentResponse.error(str(e))
+            yield AgentResponse.error_from(e)

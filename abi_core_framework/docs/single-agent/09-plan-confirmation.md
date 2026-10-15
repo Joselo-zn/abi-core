@@ -155,12 +155,12 @@ Two fast paths need no LLM call: the fixed sentinel strings a UI's approve/rejec
 *fresh, unique* session (that's deliberate — see
 [Sessions & Multi-turn](07-sessions-multi-turn.md)), so there's never a
 pending plan to find. Before this page's `plan_confirmation_orphaned`
-classification existed, that meant your reply — "aprobado" — got planned
+classification existed, that meant your reply — "approved" — got planned
 as if *it* were the request:
 
-    $ curl -X POST .../stream -H "Content-Type: application/json" -d '{"query": "aprobado"}'
-    → 📋 Plan Created — Objective: aprobado
-       1. Define what 'aprobado' means in this context...
+    $ curl -X POST .../stream -H "Content-Type: application/json" -d '{"query": "approved"}'
+    → 📋 Plan Created — Objective: approved
+       1. Define what 'approved' means in this context...
 
 That's exactly the trap: no token, so `session_context` is empty, so the
 reply looks like a brand-new (nonsensical) request. Now it's caught —

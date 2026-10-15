@@ -159,7 +159,6 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
             # Additional variables for runtime.yaml template
             'model_name': 'qwen3:latest',
             'embedding_model': 'nomic-embed-text:v1.5',
-            'dashboard_port': '8080',
             'opa_url': f'http://{project_dir.name}-opa:8181',
             'max_risk_threshold': '0.7',
             'mode': 'development',
@@ -211,10 +210,6 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
             models_dir = agent_dir / 'models'
             models_dir.mkdir()
             
-            # Create emergency_logs directory
-            emergency_logs_dir = guardian_dir / 'emergency_logs'
-            emergency_logs_dir.mkdir()
-            (emergency_logs_dir / '.gitkeep').touch()
             
             # Create OPA directory structure
             opa_dir = guardian_dir / 'opa'
@@ -244,7 +239,6 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
                 ('Dockerfile', 'service_guardian/Dockerfile'),
                 ('requirements.txt', 'service_guardian/requirements.txt'),
                 ('README.md', 'service_guardian/README.md'),
-                ('alerting_config.json', 'service_guardian/alerting_config.json'),
             ]
             
             # OPA files

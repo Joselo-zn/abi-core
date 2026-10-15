@@ -8,17 +8,17 @@ working exactly as before.
 While your agent works, the Chainlit UI (`abi-core ui chainlit`) shows one progress step for the whole run. If your status updates declare a **phase**, that step becomes a readable timeline instead of a single line of status text:
 
 ```
-◆  Diseñando el plan · 23s
-   │ ✓ Solicitud entendida · 1.2s
-   │ ✓ Estrategia elegida · 0.4s
-   │ ● Diseñando el plan… · 22s
-   │ ○ Esperando tu aprobación
+◆  Designing the plan · 23s
+   │ ✓ Request understood · 1.2s
+   │ ✓ Strategy chosen · 0.4s
+   │ ● Designing the plan… · 22s
+   │ ○ Waiting for your approval
 ```
 
 - The step's title is the current phase in plain words, plus how long the run has taken so far.
 - The ◆ next to it is animated while the run is going, and turns gray when it's done.
-- When the run ends, the step collapses to a summary (`Plan listo · 34s`, `Listo · 1m 48s`, `Falló en: Diseñando el plan · 2m 03s`). The full timeline is still there if you expand it.
-- Labels follow the browser language (Spanish or English).
+- When the run ends, the step collapses to a summary (`Waiting for your confirmation · 34s`, `Done · 1m 48s`, `Failed at: Designing the plan · 2m 03s`). The full timeline is still there if you expand it.
+- Labels follow the browser language: English by default, Spanish when the browser is set to Spanish.
 
 ## Declaring a phase
 
@@ -37,12 +37,12 @@ async def report(query):
 
 | `RunPhase` | Shown while running | Shown when done |
 |---|---|---|
-| `ANALYZING` | Entendiendo tu solicitud / Understanding your request | Solicitud entendida / Request understood |
-| `ROUTING` | Decidiendo cómo resolverlo / Deciding how to solve it | Estrategia elegida / Strategy chosen |
-| `PLANNING` | Diseñando el plan / Designing the plan | Plan diseñado / Plan designed |
-| `BUILDING` | Preparando agentes / Preparing agents | Agentes listos / Agents ready |
-| `EXECUTING` | Ejecutando · paso i de n / Running · step i of n | Ejecución completa / Run complete |
-| `SYNTHESIZING` | Redactando la respuesta / Writing the answer | Respuesta lista / Answer ready |
+| `ANALYZING` | Understanding your request | Request understood |
+| `ROUTING` | Deciding how to solve it | Strategy chosen |
+| `PLANNING` | Designing the plan | Plan designed |
+| `BUILDING` | Preparing agents | Agents ready |
+| `EXECUTING` | Running · step i of n | Run complete |
+| `SYNTHESIZING` | Writing the answer | Answer ready |
 
 A new timeline entry starts each time the phase changes. Repeated updates for the same phase, such as heartbeats, only refresh the elapsed time.
 
@@ -69,10 +69,10 @@ Optional keys that make the timeline more specific:
 | Key | Effect |
 |---|---|
 | `phase_detail` | A short line under the current phase (`↳ Builder is creating the agent`). Newlines are collapsed and it is cut at 120 characters. |
-| `task_key`, `task_label` | Opens a sub-step per plan task. A label like `task_2: Implement movement` is shown as `Paso 2/3 · Implement movement`. |
-| `task_index`, `task_total` | The task's 1-based position, used in the title (`Ejecutando · paso 2 de 3`) and in the sub-step name. |
-| `running_task_keys`, `running_task_indices` | The plan tasks still running when this update was sent (independent tasks run in parallel). Sub-steps close when their task leaves this list, and the title lists every running step: `Ejecutando · pasos 2, 3 y 4 de 5`. |
-| `task_deliverable` | The file the task produces. While the task runs, its sub-step says `Trabajando en game_logic.py…` instead of the agent's generic heartbeat. When the agent's result payload arrives (`status` / `uploaded_artifacts`), the sub-step shows `✓ Archivo generado: game_logic.py` and the agent's message, never internal storage URLs. |
+| `task_key`, `task_label` | Opens a sub-step per plan task. A label like `task_2: Implement movement` is shown as `Step 2/3 · Implement movement`. |
+| `task_index`, `task_total` | The task's 1-based position, used in the title (`Running · step 2 of 3`) and in the sub-step name. |
+| `running_task_keys`, `running_task_indices` | The plan tasks still running when this update was sent (independent tasks run in parallel). Sub-steps close when their task leaves this list, and the title lists every running step: `Running · steps 2, 3 and 4 of 5`. |
+| `task_deliverable` | The file the task produces. While the task runs, its sub-step says `Working on game_logic.py…` instead of the agent's generic heartbeat. When the agent's result payload arrives (`status` / `uploaded_artifacts`), the sub-step shows `✓ File created: game_logic.py` and the agent's message, never internal storage URLs. |
 
 ```python
 yield AgentResponse.status(

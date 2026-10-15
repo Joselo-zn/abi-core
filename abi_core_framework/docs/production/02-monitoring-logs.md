@@ -22,7 +22,7 @@ Every agent and service exposes `/health`:
 ```bash
 curl http://localhost:8002/health   # Agent web interface
 curl http://localhost:10100/health  # Semantic Layer
-curl http://localhost:11438/health  # Guardian
+curl http://localhost:11438/health  # Guardian (see the note in Guardian Service for older projects)
 curl http://localhost:8181/health   # OPA
 curl http://localhost:11434/api/tags # Ollama
 ```

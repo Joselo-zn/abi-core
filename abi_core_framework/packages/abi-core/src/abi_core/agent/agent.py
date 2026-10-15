@@ -42,6 +42,14 @@ class HeartbeatTimeoutError(TimeoutError):
     .abi/specs/heartbeat-timeout-redesign.md.
     """
 
+    # Clients translate by code (the Chainlit UI shows it in the browser's
+    # language); the message itself is English, like the rest of the framework.
+    error_code = "timeout"
+
+    def __init__(self, message: str = "", max_wait: Optional[float] = None):
+        super().__init__(message)
+        self.max_wait = max_wait
+
 
 class _HeartbeatDone:
     """Sentinel wrapping the final result yielded by ``_run_with_heartbeat``
@@ -412,8 +420,9 @@ class AbiAgent:
                     except (asyncio.CancelledError, Exception):
                         pass  # we're about to raise our own, clearer error below
                     raise HeartbeatTimeoutError(
-                        f"Esto está tardando más de lo esperado (más de {int(max_wait)}s) — "
-                        "probablemente el modelo está sobrecargado. Intentá de nuevo."
+                        f"This is taking longer than expected (over {int(max_wait)}s); "
+                        "the model is probably overloaded. Try again.",
+                        max_wait=max_wait,
                     )
                 # Cap each wait at whichever is smaller — the heartbeat interval
                 # or what's left of max_wait — so max_wait values under
@@ -533,7 +542,7 @@ class AbiAgent:
                 import traceback
                 tb = traceback.format_exc()
                 abi_logging(f"[❌] Task '{task_entry.name}' failed: {e}\n{tb}", level="error")
-                yield AgentResponse.error(str(e))
+                yield AgentResponse.error_from(e)
                 return
 
         # ── Path A: tool_graph exists → execute DAG ─────────────
@@ -601,7 +610,7 @@ class AbiAgent:
 
             except Exception as e:
                 abi_logging(f'[❌] Error in {self.agent_name} DAG: {e}', level='error')
-                yield AgentResponse.error(str(e))
+                yield AgentResponse.error_from(e)
                 return
 
         # ── Path B: no tool_graph → use LLM agent ──────────────
@@ -620,7 +629,7 @@ class AbiAgent:
 
         except Exception as e:
             abi_logging(f'[❌] Error in {self.agent_name}: {e}', level='error')
-            yield AgentResponse.error(str(e))
+            yield AgentResponse.error_from(e)
 
     def get_info(self) -> Dict[str, Any]:
         """Get agent information."""

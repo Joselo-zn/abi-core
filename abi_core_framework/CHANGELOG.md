@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **Leftovers of the deprecated Guardian in `abi-core create project
+  --with-guardian`:** the `emergency_logs/` folder, `alerting_config.json`,
+  the dashboard port 8080 and its variables. The generated Guardian READMEs
+  now describe its actual endpoints (`/health`, the agent card, A2A).
+
+### Fixed
+- **A rebuilt Chainlit UI could install an old abi-core-ai.** The Dockerfile
+  `abi-core add chainlit` generates installed `abi-core-ai[ui]` with no
+  version, so Docker could reuse a cached layer from an older build and fail;
+  it now pins `>=` the version of the CLI that generated it.
+- **`abi-core --version` printed a hardcoded 1.4.0.** It now prints the
+  installed abi-core-ai version, like the banner (`abi_cli.__version__` too).
+- **The Guardian of a generated project was unreachable from the host.**
+  Its compose mapped host port 11438 to the container's 11434, while the
+  Guardian listens on 11438; it now maps 11438 to 11438. In an existing
+  project, change `"11438:11434"` to `"11438:11438"` in `compose.yaml`.
+- **Timeouts reached users only in Spanish.** The timeout error is now in
+  English and carries a code (`error_code: "timeout"`), which the Chainlit
+  UI shows in the browser's language. New `AgentResponse.error(message,
+  code=None)` and `AgentResponse.error_from(exc)`.
+- **Confirmation buttons were always in Spanish.** Without a review card,
+  the approve/reject/modify buttons now follow the browser's language.
+- **A pending confirmation was labelled "Plan ready".** The progress step
+  now says "Waiting for your confirmation", which also fits confirmations
+  that aren't plans.
+
+## [1.13.74] - 2026-10-11
+
+
 ### Added
 - **LLM parameters from the deployment (`LLM_EXTRA_PARAMS`).** New
   `abi_core.agent.llm_provider.llm_config_from_env()` builds `LLM_CONFIG`
@@ -88,6 +118,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (multi-pod safe); the oldest turn is promoted to long-term memory when the
   window overflows.
 
+- **Run progress in the Chainlit UI.** Each run shows one progress step: the
+  current phase in plain words (English or Spanish, following the browser),
+  the elapsed time, and a timeline of done, running and upcoming phases.
+  Agents declare the phase with `AgentResponse.status(..., phase=RunPhase.X.value)`
+  (`RunPhase` in `abi_core.agent.agent_response`: `ANALYZING`, `ROUTING`,
+  `PLANNING`, `BUILDING`, `EXECUTING`, `SYNTHESIZING`), plus optional
+  `phase_detail`, `task_key`, `task_label`, `task_index`, `task_total`,
+  `running_task_keys`, `running_task_indices` and `task_deliverable`.
+  `_run_with_heartbeat(..., phase=...)` repeats the phase in every heartbeat.
+  Plan tasks running in parallel get one sub-step each, with a readable
+  result ("File created: player.py") instead of the agent's raw payload.
+  Agents that send no phase work as before. The UI installs
+  `public/abi/abi-run.css` and its avatars on start. Existing Chainlit
+  projects must point `custom_css` in `.chainlit/config.toml` at
+  `/public/abi/abi-run.css` (or `@import` it from their own stylesheet) to
+  get the animated indicator; projects created with `abi-core add chainlit`
+  already do. `python -m abi_core.ui.translations` generates missing
+  Chainlit translations. See [Run Progress](docs/single-agent/11-run-progress.md).
+- **Plan review card.** Send `plan_view=build_plan_view(plan, model_status)`
+  with `AgentResponse.input_required(..., action_type="plan_confirmation")`
+  and the Chainlit UI shows the plan as a card: the objective, the steps in
+  execution order, notices only when needed (such as a model to download),
+  and Approve / Modify / Reject — Modify takes the change inside the card.
+  New: `build_plan_view` and `plan_execution_order` (`abi_core.common.utils`),
+  the optional `PlanTask.title`, and `PLAN_MODIFY_FEEDBACK_SENTINEL`
+  (`abi_core.agent.plan_confirmation`, classified as `plan_modify_feedback`).
+  See [Plan Confirmation](docs/single-agent/09-plan-confirmation.md).
+- **Coming back to a conversation with a run in progress.** The progress
+  step stays live: it shows as running, the time keeps counting, new steps
+  and the final answer appear, and Stop stops the real run. Works across UI
+  replicas; requires the history database (`DATABASE_URL`). A run that died
+  with the UI shows as interrupted instead of running forever.
+
 ### Changed
 - **The reviewer's repair rules live in its role prompt.** The repair
   message no longer repeats them; it carries the findings, the agents'
@@ -144,6 +207,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   memory call's own timeout), not by a flat clock.
 - **Chainlit UI:** one progress step per plan task, so each task stays
   visible instead of being overwritten by the next.
+- **The plan text no longer shows internal details.** `format_plan_summary`
+  leaves out the internal methodology and infrastructure URLs, and a task
+  without an agent reads "A new agent will be created".
 
 ### Removed
 - **`abi-core run --mode`.** It only changed the banner; nothing read the
@@ -272,6 +338,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   New `ARTIFACT_PUBLIC_ENDPOINT` is used for links handed to people; it must
   point at MinIO's S3 API port, not the Console. See
   [Artifact Store](docs/production/05-artifact-store.md).
+- **The Chainlit progress step appeared below the answer it precedes.**
 
 ## [1.13.31] - 2026-09-11
 
@@ -290,8 +357,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `_should_have_delegated`/`_enforce_create_plan`, the probabilistic
   "did-you-mean-to-delegate" retry that broke production (forced a
   nonsensical `create_plan` call for "Hola como te llamas", crashing the
-  Planner's `parse_plan` on the malformed result). See
-  `.abi/specs/orchestrator-unified-routing-contract.md`.
+  Planner's `parse_plan` on the malformed result).
 - **`resolve_pending_plan` (the only decision that triggers real
   `build_workflow`/Docker execution) uses a separately-profiled model**
   — `qwen3:latest` (the routing default) got the approve/reject/modify
@@ -302,7 +368,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phrasings) at practical latency (13s/call, 21x faster than with its
   "thinking" mode on) — capability profile, not size, was the variable that
   mattered. New `config.ROUTING_DECISION_LLM_CONFIG`, used only for this
-  decision. See `.abi/tsd/2026-09-09-routing-decision-model-profiling.md`.
+  decision.
 - **Dependency floors bumped to latest for packages with no reported breaking
   changes** — `cryptography`, `starlette`, `redis`, `a2a-sdk`, `langchain`,
   `langgraph`, `langchain-ollama`, `langchain-community`, `fastapi`,
@@ -320,8 +386,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   modern connections, new hard `opentelemetry-api` dependency); `fastmcp`
   4.x tracks it. Pinned `mcp>=1.26.0,<2` and `fastmcp>=3.2.0,<4` explicitly
   so a routine `pip install -U` can't pull them in by accident. v1.x/3.x
-  remain on security-fix-only maintenance upstream. See
-  `.abi/tsd/2026-09-10-dependency-upgrade-audit.md`.
+  remain on security-fix-only maintenance upstream.
 
 ### Fixed
 - **Ephemeral (zombie) agents left `qwen3`'s "thinking" mode on by default**,
@@ -334,8 +399,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because thinking-mode-on inflates even simple calls ~20x (measured
   elsewhere in this framework: ~277s vs ~13s). `zombie/agent/config/config.py`
   now sets `extra_params={"reasoning": False}` when `LLM_PROVIDER=ollama`,
-  matching the other 4 services. See
-  `.abi/tsd/2026-09-09-routing-decision-model-profiling.md`.
+  matching the other 4 services.
 
 ## [1.13.21] - 2026-09-08
 
@@ -348,8 +412,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.__dict__` fallback serializes the wrong thing for that type (the *class's*
   dict, not the message fields), producing an unparseable string instead of
   JSON. Now parsed with `A2AResponse.parse()` before yielding, same as the
-  artifact-extraction code right below it. See
-  `.abi/tsd/2026-09-06-leak-protobuf-crudo-sse.md`.
+  artifact-extraction code right below it.
 - **A single global 180s timeout (`ABI_REASONING_TIMEOUT`) capped both routing
   decisions and real DAG/tool-calling work**, cutting off ephemeral agents
   before they finished legitimate long-running tasks (e.g. generating a full
@@ -360,7 +423,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `timeout=EXECUTION_TIMEOUT` (env var, default 600s) and `max_retries=1` —
   verified in production that a failed attempt at this timeout rarely
   succeeds on retry with the same prompt/model, so retrying 3x just burns
-  time. See `.abi/tsd/2026-09-06-timeout-por-step-dag.md`.
+  time.
 
 ## [1.13.17] - 2026-09-05
 
@@ -378,8 +441,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   across turns let a stale exchange from an earlier turn (with a different tool set
   bound) corrupt a later turn's tool-calling reliability — each reasoning turn now
   gets its own thread, since all cross-turn state already flows through explicit
-  session context, not implicit LLM memory. See
-  `.abi/tsd/2026-08-23-orchestrator-tool-call-routing.md`.
+  session context, not implicit LLM memory.
 - **`@agent.tool()` functions never actually reached the LLM** — `AbiCore.run()` collected
   them into `agent_instance.extra_tools`, but nothing ever read that list, `self.agent`
   was already built (with an empty tool list) before `extra_tools` got populated, and
@@ -393,8 +455,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behavior change for the agents that don't use this. Also fixed along the way:
   `StructuredTool.from_function(func=<async fn>)` silently never awaited async tools
   (the overwhelming majority of them), and `AgentResponse.error(msg, agent=...)` doesn't
-  accept `agent=`, masking real DAG failures behind a `TypeError` instead. See
-  `.abi/tsd/2026-08-23-agent-tool-dag-llm-coexist.md`.
+  accept `agent=`, masking real DAG failures behind a `TypeError` instead.
 - **Guardian never actually evaluated policies** — `evaluate_policy` and `format_decision`'s
   `input_map` referenced `$node.result.key`, but a node's output is stored raw, never
   wrapped in a `"result"` key (`tool_graph.py`) — `$node.result.key` was never valid
@@ -402,8 +463,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   correct in the framework's own docstrings. The reference always failed to resolve,
   the node fails gracefully (not an exception) so it went unnoticed, and Guardian's
   actual OPA policy check silently never ran. Fixed in Guardian's real code, both
-  scaffolding templates, and the framework's own misleading docstring examples. See
-  `.abi/tsd/2026-08-23-guardian-input-map-result-bug.md`.
+  scaffolding templates, and the framework's own misleading docstring examples.
 
 ### Changed
 - **`abi_core.agent.llm_provider` rebuilt on `langchain.chat_models.init_chat_model()`**
@@ -428,8 +488,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signature (config dict in, `BaseChatModel` out) is unchanged — existing
   `LLM_CONFIG` dicts that set `temperature` explicitly keep working exactly
   as before. New optional extras: `anthropic`, `openai`, `gemini`, `grok`,
-  `bedrock`, `vertex`, or all of them via `providers`. See
-  `.abi/tsd/2026-09-04-llm-provider-redesign.md`.
+  `bedrock`, `vertex`, or all of them via `providers`.
 
 ### Added
 - **`abi-core add chainlit`** — add a Chainlit chat UI **as a Docker service** for any
@@ -470,9 +529,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     measures via Ollama and exports the profile.
   - CLI: `abi-core capabilities list|show [--radar out.png]|profile` to inspect
     and measure profiles.
-  - Pure and testable; no agent integration yet. See
-    `.abi/specs/capability-matching.md` and
-    `.abi/specs/capability-profiling-methodology.md`.
+  - Pure and testable; no agent integration yet.
 - **Framework-managed sessions (`abi_core.session`)** — opt-in, LB/multi-pod safe
   session management for any ABI agent:
   - `SessionStore` with a **pluggable backend**: `InMemorySessionBackend` (default;

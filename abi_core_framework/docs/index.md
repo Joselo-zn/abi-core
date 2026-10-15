@@ -23,6 +23,11 @@ getting-started/04-first-project
 
 use-cases/index
 use-cases/01-customer-support
+use-cases/02-clinical-scribing
+use-cases/03-lead-qualification
+use-cases/04-nl-data-access
+use-cases/05-it-help-desk
+use-cases/06-workflow-automation
 ```
 
 ```{toctree}
@@ -126,6 +131,7 @@ reference/cli-reference
 reference/api-reference
 reference/environment-variables
 reference/capability-matching
+reference/mcp-transports
 reference/architecture
 ```
 

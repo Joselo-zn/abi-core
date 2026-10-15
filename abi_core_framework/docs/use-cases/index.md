@@ -14,4 +14,9 @@ Copy the code. Run it. Break it on purpose. Then make it yours.
 :maxdepth: 1
 
 01-customer-support
+02-clinical-scribing
+03-lead-qualification
+04-nl-data-access
+05-it-help-desk
+06-workflow-automation
 ```

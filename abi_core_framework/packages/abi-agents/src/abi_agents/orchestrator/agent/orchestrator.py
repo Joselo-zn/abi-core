@@ -995,4 +995,4 @@ class AbiOrchestratorAgent(AbiAgent):
             import traceback
             abi_logging(f"[❌] Error in orchestration: {e}\n{traceback.format_exc()}")
             await self.record_error(context_id, "exception", str(e))
-            yield AgentResponse.error(str(e))
+            yield AgentResponse.error_from(e)

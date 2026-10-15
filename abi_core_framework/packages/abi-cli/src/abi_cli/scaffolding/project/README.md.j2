@@ -234,18 +234,15 @@ Policies are defined in `services/guardian/opa/policies/` using Rego language:
 
 {% if with_guardian %}
 ### Guardian Security (`http://localhost:11438`)
-- `POST /v1/tools/validate_semantic_access` - Validate access
-- `GET /v1/tools/get_guardian_status` - Guardian status
-- `GET /v1/tools/get_security_metrics` - Security metrics
-- `POST /v1/tools/block_agent` - Block agent
-- `POST /v1/tools/unblock_agent` - Unblock agent
+- `GET /health` - Health check
+- `GET /.well-known/agent-card.json` - Agent card
+- `POST /` - A2A endpoint (policy validation requests from other agents)
 {% endif %}
 
 ## Monitoring and Logs
 
 ### Log Locations
 - Application logs: `./logs/`
-- Emergency logs: `./services/guardian/emergency_logs/`
 - Docker logs: `docker-compose logs -f [service_name]`
 
 ### Health Checks
@@ -255,21 +252,12 @@ All services include health check endpoints for monitoring:
 docker-compose ps
 ```
 
-### Metrics
-{% if with_guardian %}
-Security metrics are available via Guardian API:
-```bash
-curl http://localhost:11438/v1/tools/get_security_metrics
-```
-{% endif %}
-
 ## Security
 
 {% if with_guardian %}
 ### Policy Management
 - Policies are defined in Rego language
 - Real-time policy evaluation via OPA
-- Emergency response with automatic blocking
 - Comprehensive audit logging
 
 ### Risk Assessment
@@ -283,7 +271,7 @@ Multi-dimensional risk scoring based on:
 ### Best Practices
 1. **Agent Registration**: Always register agents with proper metadata
 2. **Policy Updates**: Test policies in development before production
-3. **Monitoring**: Monitor security metrics and emergency logs
+3. **Monitoring**: Watch the Guardian's logs and OPA's decision logs (`docker compose logs -f {{ project_dir }}-opa`)
 4. **Access Control**: Use principle of least privilege
 
 ## Troubleshooting

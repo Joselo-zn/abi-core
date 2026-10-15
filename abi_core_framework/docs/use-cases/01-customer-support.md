@@ -1,10 +1,39 @@
 # Customer Support & Service Triage
 
-A support bot has one job it must never get wrong: not making things up.
+Many agentic systems are built with every feature except one: determinism. The model reads the message, decides what to do, decides what to say, and nobody draws a line around any of it. On a busy afternoon it looks like this — a typical exchange, not any real company:
 
-You've met the other kind. Ask it about instalments and it cheerfully invents a twelve-month plan your company has never offered. Ask for your order and it apologizes, beautifully, without ever looking the order up. Ask for a human and it asks you to rephrase. Then a person finally takes over and opens with "how can I help you today?" — and you explain everything again, from the top.
+```
+Customer: Can I pay in instalments?
+Bot:      Absolutely! We offer a flexible 12-month plan at 0% interest. 🎉
+Customer: Great. And where's my order 10045?
+Bot:      I'm so sorry for the wait! Orders usually arrive within a few days.
+Customer: That's not an answer. Can I talk to a person?
+Bot:      Sorry, I didn't quite get that. Could you rephrase?
+Customer: A. PERSON.
+Human:    Hi there! How can I help you today?
+```
 
-Here's the version I'd put in front of your customers. It answers from your help center and only from your help center. It looks orders up instead of guessing. When it doesn't know, it says so, in words you wrote, not words the model improvised. And when it hands you to a person, that person gets a three-line summary, so nobody starts from zero.
+The instalment plan doesn't exist. Nobody looked the order up. And the person who finally shows up starts from zero.
+
+I'm ABI, and I work differently. With `abi-core-ai`, every conversation runs through two kinds of zones. The deterministic ones are plain code that does the same thing every time: finding the order number, choosing the help-center entry, refusing to guess, opening the ticket, remembering what was said. The non-deterministic ones belong to the model — understanding a message and writing a reply — and they live inside the fence the code builds. Same customer, same afternoon — an excerpt from a real run of the agent on this page:
+
+```
+Customer: Can I pay in instalments over 12 months?
+Agent:    I don't have that in our help center, and I'd rather not guess.
+          Want me to pass your question to a colleague?
+Customer: Where is my order?
+Agent:    Happy to check. What's your order number? It has five digits.
+Customer: It's 10045
+Agent:    Your order 10045 has been shipped by DHL with tracking number DHL-88231.
+          The estimated time of arrival is October 14, 2026.
+Customer: This is taking too long, I want to talk to a person.
+Agent:    I've passed this to a colleague — your ticket is TCK-0001. They'll see this
+          summary, so you won't have to repeat yourself:
+          Customer wants: To speak to a human agent due to unresolved questions.
+          What's been tried: Assistant provided shipping info and order status, but
+          couldn't answer payment terms or shipping to Canada.
+          Still open: Customer is requesting to speak with a live agent immediately.
+```
 
 It takes about twenty minutes to build. Most of it is reading.
 
@@ -331,11 +360,22 @@ abi-core run --build
 
 ## Step 8: Talk to it
 
-Use [`AgentStreamClient`](../single-agent/05-testing-agents.md#talk-to-it-from-python): one client is one customer, so the whole conversation shares a session. Save this as `chat.py` in the project folder:
+Your customers won't open a terminal, so give the agent a chat window:
+
+```bash
+abi-core add chainlit
+abi-core run --build
+```
+
+`add chainlit` finds the `support` agent on its own and adds a [Chainlit](https://docs.chainlit.io) chat UI to `compose.yaml`. Open **http://localhost:8500** and talk to it. Each chat in the window is one customer, with its own session and memory; start a new chat and the agent starts fresh. While it works, the window shows the status updates the task sends ("Looking up order 10045...").
+
+### Or from a script
+
+For tests — or to replay the same conversation after every change — use [`AgentStreamClient`](../single-agent/05-testing-agents.md#talk-to-it-from-python), the same client the chat window uses. One client is one customer. Save this as `chat.py` in the project folder:
 
 ```python
 import asyncio
-from abi_core.client.agent_stream_client import AgentStreamClient
+from abi_core.client import AgentStreamClient
 
 MESSAGES = [
     "Hi! How long does shipping usually take?",
@@ -394,8 +434,6 @@ I've passed this to a colleague — your ticket is TCK-0001. They'll see this su
 ```
 
 The whole conversation — seven messages — took about 70 seconds on a CPU, between 4 and 20 seconds per reply. On a GPU, or with a cloud model, it's close to instant. The wording changes from run to run; the decisions held steady in every run I tried.
-
-You can also give it a proper chat window: `abi-core add chainlit`, then `abi-core run`.
 
 ## What happened
 

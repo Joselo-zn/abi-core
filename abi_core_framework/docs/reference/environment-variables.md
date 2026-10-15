@@ -27,7 +27,8 @@ All variables are set in `compose.yaml` per service. Agents read them via `confi
 | `SEMANTIC_LAYER_HOST` | `http://<project>-semantic-layer:10100` | Semantic Layer URL |
 | `MCP_HOST` | `<project>-semantic-layer` | MCP server hostname |
 | `MCP_PORT` | `10100` | MCP server port |
-| `MCP_TRANSPORT` | `streamable-http` | Transport: streamable-http, sse |
+| `MCP_TRANSPORT` | `streamable-http` | How agents reach the Semantic Layer: `streamable-http`, or `sse` (deprecated, compatibility only). Must match `SEMANTIC_LAYER_TRANSPORT` — see [MCP Transports](mcp-transports.md) |
+| `SEMANTIC_LAYER_TRANSPORT` | `streamable-http` | Set on the Semantic Layer: the transport its MCP server speaks |
 | `WEAVIATE_URL` | `http://<project>-weaviate:8080` | Weaviate URL |
 | `EMBEDDING_MODEL` | `nomic-embed-text:v1.5` | Model for generating embeddings |
 

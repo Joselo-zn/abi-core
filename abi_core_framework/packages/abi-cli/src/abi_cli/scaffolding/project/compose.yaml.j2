@@ -144,8 +144,7 @@ services:
     build: ./services/guardian
     container_name: {{ project_dir }}-guardian
     ports:
-      - "{{ guardian_port | default('11438') }}:{{ guardian_port | default('11434') }}"
-      - "{{ dashboard_port | default('8080') }}:{{ dashboard_port | default('8080') }}"
+      - "{{ guardian_port | default('11438') }}:{{ guardian_port | default('11438') }}"
     environment:
       - ABI_ROLE=Guardian Security
       - ABI_NODE=ABI Node
@@ -156,9 +155,6 @@ services:
       - SEMANTIC_LAYER_HOST=http://{{ project_dir }}-semantic-layer:10100
       {% endif %}
       - MAX_RISK_THRESHOLD={{ max_risk_threshold | default('0.7') }}
-      - EMERGENCY_LOG_DIR=/app/emergency_logs
-      - GUARDIAL_DASHBOARD_PORT={{ dashboard_port | default('8080') }}
-      - GUARDIAL_DASHBOARD_HOST=0.0.0.0
       - OLLAMA_HOST=http://ollama:11434
       - MODEL_NAME={{ model_name | default('qwen3:latest') }}
       {% if domain == 'finance' %}
@@ -171,7 +167,6 @@ services:
     volumes:
       - ollama_data:/root/.ollama
       - ./logs:/app/logs
-      - ./services/guardian/emergency_logs:/app/emergency_logs
     depends_on:
       - ollama
       - {{ project_dir }}-opa

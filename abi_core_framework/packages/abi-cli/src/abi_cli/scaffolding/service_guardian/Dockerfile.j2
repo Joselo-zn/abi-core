@@ -29,13 +29,6 @@ COPY . /app
 # Copy OPA policies
 COPY ./opa/policies /app/opa/policies
 
-# Copy alerting configuration
-COPY ./alerting_config.json /app/alerting_config.json
-
-# Create emergency logs directory with proper permissions
-RUN mkdir -p {{ emergency_log_dir | default('/app/emergency_logs') }} && \
-    chmod 755 {{ emergency_log_dir | default('/app/emergency_logs') }}
-
 # Create audit database directory
 RUN mkdir -p /app/data && chmod 755 /app/data
 
@@ -70,9 +63,8 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:11434/api/tags >/dev/null 2>&1 && \
         wget -qO- http://localhost:{{ guardian_port | default('11438') }}/health >/dev/null 2>&1 || exit 1
 
-# Expose Guardian API, Dashboard, and Ollama ports
+# Expose Guardian API and Ollama ports
 EXPOSE {{ guardian_port | default('11438') }}
-EXPOSE {{ dashboard_port | default('8080') }}
 EXPOSE 11434
 
 # Volume for model data
@@ -82,9 +74,8 @@ VOLUME ["/root/.ollama"]
 HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD wget -qO- http://localhost:{{ guardian_port | default('11438') }}/health >/dev/null 2>&1 || exit 1
 
-# Expose Guardian API and Dashboard ports only
+# Expose the Guardian API port
 EXPOSE {{ guardian_port | default('11438') }}
-EXPOSE {{ dashboard_port | default('8080') }}
 {% endif %}
 
 # Use abi-entrypoint.sh (inherited from abi-image)

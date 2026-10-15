@@ -74,13 +74,14 @@ from abi_core.agent.agent_response import AgentResponse
 yield AgentResponse.status("Working...")
 yield AgentResponse.result({"key": "value"})
 yield AgentResponse.error("Something failed")
+yield AgentResponse.error("Took too long", code="timeout", max_wait=180)  # code → meta.error_code
 yield AgentResponse.text("Plain text response")
 yield AgentResponse.input_required("Need more info: ...")
 yield AgentResponse.element("image", {"url": url}, name="Chart")   # rich element
 yield AgentResponse.status("Planning...", phase=RunPhase.PLANNING.value)  # timeline phase
 ```
 
-`element()` is covered in [Rich Elements](../single-agent/10-rich-elements.md); `phase` and the other progress keys in [Run Progress](../single-agent/11-run-progress.md) (`from abi_core.agent.agent_response import RunPhase`).
+`error(message, code=None, **meta)` puts `code` (and any extra keys) in `meta.error_code`, so a client can show its own localized text; `message` stays the English fallback. `AgentResponse.error_from(exc)` builds one from an exception, keeping its `error_code` and `max_wait` when it has them — the bundled Chainlit UI shows timeouts in the browser's language this way. `element()` is covered in [Rich Elements](../single-agent/10-rich-elements.md); `phase` and the other progress keys in [Run Progress](../single-agent/11-run-progress.md) (`from abi_core.agent.agent_response import RunPhase`).
 
 ---
 
@@ -250,16 +251,14 @@ An agent created with `--with-web-interface` serves, on `WEB_INTERFACE_PORT`:
 | `/health` | GET | Liveness |
 | `/api/tags`, `/api/version`, `/api/ps`, `/api/chat`, `/api/generate` | GET/POST | Ollama-compatible endpoints, so [Open WebUI](https://docs.openwebui.com/) can use the agent as if it were a model |
 
-```{warning}
-The Ollama-compatible endpoints forward only the last user message, and every request shares one session. Fine for a single-user demo in Open WebUI; for several users, use `/stream` with session tokens (or the bundled Chainlit UI).
-```
+To keep one conversation per Open WebUI user and chat, set `OPENWEBUI_JWT_SECRET` on the agent to the same value as Open WebUI's `FORWARD_USER_INFO_HEADER_JWT_SECRET`, and set `ENABLE_FORWARD_USER_INFO_HEADERS=true` in Open WebUI. The agent then verifies the user identity Open WebUI signs; an identity that doesn't verify gets a 401. Without it, the agent falls back to its own session token. `ABI_SESSION_REQUIRED=true` makes those routes reject requests that carry neither — see [Environment Variables](environment-variables.md#session-management).
 
 ---
 
-## Client (`abi_core.client.agent_stream_client`)
+## Client (`abi_core.client`)
 
 ```python
-from abi_core.client.agent_stream_client import AgentStreamClient
+from abi_core.client import AgentStreamClient
 
 client = AgentStreamClient("http://localhost:8002")   # one instance per conversation
 async for event in client.stream("Hello"):

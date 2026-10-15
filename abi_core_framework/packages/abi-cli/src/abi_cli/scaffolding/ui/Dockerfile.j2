@@ -7,7 +7,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "abi-core-ai[ui]"
+# Pinned to at least the version that generated this file: an unpinned
+# install let Docker reuse a cached layer with an older abi-core-ai, missing
+# modules this file uses below.
+RUN pip install --no-cache-dir "abi-core-ai[ui]{% if abi_core_version and abi_core_version != 'unknown' %}>={{ abi_core_version }}{% endif %}"
 
 # Branding only — chainlit reads these from the working directory.
 COPY chainlit.md .

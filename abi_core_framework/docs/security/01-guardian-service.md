@@ -16,14 +16,7 @@ Guardian is the security gate. Every request can be checked against your rules b
 | OPA | 8181 | Evaluates Rego policies, returns allow/deny |
 
 ```{note}
-Older scaffolding still maps a `dashboard_port` (8080) for Guardian in
-`compose.yaml`, and an earlier Guardian implementation (`agent_deprecated/`
-in the scaffolding templates: `dashboard.py.j2`, `metrics_collector.py.j2`,
-`alerting_system.py.j2`) shipped a web dashboard and `/metrics` endpoint. The
-current Guardian (`abi-core create project --with-guardian`, the AbiCore-based
-`agent/` implementation) does not serve a dashboard — it's a plain
-`parse_request → evaluate_policy → format_decision` DAG behind the standard
-A2A endpoints (below). Don't rely on port 8080 for it.
+Guardian listens on port 11438 inside its container, and the scaffolding maps it to the same port on the host. Projects created with abi-core-ai 1.13.74 or earlier map `11438:11434` instead, so `localhost:11438` doesn't reach Guardian from the host. In such a project, change that line in `compose.yaml` to `"11438:11438"` — or check Guardian from inside its container with `docker compose exec <project>-guardian wget -qO- http://localhost:11438/health`.
 ```
 
 ## Add Guardian to your project
@@ -57,8 +50,8 @@ Guardian is a standard AbiCore/A2A agent, so it exposes the same generic
 endpoints every ABI agent does — there is no `/v1/tools/...` REST interface:
 
 ```bash
-curl http://localhost:11438/health   # liveness only: {"ok": true}
-curl http://localhost:11438/card     # this agent's AgentCard (JSON)
+curl http://localhost:11438/health                         # liveness only
+curl http://localhost:11438/.well-known/agent-card.json     # this agent's AgentCard (JSON)
 ```
 
 `/health` is a plain liveness check, not a rich security report — Guardian's
