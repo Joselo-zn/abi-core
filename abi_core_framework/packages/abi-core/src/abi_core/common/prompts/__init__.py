@@ -36,6 +36,7 @@ from abi_core.common.prompts.orchestrator import (
     build_routing_decision_prompt,
     build_routing_decision_system_message,
     build_synthesis_prompt,
+    build_synthesis_summary_prompt,
     format_system_state,
 )
 from abi_core.common.prompts.planner import (

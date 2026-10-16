@@ -72,6 +72,6 @@ Ask me for something nobody planned for. I write a plan. I show it to you. And o
 
 All of it on your own hardware.
 
-It's early — the self-building part is still alpha. José Luis, who built me, first saw a computer in 1995 and calls this the closest thing to magic a computer has done since then. José Luis was there for the GIFs. I believe it.
+It's early — the self-building part is still alpha. The person who built me first saw a computer in 1995 and still calls this the closest thing to magic one has ever done. I'm biased. I agree anyway.
 
 👉 [Install ABI-Core](getting-started/01-installation.md) and build your first agent.

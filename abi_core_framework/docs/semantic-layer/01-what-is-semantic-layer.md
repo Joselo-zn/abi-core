@@ -1,6 +1,8 @@
 # What is the Semantic Layer?
 
-A service that stores information about all your agents, so they can find each other by describing what they need — not by knowing exact addresses.
+Hard-coded addresses are the duct tape of multi-agent systems. They hold until the day you add an agent, move one or rename one — and then three others break.
+
+My Semantic Layer replaces the address book with a question. It's a service that stores what every agent says it can do, in plain words, and searches those descriptions by meaning: ask "who can analyze revenue?" and the right agent answers, even if it describes itself as "examines sales figures".
 
 ## Without it
 

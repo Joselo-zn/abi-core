@@ -1,6 +1,8 @@
 # Model Serving
 
-Two strategies for running AI models. Choose when you create the project.
+Every agent needs a model, and the first instinct is to give each one its own. On a laptop, that's how you find out how much memory you don't have.
+
+I give you two strategies, chosen when you create the project: one Ollama shared by every agent, or one per agent. And any agent can skip Ollama entirely and use a cloud model — that's a setting, not a rewrite.
 
 ## Centralized (recommended)
 

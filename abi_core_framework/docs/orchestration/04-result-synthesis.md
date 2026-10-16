@@ -10,47 +10,39 @@ After a workflow completes — which only happens once the user has approved the
 ## How it works
 
 1. Workflow executes all tasks → each agent returns a result
-2. Orchestrator collects all results
-3. If there are artifacts (files), generates download URLs
-4. Calls the LLM with a synthesis prompt containing the plan + all results
-5. Returns the synthesized response to the user
+2. Orchestrator collects all results; if there are artifacts (files), it generates download URLs
+3. The deliverable set is verified by code (integration review: the files fit together, and the entry point runs in a sandbox)
+4. The LLM writes a short description of the deliverable, in the language of the user's request
+5. Code adds the verdict, any missing deliverables and the download links below that description
+
+The model describes; it does not judge. It never sees the verification result or the links, so it cannot report a set that ran without errors as broken, or an untested one as working.
 
 ## The synthesis step (from the Orchestrator)
 
 ```python
-# After workflow completes
-if workflow.state == Status.COMPLETED:
-    # Collect artifacts from agent responses
-    artifacts = []
-    for r in results:
-        resp = A2AResponse.parse(r)
-        if resp and resp.data:
-            for art in resp.data.get("uploaded_artifacts", []):
-                artifacts.append(art)
+from abi_core.common.prompts.orchestrator import build_synthesis_summary_prompt
+from abi_core.common.utils import build_plan_view
 
-    # Generate download URLs for artifacts
-    await generate_download_urls(artifacts)
+# 2-3 sentences describing the deliverable, in the user's language:
+# gets the user's own message, the objective and the steps (title + file).
+query = build_synthesis_summary_prompt(
+    user_message,                    # the user's request, as they wrote it
+    plan["objective"],
+    build_plan_view(plan)["steps"],
+)
+final_response = await invoke(config.LLM_CONFIG, query, system_prompt=config.SYSTEM_PROMPT)
 
-    # Build synthesis prompt
-    synthesis_query = (
-        f"Synthesize the following workflow results:\n"
-        f"Plan: {json.dumps(plan, indent=2)}\n"
-        f"Results count: {len(results)}\n"
-    )
-    if artifacts:
-        synthesis_query += "Generated artifacts:\n"
-        for art in artifacts:
-            synthesis_query += f"  - {art['filename']}: {art['download_url']}\n"
+# The verdict is always code's
+if integration.errors or integration.execution_unverified:
+    final_response += "\n\n" + integration.as_text()       # full report
+else:
+    final_response += "\n\n" + integration.as_pass_text()  # what was checked
 
-    # Call LLM to synthesize
-    final_response = await invoke(config.LLM_CONFIG, synthesis_query)
-
-    # Append artifact links if the LLM didn't include them
-    if artifacts and "download" not in final_response.lower():
-        final_response += format_artifact_links(artifacts)
-
-    yield AgentResponse.text(final_response)
+final_response += format_artifact_links(artifacts)
+yield AgentResponse.text(final_response)
 ```
+
+`IntegrationReport.as_pass_text()` says exactly what a pass covers: the files fit together and the entry point ran in the sandbox without errors, which does not prove real use (for example, that a game plays well).
 
 ## What the user sees
 
@@ -58,9 +50,18 @@ if workflow.state == Status.COMPLETED:
 event: status → "Analyzing request..."
 event: status → "Processing..." (heartbeats)
 event: status → "Synthesizing results..."
-event: result → "Based on the analysis, Q4 revenue grew 15%...
-                 📎 Download report: https://minio.../report.pdf"
+event: result → "I built a snake game in Python with pygame: the snake, food
+                 and score in one module, the main loop in main.py.
+
+                 ✅ Verified by code: the files fit together and main.py ran
+                 in the sandbox for up to 15 s without errors. That does not
+                 prove real use.
+
+                 📎 Generated files:
+                 - game_objects.py, main.py (download links)"
 ```
+
+The verdict and the report are currently written in Spanish; the description follows the user's language.
 
 ## Artifacts
 
@@ -68,7 +69,7 @@ Agents can upload files (PDFs, CSVs, images) to the Artifact Store (MinIO). The 
 
 1. Extracts artifact metadata from agent responses
 2. Generates pre-signed download URLs
-3. Includes them in the synthesis
+3. Adds them below the answer, by code (the model never handles links)
 
 ```python
 from abi_core.common.artifact_store import generate_download_urls, format_artifact_links

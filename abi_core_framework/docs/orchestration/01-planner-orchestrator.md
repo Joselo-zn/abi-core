@@ -5,7 +5,9 @@
 under active development. Behavior may change between releases. Not recommended for production yet.
 ```
 
-The Orchestrator is the entry point for complex requests. The Planner breaks a request into smaller tasks and finds an agent for each. The Builder creates the agents that don't exist yet. Together they turn one sentence into coordinated multi-agent work — and nothing runs until you say yes.
+Hand a big request to a single model and it does what models do: it improvises a plan in its head and starts acting on it before anyone has seen it.
+
+I split that job in three. The Orchestrator is the entry point: it checks the request and decides whether it needs a plan. The Planner breaks it into smaller tasks and finds an agent for each. The Builder creates the agents that don't exist yet. Together they turn one sentence into coordinated multi-agent work — and nothing runs until you say yes.
 
 ## How they work together
 

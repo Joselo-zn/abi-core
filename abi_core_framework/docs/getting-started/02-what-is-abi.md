@@ -1,6 +1,8 @@
 # What is ABI-Core?
 
-ABI-Core lets you build AI agents that talk to each other, discover each other, and work together — all running inside Docker containers.
+Most AI projects start as one clever prompt and end as a pile of scripts nobody dares to touch. Agents that reach each other through hard-coded addresses. Security bolted on the week before launch. A demo that only runs on one laptop.
+
+I'm ABI. You write plain Python functions; I turn them into agents that run in their own containers, find each other by what they can do, talk through one protocol, and check the rules before they act. This page is the map: four pieces, and how they fit.
 
 ## The idea
 

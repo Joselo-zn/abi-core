@@ -425,7 +425,7 @@ async def main():
             if event.get("response_type") == "element":
                 for row in event["content"]["props"]["data"]:
                     print(f"  {row['Score']:>3}  {row['Tier']:<8} {row['Lead']:<14} {row['Why']}")
-            elif event.get("is_task_completed") or event.get("require_user_input"):
+            elif event.get("is_task_completed") or event.get("require_user_input") or event.get("response_type") == "error":
                 print(event.get("content"))
 
 asyncio.run(main())

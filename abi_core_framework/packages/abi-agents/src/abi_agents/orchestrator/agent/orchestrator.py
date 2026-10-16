@@ -480,6 +480,11 @@ class AbiOrchestratorAgent(AbiAgent):
                 )
 
                 if outcome.action == "create_plan":
+                    # The user's own words, kept for the synthesis after the
+                    # run: the Planner only gets the routing's rewrite of
+                    # them (outcome.objective, usually English), which made
+                    # every synthesis answer in English.
+                    await self.update_session_context(context_id, {"plan_user_message": query})
                     async for r in self._call_planner_and_respond(outcome.objective or query, context_id, task_id):
                         yield r
                     return
@@ -852,15 +857,16 @@ class AbiOrchestratorAgent(AbiAgent):
                         else:
                             yield item
 
-                # Build synthesis prompt
-                artifacts_paths = [
-                    f"{art.get('filename', '?')}: {art.get('download_url', art.get('url', ''))}"
-                    for art in artifacts
-                ]
-
-                synthesis_query = config.build_synthesis_prompt(
-                    plan, len(results), artifacts_paths,
-                    integration_report=integration.as_text() if integration else None,
+                # The model only describes the deliverable, in the user's
+                # language. The verdict, the files and their links are added
+                # below by code and never shown to it: reading the review, it
+                # reported a set that ran without errors as "does not run"
+                # and an untested one as "fully functional" (live
+                # 2026-10-15). Spec: chainlit-delivery-result-card.md (C2).
+                synthesis_query = config.build_synthesis_summary_prompt(
+                    session_ctx.get("plan_user_message") or plan.get("objective", ""),
+                    plan.get("objective", ""),
+                    build_plan_view(plan)["steps"],
                 )
 
                 from abi_core.agent.llm_provider import invoke as llm_invoke
@@ -896,29 +902,11 @@ class AbiOrchestratorAgent(AbiAgent):
                     else:
                         yield item
 
-                final_response = synthesis or "Workflow completed successfully"
-                # Reproduced live 2026-09-27: checking for the word "download"
-                # anywhere in the LLM's own text is not the same as checking
-                # that every artifact's REAL url is actually in there — the
-                # synthesis model wrote "Download Link:" under all 3 tasks
-                # (satisfying the word check) but only filled in the actual
-                # URL for the first one, leaving the other two as bare
-                # filenames with no working link. Check each artifact's own
-                # url instead of a single word — append the full list
-                # whenever even one is missing, since a partial list would
-                # be just as misleading as none.
-                missing_a_link = any(
-                    (art.get("download_url") or art.get("url", "")) not in final_response
-                    for art in artifacts
-                )
-                if artifacts and missing_a_link:
-                    final_response += format_artifact_links(artifacts)
+                final_response = synthesis or ""
 
-                # Same principle as the link check above: the summary is
-                # free text from a model, the review is verified by code.
-                # Errors are appended verbatim — never left to the model. So
-                # is "unverified" (the set never ran in the sandbox): that is
-                # not a pass. getattr: older abi-core-ai has no such field.
+                # The verdict is always code's: the full report when the set
+                # failed or could not run (unverified is not a pass), and a
+                # line saying exactly what was checked when it passed.
                 integration_failed = bool(integration and integration.errors)
                 integration_unverified = bool(
                     integration and not integration.errors
@@ -926,6 +914,8 @@ class AbiOrchestratorAgent(AbiAgent):
                 )
                 if integration_failed or integration_unverified:
                     final_response += "\n\n" + integration.as_text()
+                elif integration is not None:
+                    final_response += "\n\n" + integration.as_pass_text()
                 if missing_deliverables:
                     final_response += "\n\n❌ Entregables que no se produjeron: " + ", ".join(missing_deliverables)
                     integration_failed = True
@@ -933,6 +923,10 @@ class AbiOrchestratorAgent(AbiAgent):
                 note = reviewer_note(reviewer_report, await handoff_errors(run_id) if reviewer_card else None)
                 if note:
                     final_response += "\n\n" + note
+                # Links come from code too: the model no longer sees them.
+                if artifacts:
+                    final_response += format_artifact_links(artifacts)
+                final_response = final_response.strip() or "Workflow completed successfully"
                 outcome = (
                     "COMPLETED WITH INTEGRATION ERRORS" if integration_failed
                     else "COMPLETED, INTEGRATION UNVERIFIED" if integration_unverified

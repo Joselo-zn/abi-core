@@ -376,7 +376,7 @@ async def main():
                 print("  " + " | ".join(props["columns"]))
                 for row in props["data"][:10]:
                     print("  " + " | ".join(str(v) for v in row))
-            elif event.get("is_task_completed"):
+            elif event.get("is_task_completed") or event.get("response_type") == "error":
                 print(event.get("content"))
 
 asyncio.run(main())

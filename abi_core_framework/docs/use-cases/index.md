@@ -19,4 +19,6 @@ Copy the code. Run it. Break it on purpose. Then make it yours.
 04-nl-data-access
 05-it-help-desk
 06-workflow-automation
+07-supply-chain
+08-deep-research
 ```

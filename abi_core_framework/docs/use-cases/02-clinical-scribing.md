@@ -344,7 +344,7 @@ async def main():
     for m in MESSAGES:
         print(f"\n>>> {m[:70]}{'...' if len(m) > 70 else ''}")
         async for e in client.stream(m):
-            if e.get("is_task_completed") or e.get("require_user_input"):
+            if e.get("is_task_completed") or e.get("require_user_input") or e.get("response_type") == "error":
                 print(e.get("content"))
 
 

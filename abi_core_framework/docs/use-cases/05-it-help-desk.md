@@ -424,7 +424,7 @@ async def main():
     for message in MESSAGES:
         print(f"\n>>> {message}")
         async for event in client.stream(message):
-            if event.get("is_task_completed"):
+            if event.get("is_task_completed") or event.get("response_type") == "error":
                 print(event.get("content"))
 
 asyncio.run(main())

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The answer after a plan runs.** The model now writes only a short
+  description of what was delivered (two or three sentences), in the
+  language of the user's request — it used to come out in English. It no
+  longer judges whether the result works: code always adds the verdict — the
+  full report when verification failed or couldn't run, or one line saying
+  exactly what a pass covers (the files fit together and the entry point ran
+  in the sandbox without errors, which doesn't prove real use). Download
+  links are always appended by code. New: `IntegrationReport.as_pass_text()`
+  (`abi_core.common.integration_review`) and
+  `build_synthesis_summary_prompt(user_message, objective, steps)`
+  (`abi_core.common.prompts.orchestrator`); `build_synthesis_prompt` is
+  unchanged. The verdict and the report are still in Spanish. See
+  [Result Synthesis](docs/orchestration/04-result-synthesis.md).
+
 ### Removed
 - **Leftovers of the deprecated Guardian in `abi-core create project
   --with-guardian`:** the `emergency_logs/` folder, `alerting_config.json`,

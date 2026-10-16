@@ -1,6 +1,8 @@
 # What is RAG?
 
-RAG (Retrieval-Augmented Generation) = search your data first, then let the AI answer using what you found.
+Ask a model about your return policy and it has two options: admit it doesn't know, or make one up. The second one sounds better. That's the problem.
+
+RAG — Retrieval-Augmented Generation — takes the choice away: search your own data first, then let the model answer using only what you found. The model brings the language. Your documents bring the facts.
 
 ## The problem
 

@@ -17,6 +17,7 @@ from prompts import (
     build_routing_decision_system_message,
     build_routing_decision_prompt,
     build_synthesis_prompt,
+    build_synthesis_summary_prompt,
 )
 
 
@@ -125,6 +126,7 @@ class AgentConfig:
     build_routing_decision_system_message = staticmethod(build_routing_decision_system_message)
     build_routing_decision_prompt = staticmethod(build_routing_decision_prompt)
     build_synthesis_prompt = staticmethod(build_synthesis_prompt)
+    build_synthesis_summary_prompt = staticmethod(build_synthesis_summary_prompt)
 
     # Ollama Configuration (for distributed mode)
     START_OLLAMA: bool = os.getenv('START_OLLAMA', 'false').lower() == 'true'

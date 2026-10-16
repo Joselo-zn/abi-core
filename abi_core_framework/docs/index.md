@@ -28,6 +28,8 @@ use-cases/03-lead-qualification
 use-cases/04-nl-data-access
 use-cases/05-it-help-desk
 use-cases/06-workflow-automation
+use-cases/07-supply-chain
+use-cases/08-deep-research
 ```
 
 ```{toctree}

@@ -1,6 +1,8 @@
 # Guardian Service
 
-Guardian is the security gate. Every request can be checked against your rules before it runs.
+A rule written in a prompt is a suggestion. A persuasive enough message talks its way around it — and with agents that can act, that isn't a bad answer, it's an incident.
+
+Guardian is my security gate. Your rules live in policy files, evaluated by OPA, outside any model's reach. Every request can be checked against them before it runs, every decision is logged, and some rules — no agent may copy itself, no agent may edit the rules — can't be turned off at all.
 
 ## What it does
 

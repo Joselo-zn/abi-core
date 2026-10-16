@@ -9,4 +9,5 @@ from abi_core.common.prompts.orchestrator import (  # noqa: F401  (re-exported)
     build_routing_decision_prompt,
     build_routing_decision_system_message,
     build_synthesis_prompt,
+    build_synthesis_summary_prompt,
 )

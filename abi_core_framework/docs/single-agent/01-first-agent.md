@@ -1,6 +1,8 @@
 # Your First Agent
 
-You have a project. Now let's write an actual agent with steps, a task, and an AI call.
+This is where most frameworks hand you a prompt and wish you luck. I hand you a skeleton.
+
+An agent of mine is built from steps that each do one thing, a task that decides their order, and a call to the model only where you put one. In the next ten minutes you'll write all three — and you'll be able to point at every line and say what it does.
 
 ## Create the agent
 

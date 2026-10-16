@@ -192,6 +192,9 @@ def render_all() -> dict:
         "routing_prompt_gathered": orch.build_routing_decision_prompt("", "hola", "found 2 agents"),
         "synthesis": orch.build_synthesis_prompt(_PLAN, 2, ["main.py: http://x"]),
         "synthesis_report": orch.build_synthesis_prompt(_PLAN, 2, [], "1 error"),
+        "synthesis_summary": orch.build_synthesis_summary_prompt(
+            "quiero un juego pequeño", "A small game",
+            [{"title": "Jugador", "deliverable": {"tag": "player.py"}}, {"title": "Main loop", "deliverable": None}]),
         "system_state_all": format_system_state("plan", "question?", "user: hi"),
         "system_state_none": format_system_state(None, None),
         # Inline f-string in orchestrator/agent/steps.py (build_workflow),

@@ -105,6 +105,32 @@ class IntegrationReport:
             lines.append("\n✅ Sin hallazgos.")
         return "\n".join(lines)
 
+    def as_pass_text(self) -> str:
+        """Deterministic verdict for a set that passed (no errors, not
+        unverified), saying exactly what the check covered — so the user's
+        answer never depends on a model interpreting the review. Live
+        2026-10-15: the synthesis model reported a set with 0 errors as "does
+        not run" (from unused-method warnings) and another as "fully
+        functional". Spanish, like as_text()."""
+        entry = f"`{self.entry_point}`" if self.entry_point else "el punto de entrada"
+        if self.layer2_ran:
+            lines = [
+                f"✅ Verificado por código: los archivos encajan entre sí y {entry} se ejecutó "
+                f"en el sandbox hasta {LAYER2_TIMEOUT_S} s sin errores. Eso no prueba el uso real "
+                "(por ejemplo, que un juego se pueda jugar bien)."
+            ]
+            warnings_header = f"⚠️ {len(self.warnings)} advertencia(s), que no impiden que se ejecute:"
+        else:
+            lines = [
+                "✅ Revisión estática sin errores: los archivos encajan entre sí. "
+                f"No se ejecutaron ({self.layer2_skipped or 'sin ejecución'})."
+            ]
+            warnings_header = f"⚠️ {len(self.warnings)} advertencia(s):"
+        if self.warnings:
+            lines.append("\n" + warnings_header)
+            lines += [f"- {f.as_text()}" for f in self.warnings]
+        return "\n".join(lines)
+
 
 # ── Layer 1: static ────────────────────────────────────────────
 

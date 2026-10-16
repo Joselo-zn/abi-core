@@ -1,6 +1,8 @@
 # Why Multiple Agents?
 
-One agent that does everything gives generic answers. Multiple specialized agents give expert answers.
+One agent that does everything is like one employee who does everything: friendly, busy, and mediocre at most of it. Its prompt keeps growing, its tools pile up, and every change risks breaking something unrelated.
+
+Split the work. A specialist with its own prompt, its own tools and even its own model does one job well — and I make sure the specialists can find each other and talk without you wiring them together.
 
 ## The problem
 
