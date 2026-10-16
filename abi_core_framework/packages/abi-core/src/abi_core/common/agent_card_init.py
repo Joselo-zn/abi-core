@@ -104,11 +104,16 @@ async def register_agent_card_with_semantic_layer(card_path: str | Path) -> bool
         async with client.init_session(
             config.host, config.port, config.transport
         ) as session:
-            # Build context for registration
+            # Build context for registration. The auth comes from the card
+            # with ${VAR} expanded; the card itself goes as written, so a
+            # card that takes its secret from the environment never stores
+            # the real value in the semantic layer.
+            from abi_core.common.agent_card_loader import resolve_card_env
+            auth = resolve_card_env(card_data).get('auth', {})
             context = {
                 "agent_id": card_data.get('id'),
-                "key_id": card_data.get('auth', {}).get('key_id'),
-                "shared_secret": card_data.get('auth', {}).get('shared_secret')
+                "key_id": auth.get('key_id'),
+                "shared_secret": auth.get('shared_secret')
             }
             
             result = await client.register_agent(session, card_data, context)

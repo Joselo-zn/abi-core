@@ -151,6 +151,7 @@ async def route_to_task(query):
 ## Step 5: Run it
 
 ```bash
+docker volume create ollama_data              # once per machine; `abi-core run` also creates it
 docker compose up ollama -d
 docker exec multi-demo-ollama ollama pull qwen3:latest
 docker exec multi-demo-ollama ollama pull nomic-embed-text:v1.5

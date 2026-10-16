@@ -18,6 +18,7 @@ from collections import defaultdict
 
 from abi_core.common.utils import abi_logging
 from abi_core.security.agent_auth import sign_payload_hmac
+from abi_core.common.agent_card_loader import CardEnvError, resolve_card_env
 
 # Configuration - will be overridden by config module if available
 try:
@@ -378,6 +379,14 @@ class SemanticAccessValidator:
                             # sandbox-service's verify_caller call was denied.
                             if not card_data.get("id") and card_data.get("service_id"):
                                 card_data = {**card_data, "id": card_data["service_id"]}
+                            # Only the matching card is resolved: a missing
+                            # variable in another agent's card must not
+                            # break validation for everyone else.
+                            try:
+                                card_data = resolve_card_env(card_data)
+                            except CardEnvError as e:
+                                abi_logging(f"❌ Card for {agent_id} unusable, access denied: {e}")
+                                return None
                             self.validation_cache[cache_key] = {
                                 "data": card_data,
                                 "timestamp": datetime.utcnow().timestamp()
@@ -403,6 +412,14 @@ class SemanticAccessValidator:
                 from embedding_mesh.weaviate_store import get_agent_card_by_uuid
                 weaviate_card = get_agent_card_by_uuid(card_uuid)
                 if weaviate_card:
+                    # Registered cards are stored as written, so a ${VAR}
+                    # secret is still a reference here: resolve it the same
+                    # way, never verify against the literal "${...}".
+                    try:
+                        weaviate_card = resolve_card_env(weaviate_card)
+                    except CardEnvError as e:
+                        abi_logging(f"❌ Card for {agent_id} unusable, access denied: {e}")
+                        return None
                     self.validation_cache[cache_key] = {
                         "data": weaviate_card,
                         "timestamp": datetime.utcnow().timestamp()

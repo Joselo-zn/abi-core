@@ -88,6 +88,7 @@ async def answer_questions_step(query, context_id=None):
 
 ```bash
 # First time: pull the AI model (~5 GB download)
+docker volume create ollama_data              # once per machine; `abi-core run` also creates it
 docker compose up ollama -d
 docker exec ollama ollama pull qwen3:latest
 

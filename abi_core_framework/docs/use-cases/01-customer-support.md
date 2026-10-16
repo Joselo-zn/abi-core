@@ -353,6 +353,7 @@ qwen3 thinks out loud before it answers. That helps on hard problems and only sl
 Then pull the model and start everything:
 
 ```bash
+docker volume create ollama_data              # once per machine; `abi-core run` also creates it
 docker compose up ollama -d
 docker exec ollama ollama pull qwen3:latest
 abi-core run --build

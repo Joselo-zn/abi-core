@@ -375,6 +375,7 @@ The agent already gets `OPA_URL` from the scaffold. Then:
 
 ```bash
 abi-core add chainlit
+docker volume create ollama_data              # once per machine; `abi-core run` also creates it
 docker compose up ollama -d
 docker exec ollama ollama pull qwen3:latest
 abi-core run --build

@@ -7,7 +7,7 @@ run step's metadata carries an ``abi_run`` marker with a heartbeat, and a
 watcher bound to the resumed session reads it back and relays it to the
 page. Works across chatui replicas, since the state lives in the database,
 not in the process that runs the task. See
-.abi/specs/not-implemented/ux/chainlit-run-progress-resume.md.
+.abi/specs/implemented/ux/chainlit-run-progress-resume.md.
 
 The decision logic is plain functions (no Chainlit import) so it can be
 tested on its own; only ``follow_run`` and its helpers touch Chainlit.

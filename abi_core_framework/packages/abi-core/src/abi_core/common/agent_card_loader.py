@@ -41,21 +41,57 @@ def load_agent_card(path: str) -> Tuple[AgentCard, dict]:
 _ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 
+_AUTH_ENV_FIELDS = ("shared_secret", "key_id")
+
+
+class CardEnvError(ValueError):
+    """An `auth` field of a card references a variable with no value and no default."""
+
+
+def _expand(value: str, strict: bool, where: str) -> str:
+    def sub(m):
+        found = os.getenv(m.group(1)) or m.group(2)
+        if found is None:
+            if strict:
+                raise CardEnvError(
+                    f"{where} references ${{{m.group(1)}}}, which is not set and has no default"
+                )
+            return m.group(0)
+        return found
+    return _ENV_REF.sub(sub, value)
+
+
 def resolve_card_env(card_data: dict) -> dict:
-    """Expand ${VAR} / ${VAR:-default} in a card's "url" from the environment.
+    """Expand ${VAR} / ${VAR:-default} from the environment in a card's
+    "url", "auth.shared_secret" and "auth.key_id". Returns a new dict; the
+    one passed in is never modified, so a resolved secret is never written
+    back to disk.
 
     Lets one card file serve every deployment: locally the default (Docker
     DNS) applies, on Cloud Run the deploy injects the service URL, e.g.
-    "url": "${PLANNER_URL:-http://abi-swarm-planner:11437}".
-    A reference with no value and no default is left as written.
+    "url": "${PLANNER_URL:-http://abi-swarm-planner:11437}"; the HMAC secret
+    comes from the environment instead of the JSON, e.g.
+    "shared_secret": "${ORDERS_AGENT_SHARED_SECRET}". An empty variable
+    counts as unset.
+
+    In "url" a reference with no value and no default is left as written.
+    In "auth" it raises CardEnvError: signing with the literal "${...}" would
+    use a secret anyone can read in the card.
     """
+    name = card_data.get("id") or card_data.get("service_id") or card_data.get("name") or "card"
     url = card_data.get("url")
     if isinstance(url, str) and "${" in url:
         card_data = dict(card_data)
-        card_data["url"] = _ENV_REF.sub(
-            lambda m: os.getenv(m.group(1)) or (m.group(2) if m.group(2) is not None else m.group(0)),
-            url,
-        )
+        card_data["url"] = _expand(url, strict=False, where=f"{name}: url")
+    auth = card_data.get("auth")
+    if isinstance(auth, dict) and any(
+        isinstance(auth.get(f), str) and "${" in auth[f] for f in _AUTH_ENV_FIELDS
+    ):
+        auth = dict(auth)
+        for field in _AUTH_ENV_FIELDS:
+            if isinstance(auth.get(field), str) and "${" in auth[field]:
+                auth[field] = _expand(auth[field], strict=True, where=f"{name}: auth.{field}")
+        card_data = {**card_data, "auth": auth}
     return card_data
 
 

@@ -245,3 +245,18 @@ On **sandbox-service** itself:
 | `AGENT_CARD` | `./agent_cards/<name>_agent.json` | Path to agent card file |
 
 A card's `"url"` may reference the environment: `"${PLANNER_URL:-http://my-planner:11437}"` resolves to `PLANNER_URL` when set, otherwise to the default. One card file then works locally (Docker DNS) and on Cloud Run (the deploy injects the run.app URL). Expanded by `load_agent_card` and by the semantic layer when it indexes cards.
+
+The HMAC credentials in `"auth"` can come from the environment the same way, so the secret doesn't live in the JSON:
+
+```json
+"auth": {
+  "method": "hmac_sha256",
+  "key_id": "agent://orders-default",
+  "shared_secret": "${ORDERS_AGENT_SHARED_SECRET}"
+}
+```
+
+- `${VAR}` and `${VAR:-default}` work in `auth.shared_secret` and `auth.key_id`. An empty variable counts as unset.
+- In `auth`, a reference with no value and no default is an error: the agent stops at start-up naming the variable, instead of signing with the literal `${...}`. In `url` it is left as written.
+- The agent signs with the card and the semantic layer verifies with its own copy of the card, so **both must see the variable**. The semantic layer checks every agent, so give each agent its own variable (`ORDERS_AGENT_SHARED_SECRET`, `BILLING_AGENT_SHARED_SECRET`, …) and pass all of them to the semantic layer. One shared name only works if every agent uses the same secret.
+- A registered card is stored as written, with the reference, not the secret.

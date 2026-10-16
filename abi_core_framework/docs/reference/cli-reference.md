@@ -187,6 +187,7 @@ permanent Docker service in `compose.yaml`.
 abi-core create project --name my-app --with-semantic-layer
 cd my-app
 abi-core add agent --name my-agent --description "..." --with-web-interface
+docker volume create ollama_data              # once per machine; `abi-core run` also creates it
 docker compose up ollama -d
 abi-core provision-models
 docker compose up --build -d

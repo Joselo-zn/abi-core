@@ -392,6 +392,7 @@ In `compose.yaml`, add to the `environment` of the `sales-qualifier` service:
 
 ```bash
 abi-core add chainlit
+docker volume create ollama_data              # once per machine; `abi-core run` also creates it
 docker compose up ollama -d
 docker exec ollama ollama pull qwen3:latest
 abi-core run --build

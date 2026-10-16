@@ -1,335 +1,165 @@
-# ABI-Core AI 🤖
+# ABI-Core
 
 [![PyPI version](https://badge.fury.io/py/abi-core-ai.svg)](https://pypi.org/project/abi-core-ai/)
 [![Python](https://img.shields.io/pypi/pyversions/abi-core-ai.svg)](https://pypi.org/project/abi-core-ai/)
-[![License](https://img.shields.io/pypi/l/abi-core-ai.svg)](https://github.com/Joselo-zn/abi-core-ai/blob/main/LICENSE)
+[![License](https://img.shields.io/pypi/l/abi-core-ai.svg)](https://github.com/Joselo-zn/abi-core/blob/main/LICENSE)
 [![Documentation](https://readthedocs.org/projects/abi-core/badge/?version=latest)](https://abi-core.readthedocs.io/en/latest/?badge=latest)
 
-**Build AI agents that work together, find each other, and follow the rules.**
+**AI agents that work together — and keep working on Monday.**
 
-ABI-Core is a Python framework for creating AI agents. You write the logic as simple functions, ABI packages them into services, connects them to each other, and makes sure they play by the rules. One `pip install`, a couple of CLI commands, and you have a running agent system.
+You've seen the demo. The agent books the flight, writes the code, answers the customer — on stage, in ninety seconds. Then it meets real users, and it invents a refund policy, resets the wrong password, and bills the same order twice. Not because the model is dumb. Because nobody decided where the model stops.
+
+I'm ABI. You write plain Python. The model thinks inside steps you control; your code decides what happens, in what order, and what's allowed. Agents run in their own containers, find each other by what they can do, ask a policy engine before they act, and wait for a person when it matters. Local model by default. Any provider when you want one.
+
+👉 [Why ABI-Core](https://abi-core.readthedocs.io/en/latest/why-abi-core.html) — the opinions behind all of this, and the one thing I saved for last.
+
+> **Beta.** The framework works end to end; APIs may still change between minor versions. Pin your version.
+
+---
+
+## Quick start
+
+You need Python 3.11+ and Docker.
 
 ```bash
 pip install abi-core-ai
-abi-core create project --name my-system --with-semantic-layer --with-guardian
+
+abi-core create project --name my-system      # answer "n" to the semantic layer and Guardian for now
 cd my-system
-abi-core add agent --name my-agent --description "What it does"
-abi-core run
+abi-core add agent --name assistant --description "Answers questions" --with-web-interface
+                                               # tasks/skills: answer
 ```
 
-> ⚠️ **Beta** — Pipeline works end-to-end. APIs may change between minor versions.
+Make the agent answer — replace `agents/assistant/steps.py` with:
 
-> 🔄 **v1.12+**: Requires `a2a-sdk>=1.0.0`. If you have an existing project with a custom `config.py` using `AgentCard(**data)`, see the [migration guide](https://abi-core.readthedocs.io/en/latest/migration/a2a-sdk-1.0.html). Projects running on the ABI Docker image are unaffected.
+```python
+from app import agent
+from config import config
+from abi_core.agent.llm_provider import invoke
+
+
+@agent.step(name="answer_step", input_map={"query": "$input.query"})
+async def answer_step(query):
+    return {"answer": await invoke(config.LLM_CONFIG, query)}
+```
+
+Pull a model, start everything, and talk to it:
+
+```bash
+docker volume create ollama_data              # once per machine; `abi-core run` also creates it
+docker compose up ollama -d
+docker exec ollama ollama pull qwen3:latest
+abi-core run --build
+
+curl -N -X POST http://localhost:8002/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "In one sentence: what is an AI agent?"}'
+```
+
+Want a chat window instead of `curl`? `abi-core add chainlit`, then `abi-core run`, and open http://localhost:8500.
+
+👉 [Your First Project](https://abi-core.readthedocs.io/en/latest/getting-started/04-first-project.html) walks through it step by step.
 
 ---
 
-## Create an Agent in 3 Files
-
-### 1. Define the steps (`app.py`)
+## The idea: the AI thinks, your code decides
 
 ```python
-from abi_core.agent import AbiCore
-from .my_agent import MyAgent
-
-agent = AbiCore()
-
-@agent.step(name="parse_input")
-async def parse_input(raw_input: str) -> dict:
-    return {"query": raw_input.strip(), "timestamp": time.time()}
-
-@agent.step(name="process", depends_on=["parse_input"], input_map={"data": "$parse_input.result"})
-async def process(data: dict) -> dict:
-    result = await invoke(config.LLM_CONFIG, data["query"])
-    return {"output": result}
-
-@agent.step(name="respond", depends_on=["process"], input_map={"result": "$process.result"})
-async def respond(result: dict) -> dict:
-    return {"response": result["output"]}
-
-agent.run(MyAgent())
-```
-
-### 2. Define the agent (`my_agent.py`)
-
-```python
-from abi_core.agent import AbiAgent
-
-class MyAgent(AbiAgent):
-    def __init__(self):
-        super().__init__(
-            agent_name="my-agent",
-            description="Processes user queries",
-            llm_config={"provider": "ollama", "model": "qwen3:8b", "temperature": 0.3},
-            system_prompt="You are a helpful assistant.",
-        )
-```
-
-### 3. Configure it (`config/config.py`)
-
-```python
-import os
-
-AGENT_NAME = "my-agent"
-DESCRIPTION = "Processes user queries"
-LLM_CONFIG = {"provider": "ollama", "model": "qwen3:8b", "temperature": 0.3}
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-```
-
-That's it. `abi-core run` packages and starts your agent with messaging, health checks, and automatic registration.
-
----
-
-## Key Concepts
-
-### Decorators
-
-| Decorator | What it does |
-|-----------|-------------|
-| `@agent.step(name, depends_on)` | A function that runs in a fixed order you define |
-| `@agent.tool(name)` | A function the AI can decide to call |
-| `@agent.mcp_tool(name)` | A remote tool on the Semantic Layer |
-| `@agent.task(name, task_id)` | Runs steps in sequence with progress updates |
-
-### Steps run in order
-
-Steps run in the order you define with `depends_on`. Steps at the same level run in parallel. The AI never decides execution order — your code does.
-
-```python
-# These two run at the same time (no dependency between them)
 @agent.step(name="classify")
-async def classify(raw_input): ...
-
-@agent.step(name="validate")
-async def validate(raw_input): ...
-
-# This waits for both to finish
-@agent.step(name="decide", depends_on=["classify", "validate"],
-            input_map={"cls": "$classify.result", "valid": "$validate.result"})
-async def decide(cls, valid): ...
+async def classify(message):
+    raw = await invoke(config.LLM_CONFIG, f"Reply with one word — faq, order or human: {message}")
+    intent = raw.strip().lower()
+    return {"intent": intent if intent in {"faq", "order", "human"} else "other"}   # code has the last word
 ```
 
-### invoke() — Call any AI model
+The model reads the message. Code decides what its answer is allowed to be — and everything after it.
 
-```python
-from abi_core.agent import invoke
+- **Steps and tasks.** `@agent.step` functions each do one thing; an `@agent.task` composes them in plain Python — sequences, branches, `asyncio.gather` for parallel work. The model never reorders them.
+- **Output with a fixed shape.** `invoke_structured(config, prompt, MyPydanticModel)` makes the model fill a schema, enforced while it generates.
+- **Rules outside the model.** Guardian and OPA evaluate your policies before an action runs. A prompt can be talked around; a policy file can't.
+- **A person approves what matters.** Plan confirmation shows a plan (or a draft, or an order) and waits for approve / modify / reject — in any language, or with buttons in the chat.
+- **Memory and sessions.** Session-scoped context, short- and long-term memory, Redis when you run more than one replica.
+- **Agents find each other.** The Semantic Layer lets an agent ask "who can analyze revenue?" instead of hard-coding an address.
+- **Work in the background.** `@agent.task_async` with retries and status, `@agent.task_schedule` for recurring jobs.
+- **Run generated code safely.** A throwaway sandbox: no network, no credentials, hard limits.
+- **A chat UI that shows its work.** Chainlit with live progress, review cards and Google login.
 
-# Simple call
-result = await invoke(config.LLM_CONFIG, "Classify this query...")
+---
 
-# With conversation memory
-result = await invoke(config.LLM_CONFIG, "Follow up...", thread_id=session_id)
+## Use cases you can build in under an hour
 
-# With tools the AI can use
-result = await invoke(config.LLM_CONFIG, "Find...", tools=[search_tool, write_tool])
+Each one is a working proof of concept with every file on the page, tested against a local model:
+
+| Use case | What the model does | What code decides |
+|---|---|---|
+| [Customer Support & Triage](https://abi-core.readthedocs.io/en/latest/use-cases/01-customer-support.html) | Understands the question, writes the reply | Which help-center entry, order lookups, refusing to guess, escalation |
+| [Clinical Documentation](https://abi-core.readthedocs.io/en/latest/use-cases/02-clinical-scribing.html) | Turns a visit transcript into a note | The note's schema, drugs checked against the transcript, clinician sign-off |
+| [Lead Qualification](https://abi-core.readthedocs.io/en/latest/use-cases/03-lead-qualification.html) | Reads the lead's email, drafts outreach | The score, every point explained; nothing is sent without approval |
+| [Natural-Language Data Access](https://abi-core.readthedocs.io/en/latest/use-cases/04-nl-data-access.html) | Turns a question into SQL | Read-only access, date ranges, row and time limits |
+| [IT Help Desk](https://abi-core.readthedocs.io/en/latest/use-cases/05-it-help-desk.html) | Understands the request | Who may reset what, decided by an OPA policy |
+| [Workflow Automation](https://abi-core.readthedocs.io/en/latest/use-cases/06-workflow-automation.html) | Reads the order email | Parallel checks, prices, billing once, background retries |
+| [Supply Chain](https://abi-core.readthedocs.io/en/latest/use-cases/07-supply-chain.html) | Explains the plan | The forecast, reorder points and quantities |
+| [Deep Research](https://abi-core.readthedocs.io/en/latest/use-cases/08-deep-research.html) | Takes notes, writes the report | Every quote checked word for word, every citation checked |
+
+---
+
+## Any model
+
+A generated agent reads its model from the environment — switching provider is a change in `compose.yaml`, not in code:
+
+```yaml
+environment:
+  - LLM_PROVIDER=anthropic          # ollama (default), openai, anthropic, gemini, grok, bedrock, azure, vertex
+  - MODEL_NAME=claude-opus-5-5
+  - LLM_API_KEY=${ANTHROPIC_API_KEY}
+  - 'LLM_EXTRA_PARAMS={"thinking": {"type": "adaptive"}}'   # anything provider-specific, passed as-is
 ```
 
-### Memory — short & long-term
+Install the provider's extra in the agent: `abi-core-ai[anthropic]`, `[openai]`, `[gemini]`, `[grok]`, `[bedrock]`, `[vertex]` — or `[providers]` for all of them. See [Model Serving](https://abi-core.readthedocs.io/en/latest/production/01-model-serving.html).
 
-Give agents system-wide memory backed by the Agent Memory Server. Store deliberately,
-recall on demand — across steps, tasks, and sessions:
+---
 
-```python
-from abi_core.agent import (
-    add_short_term_memory, add_long_term_memory,
-    get_long_term_memory, recall_memory_context,
-)
-
-# Write (inside a step/task)
-await add_short_term_memory("processing", "pipeline", "processed 42 records", context_id=ctx)
-await add_long_term_memory("user_preference", "format", "prefers CSV over PDF", context_id=ctx)
-
-# Read
-past = await get_long_term_memory("format preferences")
-context = await recall_memory_context(query, context_id=ctx)  # ready to inject into a prompt
-```
-
-Every call degrades gracefully when the memory server is unavailable — memory never
-blocks execution. See the [memory guide](https://abi-core.readthedocs.io/en/latest/single-agent/06-builtin-memory.html).
-
-### Sessions — reliable multi-turn
-
-Opt-in sessions tie an opaque, backend-generated token to an internal `context_id`
-and its conversation context. Pick the backend with one env var — your agent code
-doesn't change:
-
-```python
-from abi_core.agent import SessionStore
-
-store = SessionStore.from_env()              # SESSION_BACKEND=memory | redis
-session = await store.create_session()        # opaque token + backend context_id
-ctx = await store.get_context(session.context_id)
-```
-
-Use `SESSION_BACKEND=redis` for multi-pod / load-balanced deployments: state lives in
-shared Redis, not per-process RAM, so a follow-up request survives a pod hop. See the
-[sessions guide](https://abi-core.readthedocs.io/en/latest/single-agent/07-sessions-multi-turn.html).
-
-### Authentication — Google login, invite-only
-
-The bundled Chainlit UI runs anonymous by default. Set `OAUTH_GOOGLE_CLIENT_ID` to turn
-on Google login backed by Postgres — persisted, resumable conversations, and an
-invite-only registration system (first user becomes admin, everyone after needs an
-invite):
+## The CLI
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://user:pass@host/db
-OAUTH_GOOGLE_CLIENT_ID=...
-OAUTH_GOOGLE_CLIENT_SECRET=...
-CHAINLIT_AUTH_SECRET=...   # chainlit create-secret
+abi-core create project --name <name> [--with-semantic-layer] [--with-guardian]
+abi-core add agent --name <name> --description "..." [--with-web-interface]
+abi-core add service semantic-layer | mcp-api | agent-memory
+abi-core add chainlit                 # chat UI as a Docker service
+abi-core add policies --name <name>   # starter OPA policy (needs Guardian)
+abi-core run [--build] [--logs]
 ```
 
-See the [authentication guide](https://abi-core.readthedocs.io/en/latest/production/07-authentication.html).
-
-### Capability matching — pick models by what the task needs *(alpha)*
-
-Instead of "which model should we use?", ask "what capabilities does the task
-require?". Profile a task by what it needs and a model by what it provides, over 7
-dimensions (including `instruction_following` — why a small model can be the better
-orchestrator), and match them:
-
-```python
-from abi_core.capabilities import TaskProfile, CapabilityProfile, select_model, seed_catalog
-
-task = TaskProfile(capabilities=CapabilityProfile(code_generation=0.9, tool_usage=0.95))
-result = select_model(task, seed_catalog())
-result.model_name   # best match; result.gaps → deficits to reinforce
-```
-
-Measure your own models with a deterministic probe battery (Wilson confidence
-intervals, no LLM judge) and export to JSON:
-
-```bash
-abi-core capabilities profile qwen3:latest --output profiles.json
-abi-core capabilities show qwen3:latest --source profiles.json   # radar in the terminal
-```
-
-See the [capability matching guide](https://abi-core.readthedocs.io/en/latest/reference/capability-matching.html).
-
-### Agents talk to each other
-
-```python
-from abi_core.common.abi_a2a import agent_connection
-
-async for chunk in agent_connection(my_card, target_card, payload):
-    process(chunk)
-```
+Full reference: [CLI Reference](https://abi-core.readthedocs.io/en/latest/reference/cli-reference.html).
 
 ---
 
-## CLI
+## Reference agents
 
-```bash
-# Create
-abi-core create project --name <name>          # Project scaffolding + compose
-abi-core add agent --name <name> --description "…"  # Add agent to existing project
-abi-core add semantic-layer                    # Add agent discovery service
-abi-core add chainlit                          # Add a Chainlit chat UI as a Docker service (SSE + sessions)
-
-# Run
-abi-core run                # Start everything
-abi-core run --logs         # With container output
-abi-core run --build        # Rebuild first
-```
+`abi_agents` ships the Orchestrator, Planner and Builder — the pieces behind ABI Swarm, which turns one request into a plan, waits for your approval, and creates the agents it's missing. They're alpha, and not scaffolded by a single command: use them as a reference and wire each one into your project. See [Planner & Orchestrator](https://abi-core.readthedocs.io/en/latest/orchestration/01-planner-orchestrator.html).
 
 ---
 
-## Reference Multi-Agent Pattern
+## Links
 
-`abi_agents` ships reference implementations of the Orchestrator/Planner/Builder pattern — the canonical example of everything this framework enables (plan confirmation, methodology selection, ephemeral agent creation). They're not auto-scaffolded into a new project; use them as a starting point and wire each one by hand with `abi-core add agent`/`add service`, the same way you would your own agents.
-
-| Agent | What it does |
-|-------|-------------|
-| **Orchestrator** | Receives requests, checks security, routes to Planner |
-| **Planner** | Breaks complex requests into smaller tasks |
-| **Builder** | Creates temporary agents on-demand for specific tasks *(beta)* |
-| **Zombie** | Temporary agent — does the work, delivers results, cleans up *(beta)* |
-
-The flow: User → Orchestrator → Planner → Builder → Zombie → Result → Done.
-
----
-
-## Any AI Model
-
-Switch providers by changing one config dict. Same code, any model:
-
-```python
-# Local (Ollama)
-{"provider": "ollama", "model": "qwen3:8b"}
-
-# OpenAI
-{"provider": "openai", "model": "gpt-4o", "api_key": "..."}
-
-# Anthropic
-{"provider": "anthropic", "model": "claude-sonnet-4-20250514"}
-
-# AWS Bedrock
-{"provider": "bedrock", "model": "anthropic.claude-3-sonnet"}
-
-# Azure OpenAI
-{"provider": "azure", "model": "gpt-4o", "endpoint": "..."}
-```
-
----
-
-## Security
-
-- **Guardian** — checks every request against rules before it runs
-- **Signed messages** — agent-to-agent calls are signed and verified
-- **Access control** — agents can only use tools they're allowed to
-- **Audit trail** — every decision is logged with a risk score
-- **Human veto** — you can block execution before it starts
-
----
-
-## Project Structure
-
-A multi-agent project assembled by hand from `abi_agents` plus your own agents looks like this — nothing here is generated automatically in one shot, each `agents/*` directory is its own `abi-core add agent`:
-
-```
-my-system/
-├── agents/
-│   ├── orchestrator/     # Receives and routes requests
-│   ├── planner/          # Breaks tasks into pieces
-│   ├── builder/          # Creates temporary agents
-│   └── my-agent/         # Your custom agents
-├── services/
-│   ├── semantic_layer/   # Agent discovery + search
-│   └── guardian/         # Security rules
-├── compose.yaml
-└── .abi/runtime.yaml
-```
-
----
-
-## Examples
-
-Progressive examples from a simple chatbot to a full multi-agent swarm:
-
-👉 **[abi-core-examples](https://github.com/Joselo-zn/abi-core-examples)** — Includes a step-by-step tutorial for building a multi-agent discussion system.
-
----
-
-## Documentation
-
-Full docs: [https://abi-core.readthedocs.io](https://abi-core.readthedocs.io)
-
----
+- **Documentation:** https://abi-core.readthedocs.io
+- **Examples:** https://github.com/Joselo-zn/abi-core-examples
+- **Source and issues:** https://github.com/Joselo-zn/abi-core
+- **Changelog:** https://abi-core.readthedocs.io/en/latest/changelog.html
 
 ## Contributing
 
 ```bash
 git clone https://github.com/Joselo-zn/abi-core
-cd abi-core-ai
+cd abi-core/abi_core_framework
 uv sync --dev
 uv run pytest
 ```
 
----
-
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE)
+Apache 2.0 — see [LICENSE](https://github.com/Joselo-zn/abi-core/blob/main/LICENSE).
 
 ---
 
-**Built by [José Luis Martínez](https://github.com/Joselo-zn)**
+**Built by [José Luis Martínez](https://github.com/Joselo-zn).**

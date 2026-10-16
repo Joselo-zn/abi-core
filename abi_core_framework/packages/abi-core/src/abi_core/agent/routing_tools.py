@@ -36,7 +36,7 @@ from abi_core.common.prompts.orchestrator import (  # noqa: F401  (moved; re-exp
 )
 
 # Redesigned (2026-09-22, see
-# .abi/specs/routing-decision-discriminated-union.md) from a single flat
+# .abi/specs/implemented/routing-decision-discriminated-union.md) from a single flat
 # model merging every action's fields as simultaneously-visible optionals —
 # live-confirmed to let the model write real content into the wrong field
 # (e.g. action=answer_directly but the reply landed in `objective`, leaving

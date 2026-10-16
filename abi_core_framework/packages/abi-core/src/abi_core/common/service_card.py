@@ -161,8 +161,10 @@ class ServiceCard:
 
     @classmethod
     def from_file(cls, path: str) -> "ServiceCard":
+        from abi_core.common.agent_card_loader import resolve_card_env
+
         with open(path) as f:
-            return cls.from_dict(json.load(f))
+            return cls.from_dict(resolve_card_env(json.load(f)))
 
     def __repr__(self) -> str:
         return (

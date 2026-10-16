@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The HMAC secret of a card can come from the environment.** `auth.shared_secret`
+  and `auth.key_id` accept `${VAR}` and `${VAR:-default}`, like `url`, so a card
+  can be committed without its secret. Signing and verification resolve the same
+  value. A reference with no value and no default stops the agent at start-up
+  naming the variable, and the semantic layer denies that card without affecting
+  the others. Give each agent its own variable: the semantic layer needs all of
+  them. See [Environment variables](docs/reference/environment-variables.md#agent-card).
+
+## [1.13.75] - 2026-10-15
+
 ### Changed
 - **The answer after a plan runs.** The model now writes only a short
   description of what was delivered (two or three sentences), in the
@@ -21,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`abi_core.common.prompts.orchestrator`); `build_synthesis_prompt` is
   unchanged. The verdict and the report are still in Spanish. See
   [Result Synthesis](docs/orchestration/04-result-synthesis.md).
+- **The Orchestrator plays along again.** When the user starts a joke or a
+  game — a knock-knock, for instance — the routing answers in kind ("Who's
+  there?") instead of replying with a greeting. The prompt rewrite in
+  1.13.74 had dropped that rule.
 
 ### Removed
 - **Leftovers of the deprecated Guardian in `abi-core create project

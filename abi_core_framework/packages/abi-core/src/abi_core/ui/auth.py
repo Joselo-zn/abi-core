@@ -393,7 +393,7 @@ async def on_chat_resume(thread: dict) -> None:
 
     # A run that was still going when the user left this conversation keeps
     # running; follow it from here. See
-    # .abi/specs/not-implemented/ux/chainlit-run-progress-resume.md.
+    # .abi/specs/implemented/ux/chainlit-run-progress-resume.md.
     from abi_core.ui.run_follow import start_following
 
     start_following(thread)

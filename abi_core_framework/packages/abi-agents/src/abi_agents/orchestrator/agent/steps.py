@@ -898,7 +898,7 @@ async def build_workflow(plan_result, context_id, task_id):
 
 
 # ── Deterministic deliverable contract check ──────────────────────
-# .abi/specs/not-implemented/deterministic-deliverable-contract-verification.md
+# .abi/specs/implemented/deterministic-deliverable-contract-verification.md
 #
 # Reproduced live 2026-09-30: a 5-task workflow reported COMPLETED with
 # zero real artifacts uploaded, and synthesis (free-text LLM generation)

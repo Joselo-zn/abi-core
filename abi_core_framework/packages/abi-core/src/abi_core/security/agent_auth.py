@@ -30,8 +30,10 @@ def load_agent_card(card_path: str) -> dict:
     except Exception as e:
         raise ValueError(f"Invalid agent card path: {card_path}") from e    
     
+    from abi_core.common.agent_card_loader import resolve_card_env
+
     with open(card_path, "r") as f:
-        return json.load(f)
+        return resolve_card_env(json.load(f))
 
 def sign_payload_hmac(shared_secret: str, payload: dict) -> str:
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()

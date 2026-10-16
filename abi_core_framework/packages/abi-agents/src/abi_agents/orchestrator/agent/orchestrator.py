@@ -460,7 +460,7 @@ class AbiOrchestratorAgent(AbiAgent):
                     return
 
                 # Discriminated union (see
-                # .abi/specs/routing-decision-discriminated-union.md) —
+                # .abi/specs/implemented/routing-decision-discriminated-union.md) —
                 # `decision.outcome` is one of the per-action models, never a
                 # flat bag of every action's fields at once. Whichever
                 # `.action` it is, the OTHER actions' fields don't exist on
@@ -706,7 +706,7 @@ class AbiOrchestratorAgent(AbiAgent):
                 # has no attribute 'get'".
 
             # ── Phase 2.5: deterministic deliverable contract check ──────
-            # .abi/specs/not-implemented/deterministic-deliverable-contract-verification.md
+            # .abi/specs/implemented/deterministic-deliverable-contract-verification.md
             # Reproduced live 2026-09-30: workflow.state reached COMPLETED
             # with zero real artifacts uploaded, and synthesis (free-text
             # LLM generation, below) fabricated a full "success" summary
