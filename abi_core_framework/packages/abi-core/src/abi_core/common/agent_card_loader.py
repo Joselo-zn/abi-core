@@ -61,7 +61,7 @@ def _expand(value: str, strict: bool, where: str) -> str:
     return _ENV_REF.sub(sub, value)
 
 
-def resolve_card_env(card_data: dict) -> dict:
+def resolve_card_env(card_data: dict, include_auth: bool = True) -> dict:
     """Expand ${VAR} / ${VAR:-default} from the environment in a card's
     "url", "auth.shared_secret" and "auth.key_id". Returns a new dict; the
     one passed in is never modified, so a resolved secret is never written
@@ -77,6 +77,10 @@ def resolve_card_env(card_data: dict) -> dict:
     In "url" a reference with no value and no default is left as written.
     In "auth" it raises CardEnvError: signing with the literal "${...}" would
     use a secret anyone can read in the card.
+
+    include_auth=False resolves only "url" and leaves "auth" as written: for
+    code that stores or indexes the card (the semantic layer), so the real
+    secret is never persisted.
     """
     name = card_data.get("id") or card_data.get("service_id") or card_data.get("name") or "card"
     url = card_data.get("url")
@@ -84,7 +88,7 @@ def resolve_card_env(card_data: dict) -> dict:
         card_data = dict(card_data)
         card_data["url"] = _expand(url, strict=False, where=f"{name}: url")
     auth = card_data.get("auth")
-    if isinstance(auth, dict) and any(
+    if include_auth and isinstance(auth, dict) and any(
         isinstance(auth.get(f), str) and "${" in auth[f] for f in _AUTH_ENV_FIELDS
     ):
         auth = dict(auth)

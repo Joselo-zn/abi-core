@@ -1,0 +1,47 @@
+# Deterministic test suite of abi-core (no LLM): unit tests, CLI templates and
+# client <-> service contracts. tests/measure needs the real model and is
+# never run here. Plan: .abi/specs/not-implemented/testing-plan.md (step 1).
+name: tests
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: abi_core_framework
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: abi_core_framework/pyproject.toml
+
+      # openai: test_llm_params_from_config builds a real langchain-openai
+      # model. ui: test_run_progress imports chainlit.
+      - name: Install abi-core-ai
+        run: pip install ".[dev,openai,ui]"
+
+      # Without these images the sandbox tests (test_sandbox.py and the
+      # sandbox cases of test_integration_review.py) are skipped.
+      - name: Build sandbox images
+        working-directory: abi_core_framework/sandbox-images
+        run: |
+          docker build -f python/Dockerfile -t abi-sandbox-python:latest .
+          docker build -f pygame/Dockerfile -t abi-sandbox-pygame:latest .
+
+      - name: Run tests
+        run: python -m pytest -q -rs tests --ignore=tests/measure

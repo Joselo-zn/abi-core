@@ -72,6 +72,16 @@ def test_original_card_is_not_modified(monkeypatch):
     assert original["auth"]["shared_secret"] == "${ORDERS_SECRET}"
 
 
+def test_include_auth_false_resolves_only_the_url(monkeypatch):
+    """What the semantic layer indexes into Weaviate: url resolved, the
+    secret kept as a reference, and no error for a variable it lacks."""
+    monkeypatch.setenv("ORDERS_URL", "http://orders.run.app")
+    monkeypatch.delenv("ORDERS_SECRET", raising=False)
+    card = resolve_card_env(_card("${ORDERS_SECRET}", url="${ORDERS_URL}"), include_auth=False)
+    assert card["url"] == "http://orders.run.app"
+    assert card["auth"]["shared_secret"] == "${ORDERS_SECRET}"
+
+
 def test_literal_secret_untouched():
     assert resolve_card_env(_card("literal"))["auth"]["shared_secret"] == "literal"
 

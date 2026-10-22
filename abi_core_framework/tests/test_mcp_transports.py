@@ -146,15 +146,14 @@ class TestMCPUtils:
         assert config.port == 8080
         assert config.transport == "streamable-http"
 
-    @patch.dict('os.environ', {}, clear=True)
     def test_get_mcp_server_config_defaults(self):
         """Test get_mcp_server_config with default values."""
         from abi_core.common.utils import get_mcp_server_config
         
-        config = get_mcp_server_config()
+        config = get_mcp_server_config(environ={})
         
         # Should use defaults
-        assert config.transport == "sse"  # Default transport
+        assert config.transport == "streamable-http"  # Default transport
 
 
 if __name__ == "__main__":

@@ -20,7 +20,6 @@ from langchain.tools import tool
 from a2a.types import AgentCard
 
 AGENT_CARD_PATH = os.getenv('AGENT_CARD')
-_mcp_config = get_mcp_server_config()
 
 # (host, port, tool_name) -> whether the tool's structuredContent wraps its
 # return value as {"result": ...}. Read once per tool from its outputSchema.
@@ -77,11 +76,11 @@ class MCPToolkit:
         
         Args:
             agent_card_path: Path to agent card (defaults to AGENT_CARD env var)
-            mcp_config: MCP server configuration (defaults to global config)
+            mcp_config: MCP server configuration (defaults to the environment, read now)
             service_card: ServiceCard instance for non-agent services (takes priority over agent_card_path)
         """
         self.agent_card_path = agent_card_path or AGENT_CARD_PATH
-        self.mcp_config = mcp_config or _mcp_config
+        self.mcp_config = mcp_config or get_mcp_server_config()
         self.service_card = service_card
         self._available_tools = None
     
@@ -471,10 +470,11 @@ async def tool_find_agent(query: str, exclude_ephemeral: bool = False) -> Option
     .abi/specs/infra-agent-lookup-ephemeral-collision.md
     """
 
+    mcp_config = get_mcp_server_config()
     async with client.init_session(
-        _mcp_config.host,
-        _mcp_config.port,
-        _mcp_config.transport
+        mcp_config.host,
+        mcp_config.port,
+        mcp_config.transport
     ) as mcp_session:
         abi_logging(f"[🔍] Searching for agent matching query {query}")
         context = build_semantic_context_from_card(
@@ -519,10 +519,11 @@ async def tool_list_agents(query: str, max_agents: int = 5) -> List[AgentCard]:
     `agent_cards/{card_name}`), so it always failed.
     """
     agents = []
+    mcp_config = get_mcp_server_config()
     async with client.init_session(
-        _mcp_config.host,
-        _mcp_config.port,
-        _mcp_config.transport
+        mcp_config.host,
+        mcp_config.port,
+        mcp_config.transport
     ) as mcp_session:
 
         context = build_semantic_context_from_card(
@@ -566,10 +567,11 @@ async def tool_recommend_agents(
     Returns:
         List of recommended agents with relevance scores and confidence levels
     """
+    mcp_config = get_mcp_server_config()
     async with client.init_session(
-        _mcp_config.host,
-        _mcp_config.port,
-        _mcp_config.transport
+        mcp_config.host,
+        mcp_config.port,
+        mcp_config.transport
     ) as mcp_session:
         abi_logging(f"[🔍] Recommending agents for: {task_description}")
         
@@ -617,10 +619,11 @@ async def tool_check_agent_capability(
     Returns:
         Capability check result with supported/missing tasks
     """
+    mcp_config = get_mcp_server_config()
     async with client.init_session(
-        _mcp_config.host,
-        _mcp_config.port,
-        _mcp_config.transport
+        mcp_config.host,
+        mcp_config.port,
+        mcp_config.transport
     ) as mcp_session:
         abi_logging(f"[🔍] Checking capabilities for: {agent_name}")
         
@@ -718,10 +721,11 @@ async def tool_register_agent(agent_card_dict: Dict[str, Any]) -> Dict[str, Any]
         }
         result = await tool_register_agent(agent_card)
     """
+    mcp_config = get_mcp_server_config()
     async with client.init_session(
-        _mcp_config.host,
-        _mcp_config.port,
-        _mcp_config.transport
+        mcp_config.host,
+        mcp_config.port,
+        mcp_config.transport
     ) as mcp_session:
         agent_name = agent_card_dict.get('name', 'unknown')
         abi_logging(f"[📝] Registering new agent: {agent_name}")

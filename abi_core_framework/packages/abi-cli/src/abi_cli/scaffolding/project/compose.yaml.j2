@@ -13,7 +13,9 @@ services:
       - abi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      # The image has neither curl nor wget; `ollama list` asks the local
+      # server, so it fails while the server is down.
+      test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -197,11 +199,8 @@ services:
     networks:
       - abi-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+    # No healthcheck: the OPA image is distroless (no shell, curl or wget)
+    # and `opa` has no health command. The Guardian fails if OPA is down.
   {% endif %}
 
 volumes:

@@ -39,4 +39,7 @@ def test_dead_prompts_removed_and_scaffold_prompt_kept():
 
 def test_orchestrator_prompt_carries_synthesis_rules():
     text = prompts.ORCHESTRATOR_TOT_INSTRUCTIONS
-    assert "# Synthesis" in text and "verified by code" in text and "do not contradict" in text.lower()
+    # C2: the model describes the deliverable; the verdict, errors and links are added by code.
+    assert "# Synthesis" in text
+    for rule in ("do not judge", "added below your text by code", "in the language of the user's request"):
+        assert rule in text

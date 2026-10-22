@@ -146,45 +146,57 @@ def get_log_buffer_size() -> int:
         return len(_log_buffer)
 
 import re
+from typing import Mapping
 
-# Parse SEMANTIC_LAYER_HOST which may contain protocol and port
-SEMANTIC_LAYER_URL = os.getenv('SEMANTIC_LAYER_HOST', 'http://abi-semantic-layer:10100')
-# MCP_TRANSPORT supports 'sse' or 'streamable-http'
-MCP_TRANSPORT = os.getenv('MCP_TRANSPORT', 'streamable-http')
+_DEFAULT_SEMANTIC_LAYER = 'http://abi-semantic-layer:10100'
+_DEFAULT_MCP_TRANSPORT = 'streamable-http'
 
-# Extract host and port from URL if provided with protocol
-# Supports formats: http://host:port/path or just host
-url_match = re.match(r'https?://([^:/]+)(?::(\d+))?', SEMANTIC_LAYER_URL)
-if url_match:
-    HOST = url_match.group(1)
-    PORT = int(url_match.group(2)) if url_match.group(2) else 10100
-    URL = SEMANTIC_LAYER_URL
-else:
-    # Fallback: treat as plain hostname
-    HOST = SEMANTIC_LAYER_URL.split(':')[0]
-    PORT = int(os.getenv('SEMANTIC_LAYER_PORT', 10100))
-    URL = f'http://{HOST}:{PORT}'
 
-def get_mcp_server_config() -> ServerConfig:
-    """Get the MCP server configuration.
-    
-    Parses SEMANTIC_LAYER_HOST environment variable which can be:
+def _semantic_layer_endpoint(environ: Mapping[str, str]):
+    """(url, host, port, transport) from SEMANTIC_LAYER_HOST, SEMANTIC_LAYER_PORT
+    and MCP_TRANSPORT. SEMANTIC_LAYER_HOST may be a full URL (http://host:port)
+    or a bare hostname (then SEMANTIC_LAYER_PORT, default 10100)."""
+    url = environ.get('SEMANTIC_LAYER_HOST', _DEFAULT_SEMANTIC_LAYER)
+    transport = environ.get('MCP_TRANSPORT', _DEFAULT_MCP_TRANSPORT)
+    url_match = re.match(r'https?://([^:/]+)(?::(\d+))?', url)
+    if url_match:
+        host = url_match.group(1)
+        port = int(url_match.group(2)) if url_match.group(2) else 10100
+    else:
+        host = url.split(':')[0]
+        port = int(environ.get('SEMANTIC_LAYER_PORT', 10100))
+        url = f'http://{host}:{port}'
+    return url, host, port, transport
+
+
+# Compatibility aliases, read once at import. Nothing in abi-core uses them;
+# get_mcp_server_config() reads the environment on every call instead.
+SEMANTIC_LAYER_URL = os.getenv('SEMANTIC_LAYER_HOST', _DEFAULT_SEMANTIC_LAYER)
+URL, HOST, PORT, MCP_TRANSPORT = _semantic_layer_endpoint(os.environ)
+
+
+def get_mcp_server_config(environ: Optional[Mapping[str, str]] = None) -> ServerConfig:
+    """Get the MCP server configuration, read from the environment on every
+    call (or from `environ` when given).
+
+    SEMANTIC_LAYER_HOST can be:
     - Full URL: http://hostname:port
     - Hostname only: hostname (uses SEMANTIC_LAYER_PORT or default 10100)
-    
-    Transport can be configured via MCP_TRANSPORT environment variable:
-    - 'sse' (default): Server-Sent Events transport
-    - 'streamable-http': Streamable HTTP transport
-    
+
+    MCP_TRANSPORT:
+    - 'streamable-http' (default)
+    - 'sse' (deprecated by MCP in favour of streamable-http)
+
     Returns:
         ServerConfig with parsed host, port, transport, and url
     """
-    abi_logging(f'[*] MCP Config: Host={HOST}, Port={PORT}, Transport={MCP_TRANSPORT}')
+    url, host, port, transport = _semantic_layer_endpoint(os.environ if environ is None else environ)
+    abi_logging(f'[*] MCP Config: Host={host}, Port={port}, Transport={transport}', level='debug')
     return ServerConfig(
-        host=HOST,
-        port=PORT,
-        transport=MCP_TRANSPORT,
-        url=URL,
+        host=host,
+        port=port,
+        transport=transport,
+        url=url,
     )
 
 def truncate(obj: Any, max_chars: int = 4000) -> str:

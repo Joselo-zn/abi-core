@@ -89,9 +89,11 @@ def load_agent_cards() -> Tuple[List[str], List[dict]]:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     card_data = json.load(f)
-                    # ${VAR:-default} in "url" — same card file locally and on Cloud Run
+                    # ${VAR:-default} in "url" — same card file locally and on Cloud Run.
+                    # "auth" stays as written: this card is stored in Weaviate, and
+                    # the access validator resolves the secret when it verifies.
                     from abi_core.common.agent_card_loader import resolve_card_env
-                    card_data = resolve_card_env(card_data)
+                    card_data = resolve_card_env(card_data, include_auth=False)
                     card_uris.append(str(file_path))
                     agent_cards.append(card_data)
             except json.JSONDecodeError:
