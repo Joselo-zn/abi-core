@@ -7,6 +7,17 @@ import rego.v1
 
 # Default deny - only authorized agents may access
 default allow := false
+
+# The checks below are only defined when they hold. Without a default, a
+# check that doesn't hold is undefined (not false), and audit_log, which
+# lists every check, became undefined as a whole on every request.
+default agent_registered := false
+default agent_blacklisted := false
+default agent_inactive := false
+default rate_limit_exceeded := false
+default unauthorized_ip := false
+default outside_schedule := false
+default insufficient_permissions := false
 default risk_score := 1.0
 
 # =============================================================================
@@ -475,7 +486,7 @@ audit_log := {
         "mcp_tool": input.request_metadata.mcp_tool,
         "source_ip": input.request_metadata.source_ip,
         "agent_card_present": input.agent_card != null,
-        "user_email": input.user.email,
+        "user_email": object.get(input, ["user", "email"], null),  # no `user` on agent-to-agent calls
         "user_validation_required": input.context.require_user_validation,
         "validation_mode": input.context.validation_mode
     }

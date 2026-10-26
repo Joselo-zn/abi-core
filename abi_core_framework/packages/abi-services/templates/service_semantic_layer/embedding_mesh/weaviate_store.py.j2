@@ -5,6 +5,7 @@ import time
 from typing import Any, Dict, Iterable, List
 from weaviate.exceptions import WeaviateConnectionError
 from weaviate.classes.config import Property, DataType, Configure
+from weaviate.classes.query import Filter
 from . import weaviate_client
 
 from abi_core.common.utils import abi_logging
@@ -44,10 +45,24 @@ def ensure_collections()-> None:
                     Property(name="text", data_type=DataType.TEXT),
                     Property(name="uri", data_type=DataType.TEXT),
                     Property(name="origin", data_type=DataType.TEXT),
-                    Property(name="metadata_json", data_type=DataType.TEXT)
+                    Property(name="metadata_json", data_type=DataType.TEXT),
+                    # Real, filterable property (not buried in `text`'s JSON blob) —
+                    # lets search apply a native `where` filter to exclude ephemeral
+                    # cards during the vector search itself, not after ranking. See
+                    # .abi/specs/implemented/infra-agent-lookup-ephemeral-collision.md
+                    Property(name="ephemeral", data_type=DataType.BOOL),
                 ]
             )
-        
+        else:
+            # Migration for a collection created before `ephemeral` existed — add
+            # the property in place (does NOT require recreating the collection,
+            # unlike the vector_config issue in semantic-store-integrity.md).
+            col = client.collections.get("AgentCard")
+            existing_props = {p.name for p in col.config.get().properties}
+            if "ephemeral" not in existing_props:
+                col.config.add_property(Property(name="ephemeral", data_type=DataType.BOOL))
+                abi_logging("[🔧] Migrated AgentCard collection: added 'ephemeral' property")
+
         if "MeshItem" not in existing_collections:
             client.collections.create(
                 name="MeshItem",
@@ -105,12 +120,20 @@ def upsert_agent_cards(
                         f"uri={it.get('uri', '?')} — not persisted"
                     )
                     continue
+                # `ephemeral` is derived from the card JSON itself (the source of
+                # truth), not passed separately by callers — avoids a second place
+                # that can drift from what the card actually says.
+                try:
+                    ephemeral = bool(json.loads(it["text"]).get("ephemeral", False))
+                except (json.JSONDecodeError, TypeError, KeyError):
+                    ephemeral = False
                 batch.add_object(
                     properties={
                         "text": it["text"],
                         "uri": it.get("uri", ""),
                         "origin": it["origin"],
                         "metadata_json": json.dumps(it.get("metadata", {})),
+                        "ephemeral": ephemeral,
                     },
                     vector=vector,
                     uuid=it.get("id")
@@ -240,14 +263,76 @@ def get_valid_agent_card_uris() -> set:
     finally:
         client.close()
 
-def search_agent_cards(
-        query_vector: List[float], top_k: int = 5
-) -> List[Dict[str, Any]]:
+def backfill_ephemeral_property() -> int:
+    """Re-derive the `ephemeral` property for AgentCard objects that predate it
+    (created before the property existed, so it defaults to a Weaviate `null`/
+    False on read) or whose stored value has drifted from what their own card
+    JSON says. Idempotent by validity, not by existence — same pattern as
+    ``get_valid_agent_card_uris``/``init_agent_card_store`` in
+    .abi/specs/semantic-store-integrity.md: only objects that are actually
+    wrong get re-written, already-correct ones are left untouched.
+
+    Returns:
+        Number of objects updated.
+    """
     try:
         client = get_client_with_retry()
         col = client.collections.get("AgentCard")
+        res = col.query.fetch_objects(limit=1000)
+
+        updated = 0
+        for o in res.objects:
+            props = o.properties or {}
+            text = props.get("text", "{}")
+            try:
+                card = json.loads(text) if isinstance(text, str) else text
+            except (json.JSONDecodeError, TypeError):
+                continue
+            real_value = bool(card.get("ephemeral", False))
+            # Raw read, no default: an object whose `ephemeral` property was
+            # never explicitly written reads back as None (Weaviate null),
+            # not False. `bool(props.get("ephemeral", False))` used to
+            # collapse that None into False, making it look identical to an
+            # already-correct `ephemeral=False` — so a real infra card (never
+            # explicitly set) was silently skipped forever, left as a true
+            # Weaviate null. `Filter.by_property("ephemeral").equal(False)`
+            # does NOT match null, only an explicit false — so every real
+            # infra card got excluded by its own `exclude_ephemeral=True`
+            # filter. Comparing the raw value (not its bool()) is what makes
+            # `is None` distinguishable from `False`.
+            stored_value = props.get("ephemeral")
+            if stored_value is None or bool(stored_value) != real_value:
+                col.data.update(uuid=o.uuid, properties={"ephemeral": real_value})
+                updated += 1
+
+        if updated:
+            abi_logging(f"[🔧] backfill_ephemeral_property: corrected {updated} card(s)")
+        return updated
+    except Exception as e:
+        abi_logging(f"[⚠️] backfill_ephemeral_property failed: {e}")
+        return 0
+    finally:
+        client.close()
+
+
+def search_agent_cards(
+        query_vector: List[float], top_k: int = 5, exclude_ephemeral: bool = False
+) -> List[Dict[str, Any]]:
+    """Search AgentCard by vector similarity.
+
+    exclude_ephemeral: when True, applies a native Weaviate `where` filter so a
+    card with `ephemeral=true` can never be among the results, no matter how
+    close its vector is — used for the 4 reserved infra-agent lookups
+    (guardian/planner/builder/orchestrator). See
+    .abi/specs/implemented/infra-agent-lookup-ephemeral-collision.md
+    """
+    try:
+        client = get_client_with_retry()
+        col = client.collections.get("AgentCard")
+        filters = Filter.by_property("ephemeral").equal(False) if exclude_ephemeral else None
         res = col.query.near_vector(
-            near_vector=query_vector, limit=top_k, return_metadata=["distance"]
+            near_vector=query_vector, limit=top_k, filters=filters,
+            return_metadata=["distance"],
         )
         hits = []
         for o in res.objects:

@@ -168,8 +168,9 @@ def render_all() -> dict:
     from abi_agents.orchestrator.agent import prompts as orch
     from abi_agents.planner.agent import prompts as plan
     from abi_core.agent.routing_tools import format_system_state
-    from abi_core.common.code_tdd import TDD_PROMPT_INSTRUCTION, TDD_MARKER, tdd_summary
-    from abi_core.common.context_loader import build_execution_prompt
+    from abi_core.common.code_tdd import TDD_MARKER
+    from abi_core.common.prompts.code_agent import TDD_PROMPT_INSTRUCTION, tdd_summary
+    from abi_core.common.prompts.code_agent import build_execution_prompt
     from abi_core.common.ephemeral_prompts import (
         REVIEWER_ROLE, REVIEWER_QUESTIONS, build_reviewer_questions_prompt, spec_text,
         specs_text, files_with_specs_text, plan_and_design_text,

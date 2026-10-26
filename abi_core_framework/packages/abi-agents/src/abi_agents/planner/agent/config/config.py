@@ -21,7 +21,7 @@ class AgentConfig:
     
     # Agent Identity
     AGENT_NAME: str = "planner"
-    AGENT_DISPLAY_NAME: str = "Planner Agent"
+    AGENT_DISPLAY_NAME: str = "Abi Planner Agent"
     AGENT_DESCRIPTION: str = "Decomposes tasks and assigns agents"
     
     # Ports

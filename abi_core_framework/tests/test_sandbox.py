@@ -94,6 +94,101 @@ class TestResultFraming:
         assert cut and text.endswith("TRACEBACK")
 
 
+class TestLimitsAndResult:
+    @pytest.mark.parametrize("timeout_s", [0, 301])
+    def test_timeout_out_of_range_rejected(self, timeout_s):
+        with pytest.raises(ValueError):
+            SandboxLimits(timeout_s=timeout_s)
+
+    @pytest.mark.parametrize("timeout_s", [1, 300])
+    def test_timeout_bounds_accepted(self, timeout_s):
+        assert SandboxLimits(timeout_s=timeout_s).timeout_s == timeout_s
+
+    @pytest.mark.parametrize("fields, ok", [
+        ({"exit_code": 0}, True),
+        ({"exit_code": 1}, False),
+        ({"exit_code": None}, False),
+        ({"exit_code": 0, "timed_out": True}, False),
+        ({"exit_code": 0, "oom_killed": True}, False),
+        ({"exit_code": 0, "error": "docker unavailable"}, False),
+    ])
+    def test_ok_only_for_a_clean_exit(self, fields, ok):
+        from abi_core.common.sandbox import SandboxResult
+        assert SandboxResult(**fields).ok is ok
+
+
+class TestRunDispatch:
+    """run_in_sandbox validates before any backend runs, and routes by backend."""
+
+    @pytest.fixture
+    def backends(self, monkeypatch):
+        from abi_core.common import sandbox_docker, sandbox_service_client
+        from abi_core.common.sandbox import SandboxResult
+        calls = []
+
+        async def docker_run(image, command, env, bundle, limits):
+            calls.append(("docker", image, command, env))
+            return SandboxResult(exit_code=0)
+
+        async def service_run(files, command, image, env, limits):
+            calls.append(("service", image, command, env))
+            return SandboxResult(exit_code=0)
+
+        monkeypatch.setattr(sandbox_docker, "run", docker_run)
+        monkeypatch.setattr(sandbox_service_client, "run", service_run)
+        return calls
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("command", [[], ["python", 1], "python t.py", None])
+    async def test_bad_command_rejected(self, backends, command):
+        with pytest.raises(ValueError):
+            await run_in_sandbox({"t.py": b""}, command)
+        assert backends == []
+
+    @pytest.mark.asyncio
+    async def test_tuple_command_accepted(self, backends):
+        await run_in_sandbox({"t.py": b""}, ("python", "t.py"))
+        assert backends[0][0] == "docker"
+
+    @pytest.mark.asyncio
+    async def test_disallowed_env_rejected_before_running(self, backends):
+        with pytest.raises(ValueError):
+            await run_in_sandbox({"t.py": b""}, ["python", "t.py"], env={"AWS_SECRET_ACCESS_KEY": "x"})
+        assert backends == []
+
+    @pytest.mark.asyncio
+    async def test_unsafe_path_rejected_before_running(self, backends):
+        with pytest.raises(ValueError):
+            await run_in_sandbox({"../etc/passwd": b""}, ["python", "t.py"])
+        assert backends == []
+
+    @pytest.mark.asyncio
+    async def test_default_backend_is_docker(self, backends, monkeypatch):
+        monkeypatch.delenv("SANDBOX_RUNTIME", raising=False)
+        await run_in_sandbox({"t.py": b""}, ["python", "t.py"])
+        assert backends[0][:3] == ("docker", SANDBOX_IMAGE_PYTHON, ["python", "t.py"])
+
+    @pytest.mark.asyncio
+    async def test_runtime_env_selects_the_service(self, backends, monkeypatch):
+        monkeypatch.setenv("SANDBOX_RUNTIME", " Service ")
+        await run_in_sandbox({"t.py": b""}, ["python", "t.py"])
+        assert backends[0][0] == "service"
+
+    @pytest.mark.asyncio
+    async def test_explicit_backend_overrides_the_env(self, backends, monkeypatch):
+        # sandbox-service passes backend="docker" so it never loops through itself.
+        monkeypatch.setenv("SANDBOX_RUNTIME", "service")
+        await run_in_sandbox({"t.py": b""}, ["python", "t.py"], backend="docker")
+        assert backends[0][0] == "docker"
+
+    @pytest.mark.asyncio
+    async def test_unknown_backend_is_not_implemented(self, backends, monkeypatch):
+        monkeypatch.setenv("SANDBOX_RUNTIME", "cloudrun")
+        with pytest.raises(NotImplementedError):
+            await run_in_sandbox({"t.py": b""}, ["python", "t.py"])
+        assert backends == []
+
+
 # ── Docker (escape + functional) ───────────────────────────────
 
 def _docker_ready(image):
@@ -230,6 +325,8 @@ class TestPygameHeadless:
         ok = await run_in_sandbox({"g.py": ("CRASH = False\n" + loop).encode()}, ["python", "g.py"],
                                   image=SANDBOX_IMAGE_PYGAME, env=sdl, limits=SandboxLimits(timeout_s=5))
         assert ok.timed_out and "Traceback" not in ok.stderr
+        # Crashes in <1s; the generous timeout only keeps a loaded machine
+        # (shared Ollama, a slow CI runner) from turning the crash into a timeout.
         bad = await run_in_sandbox({"g.py": ("CRASH = True\n" + loop).encode()}, ["python", "g.py"],
-                                   image=SANDBOX_IMAGE_PYGAME, env=sdl, limits=SandboxLimits(timeout_s=5))
+                                   image=SANDBOX_IMAGE_PYGAME, env=sdl, limits=SandboxLimits(timeout_s=30))
         assert bad.exit_code not in (0, None) and "has no len()" in bad.stderr

@@ -95,26 +95,3 @@ def build_direct_tool_content_prompt(description: str) -> str:
     the language and the no-invented-facts rule (per-call-prompts-rewrite,
     B4). See .abi/specs/implemented/planner-direct-tool-pdf.md."""
     return 'You write the full content of a document the user asked for. It goes into the file exactly as you write it (code turns it into a PDF), so write only the content: no preamble, no comments about it, no markdown code fences.\n- Write in the language of the request.\n- Write everything the request asks for, complete.\n- Do not invent facts you were not given (prices, schedules, addresses, names). Where the document needs one, leave a clear placeholder such as [check the current price]. Why: an invented fact in a finished-looking document is worse than a visible gap.\n\nRequest:\n{description}'.format(description=description)
-
-
-def build_methodology_selection_prompt(query: str) -> str:
-    """Prompt asking the LLM to pick a decomposition methodology for `query`.
-
-    Built from abi_core.common.methodology_tools.list_methodologies() (the
-    framework's registry — single source of truth), not hardcoded here.
-    Kept as a separate string built at call time (not a module-level
-    constant run through .format()) because PLANNER_COT_INSTRUCTIONS and
-    other prompts above contain unescaped literal braces in JSON examples —
-    .format() on this file's constants would raise KeyError.
-    """
-    from abi_core.common.methodology_tools import list_methodologies
-
-    options = "\n".join(
-        f"- {name}: {guidance}" for name, guidance in list_methodologies().items()
-    )
-    return (
-        "Given this user request, choose the SINGLE best task-decomposition "
-        f"methodology:\n\n{options}\n\nUser request: {query}\n\n"
-        'Respond with ONLY this JSON, nothing else:\n'
-        '{"methodology": "<one of the names above>", "rationale": "one sentence, max 200 chars"}'
-    )

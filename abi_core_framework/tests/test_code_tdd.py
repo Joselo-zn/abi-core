@@ -13,8 +13,8 @@ from abi_core.common.code_tdd import (
     extract_resources,
     extract_role,
     parse_model_fields,
-    tdd_summary,
 )
+from abi_core.common.prompts.code_agent import tdd_summary
 
 
 def _d(s):

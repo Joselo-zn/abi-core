@@ -3,6 +3,7 @@
 
 import json
 import uuid
+from collections import OrderedDict
 from typing import Optional
 
 from starlette.responses import JSONResponse
@@ -19,6 +20,7 @@ from embedding_mesh.weaviate_store import (
     ensure_collections,
     upsert_agent_cards,
     get_valid_agent_card_uris,
+    backfill_ephemeral_property,
     upsert_tool,
     get_tool as weaviate_get_tool,
     delete_tool as weaviate_delete_tool,
@@ -53,6 +55,40 @@ tool_cards = init_tool_card_store(
     upsert_fn=upsert_tool,
     get_existing_fn=get_existing_tool_names,
 )
+
+# `ensure_collections()` (above, via init_agent_card_store) already migrated the
+# `ephemeral` property into the schema if it was missing — this backfills its
+# actual value for any objects written before the property existed. See
+# .abi/specs/implemented/infra-agent-lookup-ephemeral-collision.md
+backfill_ephemeral_property()
+
+# ── Ephemeral blacklist (in-memory LRU) ────────────────────────
+#
+# Immediate-effect exclusion for a specific agent id, consulted in the same
+# process as the search itself — no round-trip to Weaviate/Docker needed for
+# it to take effect. Complements the structural `exclude_ephemeral` filter
+# (which should already prevent this in the normal case): this is what makes
+# a retry safe right after a collision is detected, before the real cleanup
+# (unregister_agent + destroy_container, which run in the background) has had
+# a chance to complete. Bounded by `maxsize` (LRU eviction) instead of a TTL —
+# an entry becomes redundant anyway once the real cleanup finishes. See
+# .abi/specs/implemented/infra-agent-lookup-ephemeral-collision.md
+_BLACKLIST_MAXSIZE = 128
+_ephemeral_blacklist: "OrderedDict[str, None]" = OrderedDict()
+
+
+def _blacklist_add(agent_id: str) -> None:
+    if agent_id in _ephemeral_blacklist:
+        _ephemeral_blacklist.move_to_end(agent_id)
+        return
+    _ephemeral_blacklist[agent_id] = None
+    if len(_ephemeral_blacklist) > _BLACKLIST_MAXSIZE:
+        _ephemeral_blacklist.popitem(last=False)
+
+
+def _blacklist_contains(agent_id: str) -> bool:
+    return agent_id in _ephemeral_blacklist
+
 
 # ── Tools ───────────────────────────────────────────────────────
 
@@ -124,19 +160,33 @@ def repair_agent_cards_from_disk() -> int:
 
 @mcp.tool(name='find_agent', description='Find the best agent for a task via semantic search')
 @validate_semantic_access
-async def find_agent(query: str, _request_context: dict = None) -> Optional[dict]:
+async def find_agent(
+    query: str, exclude_ephemeral: bool = False, _request_context: dict = None
+) -> Optional[dict]:
     """Find the most relevant Agent Card for a natural language query.
+
+    exclude_ephemeral: pass True when the query is one of the reserved
+    infra-agent names (guardian/planner/builder/orchestrator) — applies a
+    native Weaviate filter so no card with ephemeral=true can ever be
+    returned, regardless of vector distance. See
+    .abi/specs/implemented/infra-agent-lookup-ephemeral-collision.md
 
     On a miss, attempts a one-shot self-repair from disk (the source of truth)
     before giving up, and logs the distinct outcome so the cause is diagnosable.
     """
-    results = search_agent_cards(query_vector=embed_one(query), top_k=1)
+    # Small over-fetch (not top_k=1) so there's room to skip blacklisted ids
+    # without a second round-trip in the common case.
+    results = search_agent_cards(
+        query_vector=embed_one(query), top_k=5, exclude_ephemeral=exclude_ephemeral
+    )
 
     if not results:
         # Miss: the index may be stale. Reconcile from disk and retry once.
         repaired = repair_agent_cards_from_disk()
         if repaired:
-            results = search_agent_cards(query_vector=embed_one(query), top_k=1)
+            results = search_agent_cards(
+                query_vector=embed_one(query), top_k=5, exclude_ephemeral=exclude_ephemeral
+            )
 
         if not results:
             if repaired:
@@ -147,14 +197,74 @@ async def find_agent(query: str, _request_context: dict = None) -> Optional[dict
                             f"repair — card is not present on disk (legitimate absence)")
             return None
 
-    try:
-        best = json.loads(results[0]["text"])
-        score = results[0].get("score", 0)
-        abi_logging(f"[🎯] find_agent: {best.get('name', '?')} (score: {score:.2f})")
-        return best
-    except (json.JSONDecodeError, KeyError) as e:
-        abi_logging(f"[❌] find_agent parse error: {e}")
+    for candidate in results:
+        try:
+            card = json.loads(candidate["text"])
+        except (json.JSONDecodeError, KeyError):
+            continue
+        if _blacklist_contains(card.get("id", "")):
+            abi_logging(f"[🚫] find_agent '{query}': skipping blacklisted {card.get('id')}")
+            continue
+        # Service/tool cards (e.g. webapp) aren't agents — they can still
+        # rank high on generic vocabulary overlap ("abi", "agent") and used
+        # to be filtered only client-side (semantic_tools.tool_find_agent),
+        # which had no way to ask for the next-best candidate once handed an
+        # unsuitable one. Filtering here lets the loop fall through instead.
+        if card.get("service_id") or card.get("service_type"):
+            abi_logging(f"[⏭️] find_agent '{query}': skipping service card {card.get('name', '?')}")
+            continue
+        if not card.get("capabilities"):
+            abi_logging(f"[⏭️] find_agent '{query}': skipping non-agent card (no capabilities) {card.get('name', '?')}")
+            continue
+        score = candidate.get("score", 0)
+        abi_logging(f"[🎯] find_agent: {card.get('name', '?')} (score: {score:.2f})")
+        return card
+
+    abi_logging(f"[🔍] find_agent '{query}': no suitable candidate among {len(results)} result(s)")
+    return None
+
+
+@mcp.tool(name='get_agent_card_by_stem', description='Exact, non-semantic lookup of a static agent card by its filename stem (e.g. "planner_agent")')
+@validate_semantic_access
+async def get_agent_card_by_stem(stem: str, _request_context: dict = None) -> Optional[dict]:
+    """Deterministic lookup for the reserved infra agents (guardian/planner/
+    builder/orchestrator) — bypasses vector search entirely.
+
+    Live-verified need: even after excluding ephemeral cards and service
+    cards, semantic ranking between a small set of short, topically-similar
+    role descriptions (e.g. "Abi Planner Agent" vs "Abi Orchestrator Agent")
+    is unstable — margins under 0.01, well within noise, so the *wrong*
+    known-fixed agent can outrank the right one. For a lookup where the
+    target is a specific, known singleton (not "find something related to
+    X"), matching by filename stem is a hard guarantee vector search can't
+    offer. See .abi/specs/implemented/infra-agent-lookup-ephemeral-collision.md
+
+    stem: filename without extension, e.g. "planner_agent" for
+    agent_cards/planner_agent.json.
+    """
+    if df is None or df.empty:
         return None
+    matches = df.loc[df['card_uri'].str.endswith(f'{stem}.json'), 'agent_card'].to_list()
+    if not matches:
+        abi_logging(f"[🔍] get_agent_card_by_stem '{stem}': not found")
+        return None
+    return matches[0]
+
+
+@mcp.tool(name='blacklist_agent', description='Immediately exclude an agent id from future find_agent results')
+@validate_semantic_access
+async def blacklist_agent(agent_id: str, _request_context: dict = None) -> dict:
+    """Add an agent id to the in-memory LRU blacklist (immediate, local effect).
+
+    Used when the orchestrator catches an ephemeral agent wrongly matched
+    against a reserved infra-agent query — makes an immediate retry safe
+    without waiting for the real cleanup (unregister_agent +
+    destroy_container, which run separately in the background). See
+    .abi/specs/implemented/infra-agent-lookup-ephemeral-collision.md
+    """
+    _blacklist_add(agent_id)
+    abi_logging(f"[🚫] Blacklisted: {agent_id}")
+    return {"success": True, "agent_id": agent_id}
 
 
 @mcp.tool(name='recommend_agents', description='Recommend agents for a complex task')

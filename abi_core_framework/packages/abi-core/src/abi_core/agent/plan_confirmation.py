@@ -217,7 +217,7 @@ async def _interpret_confirmation_reply(
     never guesses "approve" on failure — that would be dangerous.
     """
     from abi_core.agent.llm_provider import invoke_structured
-    from abi_core.common.prompts import build_plan_confirmation_interpretation_prompt
+    from abi_core.common.prompts.framework import build_plan_confirmation_interpretation_prompt
     from abi_core.common.utils import format_plan_summary
 
     try:

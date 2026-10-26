@@ -7,8 +7,7 @@ Every static text a code agent sends to a model. Spec: .abi/specs/implemented/pr
 
 from typing import Dict, List, Optional
 
-
-TDD_MARKER = "### TDD"
+from abi_core.common.code_tdd import TDD_MARKER  # owned by the parser (community)
 
 TDD_PROMPT_INSTRUCTION = (
     "\n\nBefore writing any file, start your answer with this section, filled in "

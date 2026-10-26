@@ -18,6 +18,18 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
+    # Session tests (test_session_store.py) run against a real Redis, like the
+    # swarm's SESSION_BACKEND=redis; without TEST_REDIS_URL they are skipped.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     defaults:
       run:
         working-directory: abi_core_framework
@@ -44,4 +56,19 @@ jobs:
           docker build -f pygame/Dockerfile -t abi-sandbox-pygame:latest .
 
       - name: Run tests
+        env:
+          TEST_REDIS_URL: redis://localhost:6379/0
         run: python -m pytest -q -rs tests --ignore=tests/measure
+
+      # Policy tests (tests/opa) against both copies of the Guardian policy
+      # templates. Same OPA version as the swarm's Guardian image.
+      - name: Install OPA
+        run: |
+          curl -sSfL -o /usr/local/bin/opa https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_amd64_static
+          echo "668506eb17a2eaa1fce6cc0d1f42ef85125d4ac5bda5fc74d1152d0c77145031  /usr/local/bin/opa" | sha256sum -c
+          chmod +x /usr/local/bin/opa
+
+      - name: Run policy tests
+        run: |
+          opa test -v packages/abi-cli/src/abi_cli/scaffolding/service_guardian/opa/policies tests/opa
+          opa test -v packages/abi-services/templates/service_guardian/opa/policies tests/opa

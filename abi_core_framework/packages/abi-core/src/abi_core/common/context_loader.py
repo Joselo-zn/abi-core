@@ -26,9 +26,6 @@ import shutil
 from typing import Any, Dict, List, Optional
 
 from abi_core.common.utils import abi_logging
-from abi_core.common.prompts.code_agent import (  # noqa: F401  (moved; re-exported)
-    build_execution_prompt,
-)
 
 
 def load_agent_context_sync(**kwargs) -> Dict[str, Any]:

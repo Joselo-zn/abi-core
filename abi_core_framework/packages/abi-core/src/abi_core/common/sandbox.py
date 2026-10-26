@@ -170,7 +170,10 @@ async def run_in_sandbox(
 
     `backend` overrides SANDBOX_RUNTIME — sandbox-service passes "docker" so
     it never depends on (or loops through) its own environment."""
-    if not command or not all(isinstance(c, str) for c in command):
+    # A str is iterable and its characters are str: without the type check,
+    # "python t.py" passed. The sandbox-service forwards the HTTP body as is.
+    if (not isinstance(command, (list, tuple)) or not command
+            or not all(isinstance(c, str) for c in command)):
         raise ValueError("command must be a non-empty list of strings")
     safe_env = validate_env(env)
     bundle = build_bundle(files)

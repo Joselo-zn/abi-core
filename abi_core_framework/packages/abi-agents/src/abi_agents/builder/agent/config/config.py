@@ -17,7 +17,7 @@ class AgentConfig:
 
     # Agent Identity
     AGENT_NAME: str = "builder"
-    AGENT_DISPLAY_NAME: str = "Builder Agent"
+    AGENT_DISPLAY_NAME: str = "Abi Builder Agent"
     AGENT_DESCRIPTION: str = "Builds and scaffolds ABI projects, agents, and services"
 
     # Ports

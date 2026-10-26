@@ -57,7 +57,7 @@ async def select_methodology(
     Returns {"methodology": str, "rationale": str}.
     """
     from abi_core.agent.llm_provider import invoke
-    from abi_core.common.prompts import build_methodology_selection_prompt
+    from abi_core.common.prompts.framework import build_methodology_selection_prompt
     from abi_core.common.utils import abi_logging, clean_llm_json
 
     try:

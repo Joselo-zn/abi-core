@@ -33,11 +33,10 @@ import os
 import re
 import sys
 from typing import Dict, List, Optional
-from abi_core.common.prompts.code_agent import (  # noqa: F401  (moved; re-exported)
-    TDD_MARKER,
-    TDD_PROMPT_INSTRUCTION,
-    tdd_summary,
-)
+# Where the code agent's TDD starts in its answer. The parser below owns this
+# contract; the code agent's prompt (abi_core.common.prompts.code_agent)
+# imports it from here.
+TDD_MARKER = "### TDD"
 
 _PURPOSE_RE = re.compile(r"Purpose and data model:\s*(?P<v>.*?)(?=\n\s*Needed but not found:|\Z)", re.S | re.I)
 _NEEDED_RE = re.compile(r"Needed but not found:\s*(?P<v>.*?)(?=\n\s*\n|\Z)", re.S | re.I)

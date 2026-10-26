@@ -95,55 +95,60 @@ def test_extra_params_reach_the_langchain_model(monkeypatch):
 
 # ── Builder → ephemeral ──────────────────────────────────────────────
 
-def _builder_steps():
-    """Load the Builder's steps.py with a stand-in `app` module (its
-    decorators register steps on the real agent)."""
-    class _Agent:
-        def step(self, *a, **k):
-            return lambda fn: fn
-    sys.modules["app"] = types.SimpleNamespace(agent=_Agent())
-    path = Path(__file__).resolve().parents[1] / "packages/abi-agents/src/abi_agents/builder/agent/steps.py"
-    spec = importlib.util.spec_from_file_location("builder_steps_under_test", path)
+def _ephemeral_config():
+    """Load the Builder's config/ephemeral.py by path (the Builder's modules
+    import each other as top-level names, so the package isn't importable)."""
+    path = Path(__file__).resolve().parents[1] / "packages/abi-agents/src/abi_agents/builder/agent/config/ephemeral.py"
+    spec = importlib.util.spec_from_file_location("builder_ephemeral_under_test", path)
     module = importlib.util.module_from_spec(spec)
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.modules.pop("app", None)
+    spec.loader.exec_module(module)
     return module
 
 
 def test_ephemeral_params_from_ephemeral_var(monkeypatch):
-    steps = _builder_steps()
+    eph = _ephemeral_config()
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
     monkeypatch.setenv("LLM_EXTRA_PARAMS", '{"num_ctx": 4096}')
     monkeypatch.setenv("EPHEMERAL_LLM_EXTRA_PARAMS", '{"thinking_level": "low"}')
-    env = steps._ephemeral_llm_params_env("gemini", {})
+    env = eph.llm_params_env("gemini", {})
     assert json.loads(env["LLM_EXTRA_PARAMS"]) == {"thinking_level": "low"}
     assert "LLM_TEMPERATURE" not in env
 
 
 def test_builder_params_fall_back_only_on_same_provider(monkeypatch):
-    steps = _builder_steps()
+    eph = _ephemeral_config()
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
     monkeypatch.setenv("LLM_EXTRA_PARAMS", '{"num_ctx": 4096}')
-    assert json.loads(steps._ephemeral_llm_params_env("ollama", {})["LLM_EXTRA_PARAMS"]) == {"num_ctx": 4096}
-    assert steps._ephemeral_llm_params_env("gemini", {}) == {}
+    assert json.loads(eph.llm_params_env("ollama", {})["LLM_EXTRA_PARAMS"]) == {"num_ctx": 4096}
+    assert eph.llm_params_env("gemini", {}) == {}
 
 
 def test_task_override_wins_and_sets_temperature(monkeypatch):
-    steps = _builder_steps()
+    eph = _ephemeral_config()
     monkeypatch.setenv("EPHEMERAL_LLM_EXTRA_PARAMS", '{"thinking_level": "low", "max_tokens": 100}')
-    env = steps._ephemeral_llm_params_env(
+    env = eph.llm_params_env(
         "gemini", {"model": "m", "extra_params": {"thinking_level": "high"}, "temperature": 0.2})
     assert json.loads(env["LLM_EXTRA_PARAMS"]) == {"thinking_level": "high", "max_tokens": 100}
     assert env["LLM_TEMPERATURE"] == "0.2"
 
 
 def test_bad_ephemeral_params_fail(monkeypatch):
-    steps = _builder_steps()
+    eph = _ephemeral_config()
     monkeypatch.setenv("EPHEMERAL_LLM_EXTRA_PARAMS", "nope")
     with pytest.raises(ValueError, match="EPHEMERAL_LLM_EXTRA_PARAMS is not valid JSON"):
-        steps._ephemeral_llm_params_env("gemini", {})
+        eph.llm_params_env("gemini", {})
+
+
+def test_ephemeral_installs_the_builders_abi_core_version(monkeypatch):
+    """ephemeral-abi-core-version-pin: same version as the Builder, no --upgrade."""
+    from importlib.metadata import version
+    eph = _ephemeral_config()
+    pinned = version("abi-core-ai")
+    assert f"'abi-core-ai[gemini]=={pinned}'" in eph.start_command("gemini")
+    assert f"'abi-core-ai=={pinned}'" in eph.start_command("ollama")
+    assert "--upgrade" not in eph.start_command("ollama")
+    monkeypatch.setenv("EPHEMERAL_LLM_PROVIDER", "gemini")
+    assert eph.base_env(eph.provider(), {})["SERVICE_COMMAND"] == eph.start_command("gemini")
 
 
 def test_parse_extra_params_empty():

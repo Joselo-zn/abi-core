@@ -168,12 +168,18 @@ deny_reason := reason if {
 # AUDIT INFORMATION
 # ============================================
 
+# deny_reason only exists when the message is denied; audit_info used it
+# directly and was undefined as a whole on every allowed message.
+default audit_reason := ""
+
+audit_reason := deny_reason
+
 audit_info := {
     "source_agent": source_agent.name,
     "target_agent": target_agent.name,
     "timestamp": input.communication.timestamp,
     "message_length": input.communication.message_length,
     "allowed": allow,
-    "reason": deny_reason,
+    "reason": audit_reason,
     "validation_mode": validation_mode
 }

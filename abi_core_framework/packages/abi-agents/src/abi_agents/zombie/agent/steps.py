@@ -185,7 +185,7 @@ async def _plan_info(process_context: dict) -> dict:
 async def analyze_and_execute(context, query):
     """Phase 2: LLM autonomous execution with tools, enriched with memory context."""
     from abi_core.agent.llm_provider import invoke
-    from abi_core.common.context_loader import build_execution_prompt
+    from abi_core.common.prompts.code_agent import build_execution_prompt
 
     # Inject memory context if AMS is available
     memory_context = ""
