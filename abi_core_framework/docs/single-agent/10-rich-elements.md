@@ -76,7 +76,7 @@ yield AgentResponse.element("MapEmbed", {
 })
 ```
 
-`abi-core` also bundles `PlanReview` and `ClarificationForm`, which the UI uses on its own for plan confirmation ([Plan Confirmation](09-plan-confirmation.md)) and structured clarification questions — you don't send those with `AgentResponse.element()`.
+`abi-core` also bundles `PlanReview`, `ClarificationForm` and `RouteClarification`, which the UI uses on its own for plan confirmation ([Plan Confirmation](09-plan-confirmation.md)), structured clarification questions and "is this what you want?" follow-up questions — you don't send those with `AgentResponse.element()`.
 
 `element_type` is the component's name — `abi-core` looks for a matching `.jsx`, whether it's one of the bundled ones or your own. To add a project-specific element, drop a `.jsx` file (JSX only, no TSX) into `public/elements/<YourName>.jsx` in your Chainlit UI project — same convention Chainlit itself uses. Props are injected globally into the component's scope (`props.title`, not a function argument). Only a fixed set of libraries are available inside a custom element: React, Tailwind, shadcn UI components, Lucide icons, Recoil, React Hook Form, Zod, Sonner — no other npm imports. Tailwind classes are limited to the ones already compiled into Chainlit's stylesheet: there's no Tailwind build for your file, so arbitrary values (`text-[hsl(...)]`) and many less common utilities silently do nothing. Prefer the theme's token classes (`text-muted-foreground`, `border-border`, `bg-card`, `text-primary`) and use an inline `style` for anything else. Plain HTML tags like `<iframe>` aren't restricted, which is how `MapEmbed` embeds a live map without needing a maps SDK.
 

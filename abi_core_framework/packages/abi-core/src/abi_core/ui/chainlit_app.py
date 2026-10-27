@@ -31,6 +31,7 @@ from pathlib import Path
 import chainlit as cl
 from chainlit.utils import utc_now
 
+from abi_core.agent.route_clarification import ROUTE_CLARIFICATION_ACTION, ROUTE_CLARIFY_SENTINEL
 from abi_core.client.agent_stream_client import AgentStreamClient
 from abi_core.ui.run_follow import (
     FOLLOWED_RUN_KEY,
@@ -173,6 +174,24 @@ UI_TITLE = os.getenv("ABI_UI_TITLE", "ABI")
 
 # Sentinel queries the orchestrator's classify_query step (and
 # abi_core.agent.plan_confirmation) recognize as a plan-confirmation reply.
+# user_session key of the routing question still waiting for an answer.
+_PENDING_CLARIFICATION_KEY = "pending_route_clarification_element"
+
+
+async def _expire_pending_clarification() -> None:
+    """A routing question the user didn't answer lapses as soon as anything
+    else is sent: mark its card expired so its buttons go away."""
+    element = cl.user_session.get(_PENDING_CLARIFICATION_KEY)
+    if element is None:
+        return
+    cl.user_session.set(_PENDING_CLARIFICATION_KEY, None)
+    try:
+        element.props = {**element.props, "state": "expired"}
+        await element.update()
+    except Exception:
+        pass
+
+
 _PLAN_CONFIRM_SENTINELS = {
     "approve": "__plan_confirm_approve__",
     "reject": "__plan_confirm_reject__",
@@ -388,6 +407,10 @@ async def _stream_to_agent(query: str) -> None:
     server doesn't distinguish "action" from "text" (see web_interface.py's
     /stream contract).
     """
+    # Anything sent while a routing question is open answers something else:
+    # that question lapses (the asker treats its id as stale too).
+    await _expire_pending_clarification()
+
     # Parent step for the whole run; a child step opens per plan task
     # (meta.task_key) once execution reaches it, so each task stays visible
     # in the chat instead of being overwritten by the next one — see
@@ -581,7 +604,20 @@ async def _stream_to_agent(query: str) -> None:
                     final_content = str(content)
             elif response_type == "input_required" and content:
                 meta = parsed.get("meta", {}) or {}
-                if meta.get("action_type") == "plan_confirmation" and meta.get("plan_view"):
+                if meta.get("action_type") == ROUTE_CLARIFICATION_ACTION and meta.get("clarify"):
+                    # The routing is unsure (or failed) and asks "is X what
+                    # you want?" — RouteClarification.jsx, answered by code.
+                    # See .abi/specs/not-implemented/ux/routing-clarification-ui.md.
+                    outcome = "needs_input"
+                    await _finish_run(outcome)
+                    element = cl.CustomElement(
+                        name="RouteClarification",
+                        props={**meta["clarify"], "lang": progress.lang, "state": "pending"},
+                    )
+                    await cl.Message(content="", elements=[element]).send()
+                    cl.user_session.set(_PENDING_CLARIFICATION_KEY, element)
+                    actions_sent = True
+                elif meta.get("action_type") == "plan_confirmation" and meta.get("plan_view"):
                     # Structured review card (PlanReview.jsx) — answers via
                     # the same "plan_confirm" action callback as the plain
                     # buttons below. See
@@ -715,6 +751,19 @@ async def on_plan_confirm(action: cl.Action):
         await _stream_to_agent(json.dumps({"_sentinel": PLAN_MODIFY_FEEDBACK_SENTINEL, "feedback": feedback}))
         return
     await _stream_to_agent(_PLAN_CONFIRM_SENTINELS.get(choice, _PLAN_CONFIRM_SENTINELS["reject"]))
+
+
+@cl.action_callback("route_clarify")
+async def on_route_clarify(action: cl.Action):
+    """Answer to RouteClarification.jsx: forwarded as a sentinel the asker
+    resolves by code, against the message it asked about."""
+    cl.user_session.set(_PENDING_CLARIFICATION_KEY, None)
+    payload = action.payload or {}
+    sentinel = {"_sentinel": ROUTE_CLARIFY_SENTINEL,
+                "clarify_id": payload.get("clarify_id"), "option": payload.get("option")}
+    if payload.get("text"):
+        sentinel["text"] = payload["text"]
+    await _stream_to_agent(json.dumps(sentinel))
 
 
 @cl.action_callback("clarification_answer")

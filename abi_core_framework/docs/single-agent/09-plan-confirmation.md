@@ -242,6 +242,35 @@ yield AgentResponse.input_required(
 - Each step shows the task's `title` if the plan has one; otherwise a title derived from the description.
 - The card's Modify sends `{"_sentinel": "__plan_modify__", "feedback": "..."}` (`PLAN_MODIFY_FEEDBACK_SENTINEL`). `classify_plan_confirmation_sentinel` and `classify_plan_confirmation_reply` return it as `plan_modify_feedback`, the same classification a typed "no, make it shorter" produces, so a task that already handles that branch needs no changes.
 
+## Asking back when the agent is unsure
+
+When your agent can't tell what a message means — a reply to a pending plan that might be an approval, or a request that might want a file or just an answer — it can ask instead of guessing. Send an `input_required` with `action_type="route_clarification"` and a `clarify` payload, and the Chainlit UI shows a card with the question, the user's message on one line and the options as buttons:
+
+```python
+from abi_core.agent.route_clarification import ROUTE_CLARIFICATION_ACTION
+
+yield AgentResponse.input_required(
+    "Do you want to approve the plan? 1) Yes 2) Change something 3) Cancel",  # for clients without a UI
+    action_type=ROUTE_CLARIFICATION_ACTION,
+    clarify={
+        "clarify_id": "c-7f3a",
+        "question_key": "plan_reply.approve", "params": {},
+        "original_message": user_message,
+        "mode": "guess",            # "neutral" when you have no guess
+        "options": [
+            {"id": "approve", "label_key": "plan.approve", "kind": "choice", "primary": True},
+            {"id": "modify", "label_key": "plan.modify", "kind": "text"},   # opens a text box, pre-filled with the message
+            {"id": "reject", "label_key": "plan.reject", "kind": "choice"},
+            {"id": "other", "label_key": "route.unrelated", "kind": "link"},
+        ],
+    },
+)
+```
+
+- **Texts are keys**, so the card follows the browser's language (English or Spanish). An option can carry its own `params`, for example `{"label_key": "delivery.modify", "params": {"delivery": "Pole Position"}}`. The available keys are listed in `RouteClarification.jsx`.
+- **The user's choice comes back as a JSON sentinel:** `{"_sentinel": "__route_clarify__", "clarify_id", "option", "text"}` (`ROUTE_CLARIFY_SENTINEL`). Resolve it by code against the message you asked about; it never needs a model.
+- **If the user writes something else instead of answering,** the card is marked "no longer current" and the new message is handled as usual. Treat a `clarify_id` you no longer have as stale.
+
 ## Key rules
 
 - **This needs a real session.** Without a `context_id` that persists across requests, there's nowhere to remember "there's a plan waiting for a reply" — see [Sessions & Multi-turn](07-sessions-multi-turn.md).
