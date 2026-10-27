@@ -11,6 +11,7 @@ from .agent import AbiAgent
 from .agent_factory import agent_factory
 from .agent_response import AgentResponse
 from .llm_provider import create_llm, invoke
+from .classifier import ClassifierError, invoke_classifier
 from abi_core.memory import (
     add_long_term_memory,
     add_short_term_memory,
@@ -33,6 +34,8 @@ __all__ = [
     "agent_factory",
     "create_llm",
     "invoke",
+    "invoke_classifier",
+    "ClassifierError",
     "add_short_term_memory",
     "add_long_term_memory",
     "get_short_term_memory",

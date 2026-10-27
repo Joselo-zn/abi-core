@@ -47,6 +47,7 @@ single-agent/08-plan-and-execute
 single-agent/09-plan-confirmation
 single-agent/10-rich-elements
 single-agent/11-run-progress
+single-agent/12-fast-classification
 single-agent/05-testing-agents
 ```
 

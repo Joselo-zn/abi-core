@@ -167,6 +167,13 @@ across logins/devices), and an invite-only registration system.
 | `ADMIN_NOTIFICATION_EMAIL` | — | Where the "someone joined the waiting list" email goes. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `SMTP_PORT` defaults to `587` | SMTP for the waiting-list notification. Left unset, waiting-list signups still work (recorded in Postgres) — the email is just skipped, logged as a warning. |
 
+## Decision model (`invoke_classifier`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLASSIFIER_MODEL` | `laya` | Decision model `invoke_classifier` calls. Set it to the exact tag you pulled (e.g. `laya:421m-english-bf16`): pulling a tag doesn't create the `laya` name |
+| `CLASSIFIER_BASE_URL` | `OLLAMA_HOST`, then `http://localhost:11434` | Ollama (0.40 or later) that serves the decision model |
+
 ## Ollama control
 
 | Variable | Default | Description |

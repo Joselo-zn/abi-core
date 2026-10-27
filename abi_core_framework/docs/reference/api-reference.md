@@ -105,6 +105,27 @@ result = await invoke(config.LLM_CONFIG, prompt, tools=[my_tool],
 
 ---
 
+## invoke_classifier() — decision-model calls
+
+```python
+from abi_core.agent import invoke_classifier, ClassifierError
+
+answers = await invoke_classifier(
+    state="Customer message: Where is my order?",
+    questions={"intent": {"type": "choice", "instructions": "What does the customer want?",
+                          "criteria": {"order": "About one of their orders.", "faq": "A general question."}}},
+    model=None, base_url=None, timeout=60.0,     # defaults: CLASSIFIER_MODEL, CLASSIFIER_BASE_URL
+)
+answers["intent"]["choice"], answers["intent"]["confidence"], answers["intent"]["probabilities"]
+```
+
+- Calls a decision model (default `laya`) on Ollama's `/v1/systemone`; needs Ollama 0.40 or later. Not a chat model: it scores options and returns probabilities, it doesn't generate text.
+- Question types and their `criteria`: `choice` — a dict of 2–26 options → `choice`, `probabilities`, `confidence`; `noul` — `{"true": ..., "false": ...}` → `noul`, the probability of true; `score` — a **list** of 2–10 levels, lowest first → `score` (the expected level, from 0), `legend`, `probabilities`, `confidence`. Up to 64 questions per call.
+- Raises `ValueError` for a malformed request (before any call) and `ClassifierError` when the model is unreachable, rejects the request or answers incompletely.
+- See [Fast Classification](../single-agent/12-fast-classification.md).
+
+---
+
 ## Semantic Tools
 
 ```python

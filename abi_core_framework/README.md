@@ -76,6 +76,7 @@ The model reads the message. Code decides what its answer is allowed to be — a
 
 - **Steps and tasks.** `@agent.step` functions each do one thing; an `@agent.task` composes them in plain Python — sequences, branches, `asyncio.gather` for parallel work. The model never reorders them.
 - **Output with a fixed shape.** `invoke_structured(config, prompt, MyPydanticModel)` makes the model fill a schema, enforced while it generates.
+- **Fast decisions, with a confidence.** `invoke_classifier(state, questions)` asks a decision model (Laya on Ollama) to pick between options: no text generated, a probability for each option, a fraction of a second on CPU. Act when it's sure; ask the chat model when it isn't. See [Fast Classification](https://abi-core.readthedocs.io/en/latest/single-agent/12-fast-classification.html).
 - **Rules outside the model.** Guardian and OPA evaluate your policies before an action runs. A prompt can be talked around; a policy file can't.
 - **A person approves what matters.** Plan confirmation shows a plan (or a draft, or an order) and waits for approve / modify / reject — in any language, or with buttons in the chat.
 - **Memory and sessions.** Session-scoped context, short- and long-term memory, Redis when you run more than one replica.

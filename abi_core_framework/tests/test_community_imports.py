@@ -30,6 +30,7 @@ COMMUNITY_MODULES = [
     "abi_core.agent.agent",
     "abi_core.agent.plan_confirmation",
     "abi_core.agent.llm_provider",
+    "abi_core.agent.classifier",
     "abi_core.common.prompts",
     "abi_core.common.prompts.framework",
     "abi_core.common.context_loader",

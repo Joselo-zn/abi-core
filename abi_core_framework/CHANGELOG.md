@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`invoke_classifier` — classify with a decision model.** New
+  `abi_core.agent.invoke_classifier(state, questions)` calls a decision model such
+  as Laya on Ollama's `/v1/systemone` (Ollama 0.40 or later): typed questions
+  scored in one pass, with calibrated probabilities, in about 0.1 s on CPU:
+  `choice` (a dict of 2-26 options), `noul` (true/false) and `score` (an ordered
+  rubric: a list of 2-10 levels, lowest first). The model and the Ollama come from `CLASSIFIER_MODEL`
+  (default `laya`) and `CLASSIFIER_BASE_URL` (default `OLLAMA_HOST`). A malformed
+  request raises `ValueError` before any call; a rejected or unreachable model
+  raises `ClassifierError`.
+
 ## [1.13.79] - 2026-10-26
 
 ### Changed
