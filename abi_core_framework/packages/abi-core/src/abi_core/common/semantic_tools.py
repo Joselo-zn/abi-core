@@ -205,7 +205,8 @@ class MCPToolkit:
             async with client.init_session(
                 self.mcp_config.host,
                 self.mcp_config.port,
-                self.mcp_config.transport
+                self.mcp_config.transport,
+                scheme=self.mcp_config.scheme,
             ) as mcp_session:
                 abi_logging(f"[🔧] Calling MCP tool '{tool_name}' with args: {kwargs}")
                 
@@ -311,7 +312,8 @@ class MCPToolkit:
             async with client.init_session(
                 self.mcp_config.host,
                 self.mcp_config.port,
-                self.mcp_config.transport
+                self.mcp_config.transport,
+                scheme=self.mcp_config.scheme,
             ) as mcp_session:
                 # List tools from MCP server
                 tools_response = await mcp_session.list_tools()
@@ -334,6 +336,7 @@ class MCPToolkit:
                 self.mcp_config.host,
                 self.mcp_config.port,
                 self.mcp_config.transport,
+                scheme=self.mcp_config.scheme,
             ) as mcp_session:
                 resp = await mcp_session.list_tools()
                 tools = []
@@ -474,7 +477,8 @@ async def tool_find_agent(query: str, exclude_ephemeral: bool = False) -> Option
     async with client.init_session(
         mcp_config.host,
         mcp_config.port,
-        mcp_config.transport
+        mcp_config.transport,
+        scheme=mcp_config.scheme,
     ) as mcp_session:
         abi_logging(f"[🔍] Searching for agent matching query {query}")
         context = build_semantic_context_from_card(
@@ -523,7 +527,8 @@ async def tool_list_agents(query: str, max_agents: int = 5) -> List[AgentCard]:
     async with client.init_session(
         mcp_config.host,
         mcp_config.port,
-        mcp_config.transport
+        mcp_config.transport,
+        scheme=mcp_config.scheme,
     ) as mcp_session:
 
         context = build_semantic_context_from_card(
@@ -571,7 +576,8 @@ async def tool_recommend_agents(
     async with client.init_session(
         mcp_config.host,
         mcp_config.port,
-        mcp_config.transport
+        mcp_config.transport,
+        scheme=mcp_config.scheme,
     ) as mcp_session:
         abi_logging(f"[🔍] Recommending agents for: {task_description}")
         
@@ -623,7 +629,8 @@ async def tool_check_agent_capability(
     async with client.init_session(
         mcp_config.host,
         mcp_config.port,
-        mcp_config.transport
+        mcp_config.transport,
+        scheme=mcp_config.scheme,
     ) as mcp_session:
         abi_logging(f"[🔍] Checking capabilities for: {agent_name}")
         
@@ -725,7 +732,8 @@ async def tool_register_agent(agent_card_dict: Dict[str, Any]) -> Dict[str, Any]
     async with client.init_session(
         mcp_config.host,
         mcp_config.port,
-        mcp_config.transport
+        mcp_config.transport,
+        scheme=mcp_config.scheme,
     ) as mcp_session:
         agent_name = agent_card_dict.get('name', 'unknown')
         abi_logging(f"[📝] Registering new agent: {agent_name}")

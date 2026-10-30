@@ -12,7 +12,8 @@ Every request goes through, in order, and is audited whatever the outcome:
 3. The facts of the run: its plan exists, it has a Python entry point, how
    many runs it already used.
 4. OPA decides (``abi/sandbox``). OPA unreachable or any error: denied.
-5. Only then the sandbox runs (Docker backend, same guarantees as before).
+5. Only then the sandbox runs, on SANDBOX_SERVICE_BACKEND: ``docker``
+   (default, local) or ``cloudrun`` (Cloud Run Jobs, GCP).
 
 Audit: one JSON line per request in projects/<run_id>/review/sandbox-audit.jsonl.
 
@@ -50,7 +51,16 @@ def _settings() -> Dict[str, Any]:
         # of each report: the first one and one per round sent back (02.4).
         "max_runs": int(os.getenv("SANDBOX_MAX_RUNS_PER_RUN_ID", str(2 + rounds))),
         "max_skew_s": int(os.getenv("SANDBOX_MAX_SKEW_S", "120")),
+        "backend": sandbox_backend(),
     }
+
+
+def sandbox_backend() -> str:
+    """Where the service runs the code. Never "service": it would call itself."""
+    backend = os.getenv("SANDBOX_SERVICE_BACKEND", "docker").strip().lower()
+    if backend not in ("docker", "cloudrun"):
+        raise ValueError(f"SANDBOX_SERVICE_BACKEND must be 'docker' or 'cloudrun', not {backend!r}")
+    return backend
 
 
 # ── 1. Request self-consistency ─────────────────────────────────
@@ -221,9 +231,9 @@ async def handle_run(body: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         limits = SandboxLimits(**(body.get("limits") or {}))
-        # Always Docker here, whatever SANDBOX_RUNTIME says: "service" would call itself.
+        # Explicit backend, whatever SANDBOX_RUNTIME says: "service" would call itself.
         result = await run_in_sandbox(files, body["command"], image=body["image"],
-                                      env=body.get("env") or {}, limits=limits, backend="docker")
+                                      env=body.get("env") or {}, limits=limits, backend=cfg["backend"])
     except Exception as e:
         return await deny(f"invalid request: {type(e).__name__}: {e}", caller)
 

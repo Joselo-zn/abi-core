@@ -14,7 +14,7 @@ from abi_core.common.utils import abi_logging
 
 
 @asynccontextmanager
-async def init_session(host, port, transport='streamable-http'):
+async def init_session(host, port, transport='streamable-http', scheme='http'):
     """Initializes and manages an MCP ClientSession based on the specified transport.
 
     This asynchronous context manager establishes a connection to an MCP server
@@ -27,6 +27,8 @@ async def init_session(host, port, transport='streamable-http'):
         port: The port number of the MCP server.
         transport: The communication transport to use ('sse' or 'streamable-http').
                   Defaults to 'streamable-http'.
+        scheme: 'http' (default) or 'https' — https for a managed endpoint
+                such as Cloud Run, which only serves TLS.
 
     Yields:
         ClientSession: An initialized and ready-to-use MCP client session.
@@ -45,7 +47,7 @@ async def init_session(host, port, transport='streamable-http'):
         )
     
     if transport == 'sse':
-        url = f'http://{host}:{port}/sse'
+        url = f'{scheme}://{host}:{port}/sse'
         abi_logging(f'[🔌] Connecting to MCP server via SSE at {url}', level='debug')
         
         try:
@@ -68,7 +70,7 @@ async def init_session(host, port, transport='streamable-http'):
             raise
     
     elif transport == 'streamable-http':
-        url = f'http://{host}:{port}/mcp'
+        url = f'{scheme}://{host}:{port}/mcp'
         abi_logging(f'[🔌] Connecting to MCP server via Streamable HTTP at {url}', level='debug')
         
         session = None

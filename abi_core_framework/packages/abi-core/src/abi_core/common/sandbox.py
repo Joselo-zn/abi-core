@@ -28,7 +28,7 @@ Usage:
 
 Backends: SANDBOX_RUNTIME=docker (default) | service (sandbox-service: identity,
 OPA policy, per-run limit and audit; see sandbox_service_client) | cloudrun
-(not implemented yet).
+(Cloud Run Jobs; see sandbox_cloudrun — normally behind the sandbox-service).
 """
 
 import base64
@@ -53,9 +53,10 @@ ALLOWED_ENV = frozenset({
 ALLOWED_ENV_PREFIX = "ABI_ACCEPTANCE_"
 
 # Entry-point contract (sandbox-images/entry.py). A single env string is
-# capped at 128 KiB by Linux (MAX_ARG_STRLEN); chunks stay well below it.
+# capped at 128 KiB by Linux (MAX_ARG_STRLEN) and at 32 768 bytes per value
+# by Cloud Run Jobs overrides (measured 2026-10-29): chunks fit both.
 _BUNDLE_VAR = "ABI_SANDBOX_BUNDLE_{}"
-_BUNDLE_CHUNK = 96 * 1024
+_BUNDLE_CHUNK = 32 * 1024
 MAX_BUNDLE_BYTES = 1024 * 1024          # encoded, all chunks together
 RESULT_BEGIN = "<<<ABI_SANDBOX_RESULT_BEGIN>>>"
 RESULT_END = "<<<ABI_SANDBOX_RESULT_END>>>"
@@ -186,6 +187,9 @@ async def run_in_sandbox(
         # Validated above (env allowlist, paths, size); the service checks again.
         from abi_core.common import sandbox_service_client
         return await sandbox_service_client.run(files, command, image, safe_env, limits)
+    if backend == "cloudrun":
+        from abi_core.common import sandbox_cloudrun
+        return await sandbox_cloudrun.run(image, command, safe_env, bundle, limits)
     raise NotImplementedError(f"SANDBOX_RUNTIME={backend!r} is not implemented")
 
 

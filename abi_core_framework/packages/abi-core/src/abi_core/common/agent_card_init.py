@@ -102,7 +102,7 @@ async def register_agent_card_with_semantic_layer(card_path: str | Path) -> bool
         
         # Register with semantic layer
         async with client.init_session(
-            config.host, config.port, config.transport
+            config.host, config.port, config.transport, scheme=config.scheme
         ) as session:
             # Build context for registration. The auth comes from the card
             # with ${VAR} expanded; the card itself goes as written, so a

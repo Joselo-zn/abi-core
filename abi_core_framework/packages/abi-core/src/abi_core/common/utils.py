@@ -153,26 +153,33 @@ _DEFAULT_MCP_TRANSPORT = 'streamable-http'
 
 
 def _semantic_layer_endpoint(environ: Mapping[str, str]):
-    """(url, host, port, transport) from SEMANTIC_LAYER_HOST, SEMANTIC_LAYER_PORT
-    and MCP_TRANSPORT. SEMANTIC_LAYER_HOST may be a full URL (http://host:port)
-    or a bare hostname (then SEMANTIC_LAYER_PORT, default 10100)."""
+    """(url, host, port, transport, scheme) from SEMANTIC_LAYER_HOST,
+    SEMANTIC_LAYER_PORT and MCP_TRANSPORT. SEMANTIC_LAYER_HOST may be a full
+    URL (http://host:port, or https://host on a managed endpoint such as Cloud
+    Run, where no port means 443) or a bare hostname (then SEMANTIC_LAYER_PORT,
+    default 10100, over http)."""
     url = environ.get('SEMANTIC_LAYER_HOST', _DEFAULT_SEMANTIC_LAYER)
     transport = environ.get('MCP_TRANSPORT', _DEFAULT_MCP_TRANSPORT)
-    url_match = re.match(r'https?://([^:/]+)(?::(\d+))?', url)
+    url_match = re.match(r'(https?)://([^:/]+)(?::(\d+))?', url)
     if url_match:
-        host = url_match.group(1)
-        port = int(url_match.group(2)) if url_match.group(2) else 10100
+        scheme = url_match.group(1)
+        host = url_match.group(2)
+        if url_match.group(3):
+            port = int(url_match.group(3))
+        else:
+            port = 443 if scheme == 'https' else 10100
     else:
+        scheme = 'http'
         host = url.split(':')[0]
         port = int(environ.get('SEMANTIC_LAYER_PORT', 10100))
         url = f'http://{host}:{port}'
-    return url, host, port, transport
+    return url, host, port, transport, scheme
 
 
 # Compatibility aliases, read once at import. Nothing in abi-core uses them;
 # get_mcp_server_config() reads the environment on every call instead.
 SEMANTIC_LAYER_URL = os.getenv('SEMANTIC_LAYER_HOST', _DEFAULT_SEMANTIC_LAYER)
-URL, HOST, PORT, MCP_TRANSPORT = _semantic_layer_endpoint(os.environ)
+URL, HOST, PORT, MCP_TRANSPORT, _ = _semantic_layer_endpoint(os.environ)
 
 
 def get_mcp_server_config(environ: Optional[Mapping[str, str]] = None) -> ServerConfig:
@@ -190,13 +197,14 @@ def get_mcp_server_config(environ: Optional[Mapping[str, str]] = None) -> Server
     Returns:
         ServerConfig with parsed host, port, transport, and url
     """
-    url, host, port, transport = _semantic_layer_endpoint(os.environ if environ is None else environ)
-    abi_logging(f'[*] MCP Config: Host={host}, Port={port}, Transport={transport}', level='debug')
+    url, host, port, transport, scheme = _semantic_layer_endpoint(os.environ if environ is None else environ)
+    abi_logging(f'[*] MCP Config: Host={host}, Port={port}, Transport={transport}, Scheme={scheme}', level='debug')
     return ServerConfig(
         host=host,
         port=port,
         transport=transport,
         url=url,
+        scheme=scheme,
     )
 
 def truncate(obj: Any, max_chars: int = 4000) -> str:

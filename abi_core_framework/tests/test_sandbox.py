@@ -183,7 +183,8 @@ class TestRunDispatch:
 
     @pytest.mark.asyncio
     async def test_unknown_backend_is_not_implemented(self, backends, monkeypatch):
-        monkeypatch.setenv("SANDBOX_RUNTIME", "cloudrun")
+        # "cloudrun" exists since the Cloud Run Jobs backend (test_sandbox_cloudrun.py).
+        monkeypatch.setenv("SANDBOX_RUNTIME", "kubernetes")
         with pytest.raises(NotImplementedError):
             await run_in_sandbox({"t.py": b""}, ["python", "t.py"])
         assert backends == []

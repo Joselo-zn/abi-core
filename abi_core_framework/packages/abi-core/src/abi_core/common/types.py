@@ -57,6 +57,11 @@ class ServerConfig(BaseModel):
     url: str = Field(
         description="Complete server URL"
     )
+    scheme: str = Field(
+        default="http",
+        description="'http' or 'https' — taken from the URL; https behind a "
+                    "managed endpoint such as Cloud Run (*.run.app)"
+    )
 
 
 class AgentResponse(BaseModel):

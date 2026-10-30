@@ -10,7 +10,8 @@ FROM python:3.12-slim
 RUN pip install --no-cache-dir numpy \
     && groupadd --gid 10001 sandbox \
     && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /workspace --shell /usr/sbin/nologin sandbox \
-    && mkdir -p /workspace /opt/abi-sandbox
+    && mkdir -p /workspace /opt/abi-sandbox \
+    && chown 10001:10001 /workspace
 
 COPY entry.py /opt/abi-sandbox/entry.py
 

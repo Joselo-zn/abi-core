@@ -154,6 +154,39 @@ class TestMCPUtils:
         
         # Should use defaults
         assert config.transport == "streamable-http"  # Default transport
+        assert config.scheme == "http"
+
+
+class TestMCPHttps:
+    """A managed endpoint (Cloud Run, *.run.app) only serves TLS on 443:
+    SEMANTIC_LAYER_HOST=https://host must reach https://host:443/mcp."""
+
+    @pytest.mark.parametrize("value, scheme, host, port", [
+        ("https://sl-alpha-123.northamerica-south1.run.app", "https", "sl-alpha-123.northamerica-south1.run.app", 443),
+        ("https://sl.example.com:8443", "https", "sl.example.com", 8443),
+        ("http://abi-swarm-semantic-layer:10100", "http", "abi-swarm-semantic-layer", 10100),
+        ("http://abi-swarm-semantic-layer", "http", "abi-swarm-semantic-layer", 10100),
+        ("abi-swarm-semantic-layer", "http", "abi-swarm-semantic-layer", 10100),
+    ])
+    def test_scheme_and_port_from_semantic_layer_host(self, value, scheme, host, port):
+        from abi_core.common.utils import get_mcp_server_config
+        config = get_mcp_server_config(environ={"SEMANTIC_LAYER_HOST": value})
+        assert (config.scheme, config.host, config.port) == (scheme, host, port)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("transport, client_name, path", [
+        ("streamable-http", "streamable_http_client", "/mcp"),
+        ("sse", "sse_client", "/sse"),
+    ])
+    async def test_init_session_uses_the_scheme(self, transport, client_name, path):
+        streams = (AsyncMock(), AsyncMock(), AsyncMock())[: 3 if transport == "streamable-http" else 2]
+        with patch(f"abi_core.abi_mcp.client.{client_name}") as mock_client, \
+                patch("abi_core.abi_mcp.client.ClientSession") as mock_client_session:
+            mock_client.return_value.__aenter__.return_value = streams
+            mock_client_session.return_value.__aenter__.return_value = AsyncMock()
+            async with client.init_session("sl.run.app", 443, transport, scheme="https"):
+                pass
+        assert mock_client.call_args.args[0] == f"https://sl.run.app:443{path}"
 
 
 if __name__ == "__main__":
