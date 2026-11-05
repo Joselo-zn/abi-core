@@ -20,7 +20,7 @@ import builtins
 import re
 from typing import Dict, List, Optional, Tuple
 
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 from abi_core.common.prompts.reviewer import build_repair_prompt  # noqa: F401  (moved; re-exported)
 
 _FILE_RE = re.compile(
@@ -187,7 +187,7 @@ async def repair_files(
         changes_out.update(parse_changes(response, allowed))
     merged, notes = fix_missing_imports({**files, **repaired})
     for note in notes:
-        abi_logging(f"[🛠️] Import fix: {note}")
+        abi_logging(f"[🛠️] Import fix: {redact(note)}")
     changed = {k: v for k, v in merged.items() if v != files.get(k)}
     abi_logging(
         f"[🛠️] Integration repair: model returned {sorted(repaired)}; changed {sorted(changed)}"

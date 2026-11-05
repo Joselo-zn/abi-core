@@ -44,10 +44,27 @@ Use `abi_logging()` — it writes to stdout (captured by Docker):
 ```python
 from abi_core.common.utils import abi_logging
 
-abi_logging("[📥] Received query: ...")
 abi_logging("[✅] Step completed")
 abi_logging("[❌] Error: ...")
 ```
+
+### Never log what the user wrote
+
+Logs end up in places users never agreed to share their messages with: container logs, a log collector, the artifact store. So anything that comes from the user, or is built from it — the message, a plan, a prompt, the model's output, tool arguments, generated code — goes into a log line through `redact()`, never directly:
+
+```python
+from abi_core.common.utils import abi_logging, redact, mask_email
+
+abi_logging(f"[📥] Query: {redact(query)}")
+# [📥] Query: <text len=50 sha=4bb686a0>
+
+abi_logging(f"[👤] User: {mask_email(email)}")
+# [👤] User: j***@example.com
+```
+
+`redact()` logs a fingerprint — the length and a short hash — instead of the content. It accepts a string or anything JSON-serializable (`None` gives `<none>`), and the same text always gives the same fingerprint, so you can follow one message across agents and retries without reading it. `mask_email()` keeps the first letter and the domain (`<redacted>` if there's no `@`).
+
+ABI's own log lines already work this way. To see the content while debugging on your machine, set `ABI_LOG_USER_CONTENT=true`: `redact()` and `mask_email()` then return their input unchanged. Never set it anywhere real users are.
 
 ## Log lines worth knowing (Orchestrator)
 
@@ -62,7 +79,7 @@ The lines that answer "what did the system decide, and why":
 
 ## Artifact Store logs
 
-If `LOG_TO_ARTIFACT_STORE=true`, agent execution logs are uploaded to MinIO for long-term storage:
+If `LOG_TO_ARTIFACT_STORE=true` (default `false`), agent execution logs are uploaded to MinIO for long-term storage — one more reason to keep user content out of them:
 
 ```yaml
 environment:

@@ -10,7 +10,7 @@ an external value, not from any prior step's output.)
 """
 
 from app import agent
-from abi_core.common.utils import abi_logging, clean_llm_json
+from abi_core.common.utils import abi_logging, clean_llm_json, redact
 from abi_core.common.plan_models import PlannerOutput
 from abi_core.common.semantic_tools import tool_find_agent
 from abi_core.agent.agent import AbiAgent
@@ -43,9 +43,9 @@ def parse_plan(raw_response):
         plan_dict = validated.to_dict()
         abi_logging(f"[✅] Plan validated by PlannerOutput schema")
         plan = plan_dict.get("plan", {})
-        abi_logging(f"[📋] PLAN: objective='{plan.get('objective', '')}' strategy={plan.get('execution_strategy', '')}")
+        abi_logging(f"[📋] PLAN: objective={redact(plan.get('objective', ''))} strategy={plan.get('execution_strategy', '')}")
         for t in plan.get("tasks", []):
-            abi_logging(f"[📋]   {t.get('task_id')}: {t.get('description', '')[:120]} deps={t.get('dependencies', [])}")
+            abi_logging(f"[📋]   {t.get('task_id')}: {redact(t.get('description', ''))} deps={t.get('dependencies', [])}")
         plan_dict = _enforce_atomic_tasks(plan_dict)
         return plan_dict
     except Exception as e:
@@ -213,6 +213,6 @@ async def assign_agents(plan_data):
         ttype = t.get("type", "?")
         desc = t.get("description", "")[:100]
         agents = [a.get("name", "?") if isinstance(a, dict) else str(a) for a in t.get("agents", [])]
-        abi_logging(f"[📋]   {tid} [{ttype}] {desc} agents={agents}")
+        abi_logging(f"[📋]   {tid} [{ttype}] {redact(desc)} agents={agents}")
 
     return plan_data

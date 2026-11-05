@@ -247,6 +247,8 @@ def create_project(name, description, domain, with_semantic_layer, with_guardian
                 ('opa/policies/basic.rego', 'service_guardian/opa/policies/basic.rego'),
                 ('opa/policies/semantic_access.rego', 'service_guardian/opa/policies/semantic_access.rego'),
                 ('opa/policies/a2a_access.rego', 'service_guardian/opa/policies/a2a_access.rego'),
+                # Erases user content from OPA's decision logs (logs-without-user-content.md)
+                ('opa/policies/log_mask.rego', 'service_guardian/opa/policies/log_mask.rego'),
             ]
             
             # Create all Guardian files

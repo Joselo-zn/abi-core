@@ -10,7 +10,7 @@ import json
 import os
 from typing import Optional, List, Dict, Any, Callable
 
-from abi_core.common.utils import get_mcp_server_config, abi_logging
+from abi_core.common.utils import get_mcp_server_config, abi_logging, redact
 from abi_core.abi_mcp import client
 from abi_core.security.agent_auth import build_semantic_context_from_card
 from abi_core.common.service_card import ServiceCard
@@ -208,7 +208,7 @@ class MCPToolkit:
                 self.mcp_config.transport,
                 scheme=self.mcp_config.scheme,
             ) as mcp_session:
-                abi_logging(f"[🔧] Calling MCP tool '{tool_name}' with args: {kwargs}")
+                abi_logging(f"[🔧] Calling MCP tool '{tool_name}' with args: {sorted(kwargs)} {redact(kwargs)}")
                 
                 # Build context: ServiceCard takes priority over agent card path
                 if self.service_card is not None:
@@ -237,7 +237,7 @@ class MCPToolkit:
                     _clen = len(mcp_response.content) if _has and mcp_response.content else 0
                     abi_logging(f"[📡] MCP response for '{tool_name}': has_content={_has}, type={_ctype}, len={_clen}")
                     if _has and mcp_response.content and isinstance(mcp_response.content, list) and hasattr(mcp_response.content[0], 'text'):
-                        abi_logging(f"[📡] Response text: {mcp_response.content[0].text[:300]}")
+                        abi_logging(f"[📡] Response text: {redact(mcp_response.content[0].text)}")
 
                     # Structured result first: the whole return value, also
                     # when it is a list (content[0] holds only its first
@@ -378,7 +378,7 @@ class MCPToolkit:
             if any(kw in haystack for kw in keywords):
                 matches.append(t)
 
-        abi_logging(f"[🔍] search_tools('{query}'): {len(matches)}/{len(all_tools)} matches")
+        abi_logging(f"[🔍] search_tools({redact(query)}): {len(matches)}/{len(all_tools)} matches")
         return matches
     
     async def has_tool(self, tool_name: str) -> bool:
@@ -480,7 +480,7 @@ async def tool_find_agent(query: str, exclude_ephemeral: bool = False) -> Option
         mcp_config.transport,
         scheme=mcp_config.scheme,
     ) as mcp_session:
-        abi_logging(f"[🔍] Searching for agent matching query {query}")
+        abi_logging(f"[🔍] Searching for agent matching query {redact(query)}")
         context = build_semantic_context_from_card(
             AGENT_CARD_PATH,
             tool_name="find_agent",
@@ -513,6 +513,39 @@ async def tool_find_agent(query: str, exclude_ephemeral: bool = False) -> Option
             abi_logging(f'No Agents found')
             return None
 
+# What a model may see of an agent card: what the agent does, never how to
+# reach it or what runs it (agent-identity-disclosure.md). An allowlist, so
+# a field added to cards later does not reach a model by default.
+MODEL_VISIBLE_CARD_FIELDS = ("name", "description")
+MODEL_VISIBLE_SKILL_FIELDS = ("name", "description")
+
+
+def agent_card_for_model(card: Any) -> Optional[Dict[str, Any]]:
+    """An agent card cut down to what a model may read: name, description
+    and its skills' names and descriptions. No url, llmConfig, auth, tools
+    or metadata. Code that connects to the agent keeps the full card."""
+    if card is None:
+        return None
+
+    def field(obj, name):        # a2a's protobuf AgentCard, a pydantic model or a dict
+        return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+
+    out = {k: field(card, k) for k in MODEL_VISIBLE_CARD_FIELDS if field(card, k)}
+    skills = [{k: field(s, k) for k in MODEL_VISIBLE_SKILL_FIELDS if field(s, k)}
+              for s in (field(card, "skills") or [])]
+    if skills:
+        out["skills"] = skills
+    return out
+
+
+@tool("tool_find_agent")
+async def tool_find_agent_for_model(query: str) -> Optional[Dict[str, Any]]:
+    """Find an agent that can complete a specific task: its name, what it
+    does and its skills."""
+    card = await tool_find_agent.ainvoke({"query": query})
+    return agent_card_for_model(card)
+
+
 @tool
 async def tool_list_agents(query: str, max_agents: int = 5) -> List[AgentCard]:
     """List Agents that can complete especific task.
@@ -536,7 +569,7 @@ async def tool_list_agents(query: str, max_agents: int = 5) -> List[AgentCard]:
             tool_name="recommend_agents",
             query=query
         )
-        abi_logging(f"[🔍] Listing agents matching query {query}")
+        abi_logging(f"[🔍] Listing agents matching query {redact(query)}")
         mcp_response = await client.recommend_agents(mcp_session, query, max_agents, context)
         if not (hasattr(mcp_response, 'content') and mcp_response.content):
             abi_logging('No Agents found')
@@ -579,7 +612,7 @@ async def tool_recommend_agents(
         mcp_config.transport,
         scheme=mcp_config.scheme,
     ) as mcp_session:
-        abi_logging(f"[🔍] Recommending agents for: {task_description}")
+        abi_logging(f"[🔍] Recommending agents for: {redact(task_description)}")
         
         context = build_semantic_context_from_card(
             AGENT_CARD_PATH,

@@ -6,10 +6,14 @@ OPA is the rules engine. You write rules in a language called Rego. Guardian ask
 
 ```
 services/guardian/opa/policies/
+├── basic.rego           ← Baseline checks on content and actions
 ├── a2a_access.rego      ← Agent-to-agent communication rules
 ├── semantic_access.rego ← Who can use which MCP tools
-└── custom.rego          ← Your domain-specific rules
+├── log_mask.rego        ← Keeps user content out of OPA's decision logs
+└── <name>.rego          ← Your domain-specific rules (abi-core add policies --name <name>)
 ```
+
+`log_mask.rego` isn't a rule: it tells OPA which input fields to erase before writing a decision to its log. See [Audit & Compliance](05-audit-compliance.md#what-the-logs-dont-carry).
 
 ## Core policies: the rules you can't turn off
 

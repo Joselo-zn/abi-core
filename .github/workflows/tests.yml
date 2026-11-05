@@ -43,9 +43,10 @@ jobs:
           cache-dependency-path: abi_core_framework/pyproject.toml
 
       # openai: test_llm_params_from_config builds a real langchain-openai
-      # model. ui: test_run_progress imports chainlit.
+      # model. ui: test_run_progress imports chainlit. gcp:
+      # test_sandbox_cloudrun imports google.cloud.run_v2.
       - name: Install abi-core-ai
-        run: pip install ".[dev,openai,ui]"
+        run: pip install ".[dev,openai,ui,gcp]"
 
       # Without these images the sandbox tests (test_sandbox.py and the
       # sandbox cases of test_integration_review.py) are skipped.

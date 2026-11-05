@@ -8,30 +8,210 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **The agent can ask back instead of guessing.** When an agent isn't sure
-  what a message means — a reply to a pending plan, or a request that could
-  mean a file or just an answer — it can send
-  `AgentResponse.input_required(fallback_text,
-  action_type="route_clarification", clarify={...})`. The Chainlit UI shows a
-  card with the question, the user's message on one line and the options as
-  buttons; an option can open a text field with the message filled in. Texts
-  travel as keys, so the card follows the browser's language (English or
-  Spanish). The choice comes back as a JSON sentinel
-  (`{"_sentinel": "__route_clarify__", "clarify_id", "option", "text"?}`)
-  that the agent resolves by code, without a model. If the user writes
-  something else instead, the card is marked as no longer current. New:
-  `ROUTE_CLARIFICATION_ACTION` and `ROUTE_CLARIFY_SENTINEL`
-  (`abi_core.agent.route_clarification`) and the `RouteClarification`
-  element. See [Plan Confirmation](docs/single-agent/09-plan-confirmation.md#asking-back-when-the-agent-is-unsure).
-- **`invoke_classifier` — classify with a decision model.** New
-  `abi_core.agent.invoke_classifier(state, questions)` calls a decision model such
-  as Laya on Ollama's `/v1/systemone` (Ollama 0.40 or later): typed questions
-  scored in one pass, with calibrated probabilities, in about 0.1 s on CPU:
-  `choice` (a dict of 2-26 options), `noul` (true/false) and `score` (an ordered
-  rubric: a list of 2-10 levels, lowest first). The model and the Ollama come from `CLASSIFIER_MODEL`
-  (default `laya`) and `CLASSIFIER_BASE_URL` (default `OLLAMA_HOST`). A malformed
-  request raises `ValueError` before any call; a rejected or unreachable model
-  raises `ClassifierError`.
+- **Extension points for the Chat UI (`ABI_UI_EXTENSIONS`).** A project adds
+  its own pieces without forking the Chat UI. `ABI_UI_EXTENSIONS` lists
+  Python modules, and each one exposes `register(ui)` from
+  `abi_core.ui.extensions`.
+  - **Routes:** `ui.route(method, path)` places the route before Chainlit's
+    catch-all route. Handler errors return a plain 500, and the log never
+    includes the body, headers or a traceback.
+  - **Sessions:** the `ui.require_user` dependency refuses requests without
+    a user, even when login is not configured (Chainlit's own
+    `get_current_user` returns `None` there). `ui.csrf_token` and
+    `ui.verify_csrf` protect POSTs that rely on the session cookie.
+  - **Chat:** `ui.command(...)` adds composer commands, and
+    `ui.starter(...)` adds starters. `ui.on_chat_start`,
+    `ui.on_chat_resume` (runs once the thread is on the page) and
+    `ui.on_message` (can keep a message from the agent) are the hooks.
+  - **Identity:** `ui.identity_chain(secret_env, user_id=None, extra=())`
+    and `ui.current_user()`.
+  - **Header:** `ui.header_link(...)` adds a link that exists only while
+    the extension is loaded.
+  - **Greeting:** with starters registered, the Chat UI no longer sends its
+    greeting, which hid them, because Chainlit shows starters only on an
+    empty chat. Without starters, the greeting now follows the browser
+    language.
+  - **Failures:** a module that fails to load is logged and skipped. Without
+    the variable, nothing changes.
+- **The Chat UI can ask a provisioner for each user's accounts, once.**
+  With `ABI_UI_PROVISION_URL` and `HOP_SECRET_CHATUI_PROVISIONER` set,
+  the first chat of a user calls `<url>/provision` in the background.
+  - **Identity:** the call carries the HMAC identity chain, with the
+    user's Chainlit id.
+  - **Success:** the user's metadata gets `workflow_accounts: "ready"`, so
+    later chats skip the call.
+  - **Failure:** the next chat tries again. A failure never blocks a chat.
+  - **Off by default:** nothing happens without the URL. The provisioner
+    itself is an abi-swarm service.
+- **The Chat UI translates notices an agent sends as a key.** A text
+  response with `meta.notice = {"key": ..., "params": {...}}` is shown in
+  the UI language.
+  - **Keys:** reached limits, `limit.messages_per_day`,
+    `limit.chats_per_day`, `limit.plans_per_day`,
+    `limit.global_plans_per_day`, `limit.runs_per_day` and
+    `limit.active_workflows`.
+  - **Params:** `limit`, plus `resets_at` in ISO 8601 UTC. The UI turns
+    `resets_at` into the time left.
+  - **Fallback:** an unknown key or missing params shows the agent's own
+    text. New helper: `abi_core.ui.run_progress.notice_message`.
+
+## [1.13.93] - 2026-10-31
+
+### Added
+- **The Chat UI marks an admin in the identity chain.** When the logged-in
+  user has `metadata.is_admin`, `_build_identity_chain` adds a
+  `("role", "admin")` link, sealed with the rest of the chain, so a
+  browser cannot claim it. A downstream service (the swarm's Orchestrator
+  quotas) can trust it after `verify_chain`. Regular users' chains are
+  unchanged.
+
+## [1.13.92] - 2026-10-31
+
+### Fixed
+- **`ArtifactStore` uploads work on GCS and other S3-compatible stores.**
+  Since boto3 1.36, every upload carries a checksum with `aws-chunked`
+  encoding. GCS rejects it, so every `PutObject` failed with
+  `SignatureDoesNotMatch`: project folders, log flushes and artifacts.
+  The store's client now sends checksums only where the S3 API requires
+  them (`request_checksum_calculation` and `response_checksum_validation`
+  set to `"when_required"`).
+  - On GCS, `ensure_expiration` no longer writes a lifecycle rule. The GCS
+    XML API takes another format, and the store's HMAC key should only
+    handle objects. Set the retention on the bucket instead
+    (`gcloud storage buckets update --lifecycle-file`). With GCS,
+    `PROJECT_RETENTION_DAYS` has no effect.
+
+## [1.13.91] - 2026-10-31
+
+### Fixed
+- **The Builder's wait for a Cloud Run ephemeral sends the ID token.**
+  `check_container_health` polled `/health` with `urllib` and no token.
+  With IAM on, every check got a 403 until the 600 s timeout, and the
+  ephemeral was deleted as unhealthy. It now adds the token
+  (`cloudrun_auth.auth_header(url)`), like the A2A calls.
+
+## [1.13.90] - 2026-10-31
+
+### Fixed
+- **Cloud Run ephemerals check IAM, and callers send an ID token.**
+  - **Why:** ephemerals were created with `invoker_iam_disabled`, which
+    makes `CreateService` require `run.services.setIamPolicy`. A
+    `run.developer` account could not create them. That permission also
+    lets an account make any service public.
+  - **What changed:** ephemerals are now created with IAM on and internal
+    ingress. Calls between agents (`agent_connection` and `check_health`)
+    send a Google ID token to `*.run.app` hosts when the caller runs on
+    Cloud Run.
+  - **How the token is handled:** it comes from the metadata server, with
+    no new dependency, and each service's token is reused for 50 minutes.
+    The new module is `abi_core.common.cloudrun_auth`. In Docker nothing
+    changes.
+  - **Required IAM:** the accounts that call ephemerals need
+    `roles/run.invoker`.
+
+## [1.13.89] - 2026-10-31
+
+### Fixed
+- **The Orchestrator's model no longer sees agents' internal addresses.**
+  Its `tool_find_agent` tool handed the model the full agent card,
+  including the agent's URL, which the model could repeat to a user. The
+  model now gets a cut-down card: name, description, and the skills'
+  names and descriptions.
+  - New `abi_core.common.semantic_tools.tool_find_agent_for_model`. The
+    model still sees it as `tool_find_agent`.
+  - New `agent_card_for_model(card)`. It keeps an allowlist of fields, so a
+    field added to cards later does not reach a model by default.
+  - Code that calls `tool_find_agent.ainvoke(...)` still gets the full
+    card.
+- **Chat UI: an encrypted conversation resumes with its cards and
+  metadata intact.** After decryption, JSON columns (a thread's metadata,
+  an element's props) came back as JSON text instead of the parsed value
+  that Chainlit expects. On resume, custom elements such as the plan
+  review card got empty props, and resuming failed with "'str' object has
+  no attribute 'get'". They are now parsed after decryption, including
+  rows encrypted before this fix.
+
+## [1.13.88] - 2026-10-31
+
+### Fixed
+- **`ArtifactStore()` uses `ARTIFACT_BUCKET`.** The `bucket` argument
+  defaulted to `"abi-artifacts"`, so the environment variable was never
+  read: anything that built a store without a bucket (the project folder,
+  the orchestrator's and the reviewer's uploads) tried to use or create
+  `abi-artifacts`. Without `ARTIFACT_BUCKET` the bucket is still
+  `abi-artifacts`.
+
+## [1.13.87] - 2026-10-31
+
+### Fixed
+- **Chat UI: the first login after a pause no longer fails.** Managed
+  Postgres (such as Neon) closes idle connections, and the pool handed a
+  closed one to the OAuth callback ("connection is closed"); the user saw
+  a login error and had to try again. Both the UI's engine and the data
+  layer's now check a connection before using it (`pool_pre_ping`).
+- **Chat UI: a new conversation's first message is encrypted with its
+  user's key.** Chainlit writes that message before the conversation
+  records its user, so it was encrypted with the shared `system` key and
+  would have stayed readable after the user's key was deleted. The data
+  layer now takes the user from the Chainlit session when the conversation
+  has no owner yet. Messages already written with the `system` key stay as
+  they are.
+
+## [1.13.86] - 2026-10-30
+
+### Added
+- **Chat UI data is encrypted, and the UI runs with a least-privilege database role.**
+  - **What is encrypted, and how:** messages, thread titles, feedback
+    comments, attachment names and user metadata use AES-256-GCM, with one
+    data key per user wrapped by a key-encryption key. Attachments are
+    encrypted in the bucket and served decrypted, to their owner only, by
+    `/abi-ui/files/...`. A user is looked up by an HMAC of their email, so
+    no address is stored in clear. Deleting a user's data key makes all of
+    their data unreadable.
+  - **Configuration:** the key-encryption key is `ABI_UI_KMS_KEY` (Cloud KMS,
+    with the `gcp` extra) or `ABI_UI_LOCAL_KEK` (local). The HMAC key is
+    `ABI_UI_IDENTITY_KEY`. With neither key-encryption key, the UI runs
+    unencrypted and logs a warning.
+  - **Existing data:** rows written before encryption are still read, and
+    users stored by email move to the HMAC on their next login.
+  - **Deletes are soft:** deleting a conversation or a 👍/👎 hides it
+    instead of deleting rows, so the UI's role needs only `SELECT`, `INSERT`
+    and `UPDATE`.
+  - **The schema check no longer needs `CREATE`:** it creates only missing
+    tables and columns (including `data_keys`). Without permission it says
+    exactly what the database owner must create.
+
+## [1.13.85] - 2026-10-30
+
+### Fixed
+- **OPA's decision logs no longer carry user content (Guardian template).**
+  - **What leaked:** with `decision_logs.console=true`, OPA printed each
+    decision's full input. Two fields of it carry what the user wrote: the
+    agent-to-agent message preview and an ephemeral card's skill
+    description, which is its task prompt.
+  - **The fix:** the template now ships `opa/policies/log_mask.rego`
+    (`package system.log`), which erases both fields from the log. The
+    policies still see them, and each decision lists them under `erased`.
+  - `abi-core create` copies it into new projects.
+
+## [1.13.84] - 2026-10-30
+
+### Added
+- **Logs no longer carry what the user wrote.** The user's message, plans,
+  prompts, model output, tool-call arguments and generated code were logged
+  in plain text, mostly at `info`. They reached stdout and, with
+  `LOG_TO_ARTIFACT_STORE`, the artifact store. That covered the framework,
+  `abi_agents` and the sandbox service.
+  - `redact(value)` in `abi_core.common.utils` logs a fingerprint instead,
+    such as `<text len=1834 sha=3f9a1c2e>`. The length and a short hash are
+    enough to follow the same text across agents and retries.
+  - `mask_email()` logs `j***@example.com`.
+  - Every such log line now goes through them. `ABI_LOG_USER_CONTENT=true`
+    logs the content again, for local debugging only (default: `false`).
+  - A test fails if a new `abi_logging` line interpolates user content
+    outside `redact()`.
+
+## [1.13.83] - 2026-10-29
 
 ### Added
 - **Sandbox on Cloud Run Jobs.** `SANDBOX_RUNTIME=cloudrun`, or
@@ -39,7 +219,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   code as an execution of a Cloud Run Job.
   - **The Job:** there is one per sandbox image, created by your deploy.
     `SANDBOX_CLOUDRUN_JOBS` maps each image name to its Job, for example
-    `abi-sandbox-python=abi-sandbox-python-alpha`.
+    `abi-sandbox-python=sandbox-python-prod`.
   - **Each execution:** gets its files, its command and its timeout. The
     `entry.py` contract is the same as with Docker.
   - **The output:** stdout and stderr come from Cloud Logging, so a result
@@ -59,6 +239,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The sandbox images let user 10001 write to `/workspace`.** On Docker a
   tmpfs covers it; Cloud Run has none.
 
+## [1.13.82] - 2026-10-29
+
 ### Fixed
 - **The MCP client reaches a semantic layer behind HTTPS.** The client always
   connected with `http://{host}:{port}`, so on a managed endpoint that only
@@ -69,6 +251,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ServerConfig` has a new `scheme` field, `"http"` by default.
   - `abi_mcp.client.init_session()` takes `scheme="http"`.
   - `http://` URLs and bare hostnames work as before.
+
+## [1.13.81] - 2026-10-26
+
+### Added
+- **The agent can ask back instead of guessing.** When an agent isn't sure
+  what a message means — a reply to a pending plan, or a request that could
+  mean a file or just an answer — it can send
+  `AgentResponse.input_required(fallback_text,
+  action_type="route_clarification", clarify={...})`. The Chainlit UI shows a
+  card with the question, the user's message on one line and the options as
+  buttons; an option can open a text field with the message filled in. Texts
+  travel as keys, so the card follows the browser's language (English or
+  Spanish). The choice comes back as a JSON sentinel
+  (`{"_sentinel": "__route_clarify__", "clarify_id", "option", "text"?}`)
+  that the agent resolves by code, without a model. If the user writes
+  something else instead, the card is marked as no longer current. New:
+  `ROUTE_CLARIFICATION_ACTION` and `ROUTE_CLARIFY_SENTINEL`
+  (`abi_core.agent.route_clarification`) and the `RouteClarification`
+  element. See [Plan Confirmation](docs/single-agent/09-plan-confirmation.md#asking-back-when-the-agent-is-unsure).
+
+## [1.13.80] - 2026-10-26
+
+### Added
+- **`invoke_classifier` — classify with a decision model.** New
+  `abi_core.agent.invoke_classifier(state, questions)` calls a decision model such
+  as Laya on Ollama's `/v1/systemone` (Ollama 0.40 or later): typed questions
+  scored in one pass, with calibrated probabilities, in about 0.1 s on CPU:
+  `choice` (a dict of 2-26 options), `noul` (true/false) and `score` (an ordered
+  rubric: a list of 2-10 levels, lowest first). The model and the Ollama come from `CLASSIFIER_MODEL`
+  (default `laya`) and `CLASSIFIER_BASE_URL` (default `OLLAMA_HOST`). A malformed
+  request raises `ValueError` before any call; a rejected or unreachable model
+  raises `ClassifierError`.
 
 ## [1.13.79] - 2026-10-26
 
@@ -84,7 +298,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   importable from `abi_core.common.context_loader`, nor `TDD_PROMPT_INSTRUCTION`
   and `tdd_summary` from `abi_core.common.code_tdd`; import them from
   `abi_core.common.prompts.code_agent`.
-- Projects and agents generated by the CLI require `abi-core-ai>=1.13.82`.
+- Projects and agents generated by the CLI require `abi-core-ai>=1.13.96`.
 
 ### Fixed
 - **The reference Builder could not load its own agent card.** Its config
@@ -124,7 +338,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.13.78] - 2026-10-21
 
 ### Changed
-- Projects and agents generated by the CLI require `abi-core-ai>=1.13.82`.
+- Projects and agents generated by the CLI require `abi-core-ai>=1.13.96`.
 
 ### Fixed
 - **The MCP connection settings were read only once, at import.**
@@ -163,7 +377,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docker volume create ollama_data`.
 
 ### Changed
-- Projects and agents generated by the CLI require `abi-core-ai>=1.13.82`.
+- Projects and agents generated by the CLI require `abi-core-ai>=1.13.96`.
 
 ## [1.13.76] - 2026-10-16
 

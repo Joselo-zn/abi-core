@@ -37,7 +37,7 @@ elif result.exit_code != 0:
 
 ### Returning structured results
 
-If the command writes `/workspace/.result.json`, it comes back in `result.result_json` as raw text (max 256 KiB). Parse it; never execute or trust it — it was produced by the code under test.
+If the command writes `/workspace/.result.json`, it comes back in `result.result_json` as raw text (max 256 KiB; 128 KiB on Cloud Run). Parse it; never execute or trust it — it was produced by the code under test.
 
 ### Allowed environment variables
 
@@ -53,7 +53,7 @@ If the command writes `/workspace/.result.json`, it comes back in `result.result
 | `pids` | 128 | Contains fork bombs |
 | `workspace_mb` | 64 | tmpfs at `/workspace` |
 | `max_output_bytes` | 64 KiB | Per stream, tail kept |
-| `max_result_bytes` | 256 KiB | `.result.json` |
+| `max_result_bytes` | 256 KiB | `.result.json` (128 KiB on Cloud Run) |
 
 Files are passed as a compressed bundle of at most 1 MiB (encoded).
 
@@ -104,6 +104,49 @@ async def check(run_id):
 
 Outside a decorated function, `with sandbox_caller(run_id): ...` (`abi_core.common.sandbox_service_client`) does the same. A denied or unreachable service comes back as `SandboxResult.error` (`"sandbox denied: <reason>"`) — never as a pass.
 
+## Running on Cloud Run Jobs (`SANDBOX_RUNTIME=cloudrun`)
+
+On GCP there's no Docker socket to hand out. The Cloud Run backend runs each call as an execution of a **Cloud Run Job**, one Job per sandbox image, with the same contract as Docker: the files, the allowlisted environment and the command travel with each execution, and the same `SandboxResult` comes back.
+
+```bash
+pip install "abi-core-ai[gcp]"
+```
+
+```bash
+SANDBOX_RUNTIME=cloudrun          # or SANDBOX_SERVICE_BACKEND=cloudrun on sandbox-service
+CLOUDRUN_PROJECT=my-project
+CLOUDRUN_REGION=us-central1
+SANDBOX_CLOUDRUN_JOBS=abi-sandbox-python=sandbox-python-prod,abi-sandbox-pygame=sandbox-pygame-prod
+```
+
+`SANDBOX_CLOUDRUN_JOBS` maps each image (its name, without registry or tag) to the Job that runs it. An image with no Job is an error — never a silent fallback to another image or backend.
+
+Normally the Cloud Run backend sits behind the governed sandbox (above): callers keep `SANDBOX_RUNTIME=service`, and sandbox-service runs the code on Cloud Run with `SANDBOX_SERVICE_BACKEND=cloudrun`, keeping the signature, OPA decision and audit in front of it.
+
+### Your deploy creates the Jobs — and their isolation
+
+`abi-core` runs the Jobs; it doesn't create them. Each Job is built from a sandbox image, and the isolation comes from how you deploy it:
+
+| Guarantee | How (Cloud Run Jobs) |
+|-----------|----------------------|
+| Own kernel | Every execution runs in its own microVM |
+| No network | Direct VPC egress to a subnet whose firewall denies all egress for the Job's network tag |
+| No useful identity | A dedicated service account with **no roles** |
+| Limits | CPU and memory are set on the Job (e.g. 1 CPU, 512 MiB); the timeout is set per execution |
+
+```{warning}
+Cloud Run doesn't let you block the metadata server: code running in the Job **can** fetch an access token for the Job's service account. That's why the account must have no roles at all. With no roles and no network, a stolen token opens nothing.
+```
+
+### What changes from Docker
+
+| | Docker | Cloud Run Jobs |
+|---|---|---|
+| Time per call | Seconds | About 10–30 s more: starting the microVM, and reading stdout/stderr back from Cloud Logging |
+| `.result.json` | Up to 256 KiB | Up to 128 KiB (it travels in one Cloud Logging entry) |
+| `cpus`, `memory_mb` | Per call | Fixed by the Job; per call, only `timeout_s` applies |
+| Out of memory | Reported by Docker | Inferred from a SIGKILL exit (137 or 247): Cloud Run doesn't report it |
+
 ## Hardening
 
 Docker containers share the host kernel. If [gVisor](https://gvisor.dev/) is installed, set `SANDBOX_DOCKER_RUNTIME=runsc` for an extra barrier against kernel-level escapes.
@@ -114,7 +157,6 @@ A crash of the calling process can leave a container behind. `await sweep_sandbo
 
 ## Not yet available
 
-- `SANDBOX_RUNTIME=cloudrun` (Cloud Run Jobs backend).
 - Limits are chosen by the caller's code and only `timeout_s` is capped (300 s); sandbox-service does not cap memory or CPU per request yet.
 - Installing dependencies with network access.
 - Long-running services (web servers left running).

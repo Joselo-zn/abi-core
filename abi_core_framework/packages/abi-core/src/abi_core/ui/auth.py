@@ -28,7 +28,8 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from fastapi.exception_handlers import http_exception_handler
 
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, mask_email
+from abi_core.ui.crypto import SYSTEM_KEY_ID, identity_hash, kek_from_env, warn_if_disabled
 
 DATABASE_URL = os.getenv("DATABASE_URL")  # postgresql+asyncpg://user:pass@host/db
 
@@ -38,7 +39,9 @@ _engine: Optional[AsyncEngine] = None
 def _get_engine() -> Optional[AsyncEngine]:
     global _engine
     if _engine is None and DATABASE_URL:
-        _engine = create_async_engine(DATABASE_URL)
+        # pool_pre_ping: Neon closes idle connections; without it the first
+        # query after a pause fails with "connection is closed".
+        _engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
     return _engine
 
 
@@ -69,7 +72,9 @@ CREATE TABLE IF NOT EXISTS threads (
     "userId" TEXT REFERENCES users("id") ON DELETE CASCADE,
     "userIdentifier" TEXT,
     "tags" TEXT[],
-    "metadata" JSONB NOT NULL DEFAULT '{}'::jsonb
+    "metadata" JSONB NOT NULL DEFAULT '{}'::jsonb,
+    "deletedAt" TEXT,
+    "deletedUserId" TEXT
 );
 
 CREATE TABLE IF NOT EXISTS steps (
@@ -103,7 +108,8 @@ CREATE TABLE IF NOT EXISTS feedbacks (
     "forId" TEXT NOT NULL,
     "threadId" TEXT REFERENCES threads("id") ON DELETE CASCADE,
     "value" INT NOT NULL,
-    "comment" TEXT
+    "comment" TEXT,
+    "deletedAt" TEXT
 );
 
 CREATE TABLE IF NOT EXISTS elements (
@@ -137,9 +143,29 @@ CREATE TABLE IF NOT EXISTS invites (
 CREATE TABLE IF NOT EXISTS waiting_list (
     email TEXT PRIMARY KEY,
     requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    notified BOOLEAN NOT NULL DEFAULT false
+    notified BOOLEAN NOT NULL DEFAULT false,
+    email_enc TEXT
+);
+
+CREATE TABLE IF NOT EXISTS data_keys (
+    "keyId" TEXT PRIMARY KEY,
+    "wrapped" TEXT NOT NULL,
+    "createdAt" TEXT,
+    "shreddedAt" TEXT
 );
 """
+
+# Columns added after a table first shipped: an existing database gets them
+# with ALTER TABLE (by its owner). `waiting_list.email` and `invites.*_by`
+# now hold the identity hash (crypto.identity_hash), not the address; the
+# address is `email_enc`, encrypted.
+_ADDED_COLUMNS = [
+    ("threads", "deletedAt", "TEXT"),
+    ("threads", "deletedUserId", "TEXT"),
+    ("feedbacks", "deletedAt", "TEXT"),
+    ("waiting_list", "email_enc", "TEXT"),
+]
+_TABLES = ["users", "threads", "steps", "feedbacks", "elements", "invites", "waiting_list", "data_keys"]
 
 _schema_ready = False
 
@@ -151,11 +177,34 @@ async def _ensure_schema() -> None:
     engine = _get_engine()
     if engine is None:
         return
+    # Look first, create only what is missing: Postgres checks CREATE on the
+    # schema even for CREATE TABLE IF NOT EXISTS on an existing table, and a
+    # least-privilege role (SELECT/INSERT/UPDATE) has no CREATE.
     async with engine.begin() as conn:
-        for statement in _SCHEMA.strip().split(";"):
-            statement = statement.strip()
-            if statement:
-                await conn.execute(sa.text(statement))
+        missing_tables = [t for t in _TABLES if (await conn.execute(
+            sa.text("SELECT to_regclass(:t)"), {"t": f"public.{t}"})).scalar() is None]
+        present = {(r[0], r[1]) for r in (await conn.execute(sa.text(
+            "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'"))).all()}
+    missing_columns = [(t, c, ty) for t, c, ty in _ADDED_COLUMNS
+                       if t not in missing_tables and (t, c) not in present]
+    if not missing_tables and not missing_columns:
+        _schema_ready = True
+        return
+    statements = [s.strip() for s in _SCHEMA.strip().split(";") if s.strip()]
+    try:
+        async with engine.begin() as conn:
+            for statement in statements:
+                if any(f"CREATE TABLE IF NOT EXISTS {t} " in statement for t in missing_tables):
+                    await conn.execute(sa.text(statement))
+            for t, c, ty in missing_columns:
+                await conn.execute(sa.text(f'ALTER TABLE {t} ADD COLUMN IF NOT EXISTS "{c}" {ty}'))
+    except sa.exc.ProgrammingError as e:
+        raise RuntimeError(
+            f"Chat UI schema incomplete — missing tables {missing_tables}, columns "
+            f"{[(t, c) for t, c, _ in missing_columns]}, and this role cannot create them. "
+            "Create them with the database owner (abi_core/ui/auth.py, _SCHEMA). "
+            "See chatui-least-privilege-db.md"
+        ) from e
     _schema_ready = True
 
 
@@ -169,20 +218,33 @@ async def _no_users_exist_yet() -> bool:
         return result.scalar() == 0
 
 
-async def _get_user_metadata(email: str) -> Optional[dict]:
+def _data_layer():
+    from chainlit.data import get_data_layer as _get
+    return _get()
+
+
+async def _get_user_metadata(identity: str) -> Optional[dict]:
+    """Through the data layer, so the metadata comes back decrypted."""
+    user = await _data_layer().get_user(identity)
+    return None if user is None else dict(user.metadata or {})
+
+
+async def _migrate_plain_identity(email: str, identity: str) -> None:
+    """A user stored before identities were hashed (identifier = the email
+    itself) is moved to the hash on their next login, with their threads."""
+    if identity == email.strip().lower():
+        return
     engine = _get_engine()
     async with engine.begin() as conn:
-        result = await conn.execute(
-            sa.text('SELECT "metadata" FROM users WHERE "identifier" = :email'),
-            {"email": email},
-        )
-        row = result.first()
-    if row is None:
-        return None
-    raw = row[0]
-    # asyncpg's jsonb decoding through raw sa.text() isn't guaranteed to
-    # come back as a dict (depends on codec registration) — handle both.
-    return json.loads(raw) if isinstance(raw, str) else raw
+        moved = (await conn.execute(
+            sa.text('UPDATE users SET "identifier" = :new WHERE lower("identifier") = :old'),
+            {"new": identity, "old": email.strip().lower()})).rowcount
+        if moved:
+            await conn.execute(
+                sa.text('UPDATE threads SET "userIdentifier" = :new WHERE lower("userIdentifier") = :old'),
+                {"new": identity, "old": email.strip().lower()})
+    if moved:
+        abi_logging(f"[🔐] Migrated a user to a hashed identity ({mask_email(email)})")
 
 
 async def claim_one_unused_invite(email: str) -> bool:
@@ -244,14 +306,17 @@ async def invite_is_valid(token: str) -> bool:
 
 
 async def add_to_waiting_list(email: str) -> None:
+    # `email` holds the identity hash (dedupes requests); the address itself
+    # is stored encrypted with the system key — the person has no user yet.
+    sealed = await _data_layer().keyring.encrypt(SYSTEM_KEY_ID, email.strip())
     engine = _get_engine()
     async with engine.begin() as conn:
         await conn.execute(
             sa.text(
-                "INSERT INTO waiting_list (email) VALUES (:email) "
+                "INSERT INTO waiting_list (email, email_enc) VALUES (:identity, :sealed) "
                 "ON CONFLICT (email) DO NOTHING"
             ),
-            {"email": email},
+            {"identity": identity_hash(email), "sealed": sealed},
         )
     _notify_admin_of_waiting_list(email)
 
@@ -265,7 +330,7 @@ def _notify_admin_of_waiting_list(email: str) -> None:
     if not host or not admin_email:
         abi_logging(
             "[⚠️] SMTP_HOST/ADMIN_NOTIFICATION_EMAIL not set — skipping waiting-list "
-            f"notification for {email}",
+            f"notification for {mask_email(email)}",
             level="warning",
         )
         return
@@ -308,8 +373,10 @@ if DATABASE_URL:
 
     @cl.data_layer
     def get_data_layer():
-        from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
+        from abi_core.ui.secure_data_layer import SecureDataLayer
+        from abi_core.ui.secure_storage import EncryptedStorageClient
 
+        warn_if_disabled()
         storage_provider = None
         # Reuses the swarm's existing MinIO (S3-compatible) — same
         # ARTIFACT_* convention already used by builder/orchestrator/planner
@@ -321,14 +388,16 @@ if DATABASE_URL:
         if artifact_endpoint:
             from chainlit.data.storage_clients.s3 import S3StorageClient
 
-            storage_provider = S3StorageClient(
+            storage_provider = EncryptedStorageClient(S3StorageClient(
                 bucket=os.getenv("CHAINLIT_ELEMENTS_BUCKET", "abi-chainlit-elements"),
                 endpoint_url=artifact_endpoint,
                 aws_access_key_id=os.getenv("ARTIFACT_ACCESS_KEY"),
                 aws_secret_access_key=os.getenv("ARTIFACT_SECRET_KEY"),
-            )
+            ))
 
-        return SQLAlchemyDataLayer(conninfo=DATABASE_URL, storage_provider=storage_provider)
+        # Encryption, least privilege and soft deletes:
+        # .abi/specs/not-implemented/chatui-least-privilege-db.md
+        return SecureDataLayer(conninfo=DATABASE_URL, storage_provider=storage_provider, kek=kek_from_env())
 
 
 # ── OAuth callback ──────────────────────────────────────────────────────
@@ -354,14 +423,23 @@ async def oauth_callback(
     if not email:
         return None
 
-    existing_metadata = await _get_user_metadata(email)
+    # The identifier stored (and looked up) is the email's HMAC, never the
+    # address; the address travels in metadata (encrypted at rest) and is
+    # what the UI shows.
+    identity = identity_hash(email)
+    await _migrate_plain_identity(email, identity)
+    default_app_user.identifier = identity
+    default_app_user.display_name = email
+    default_app_user.metadata = {**(default_app_user.metadata or {}), "email": email}
+
+    existing_metadata = await _get_user_metadata(identity)
     if existing_metadata is not None:
         # Chainlit's own _authenticate_user calls create_user() on EVERY
         # login (not just the first), and create_user() overwrites the
         # user's stored metadata with whatever we return here — so we have
         # to carry the existing metadata (is_admin, etc.) forward, or a
         # second login would silently wipe it.
-        default_app_user.metadata = existing_metadata
+        default_app_user.metadata = {**existing_metadata, "email": email}
         return default_app_user
 
     if await _no_users_exist_yet():
@@ -370,7 +448,7 @@ async def oauth_callback(
         default_app_user.metadata["is_admin"] = True
         return default_app_user
 
-    if await claim_one_unused_invite(email):
+    if await claim_one_unused_invite(identity):
         return default_app_user
 
     # No user, no invite available — reject. The exception handler below
@@ -397,6 +475,9 @@ async def on_chat_resume(thread: dict) -> None:
     from abi_core.ui.run_follow import start_following
 
     start_following(thread)
+
+    from abi_core.ui import extensions
+    await extensions.run_chat_resume(thread)
 
 
 # ── Custom routes: invite links, waiting-list form, admin page ─────────
@@ -500,13 +581,15 @@ def _register_routes() -> None:
         engine = _get_engine()
         async with engine.begin() as conn:
             invites = (await conn.execute(sa.text("SELECT token, used, used_by FROM invites ORDER BY created_at DESC"))).all()
-            waiting = (await conn.execute(sa.text("SELECT email, requested_at FROM waiting_list ORDER BY requested_at DESC"))).all()
+            waiting = (await conn.execute(sa.text("SELECT email, email_enc, requested_at FROM waiting_list ORDER BY requested_at DESC"))).all()
+        keyring = _data_layer().keyring
+        waiting = [(await keyring.decrypt(r.email_enc)) if r.email_enc else r.email for r in waiting]
 
         base_url = os.getenv("CHAINLIT_URL", "")
         invite_links = "".join(
             f"<li>{base_url}/invite/{r.token}</li>" for r in invites if not r.used
         )
-        waiting_rows = "".join(f"<li>{r.email}</li>" for r in waiting) or "<p><em>Vacía.</em></p>"
+        waiting_rows = "".join(f"<li>{address}</li>" for address in waiting) or "<p><em>Vacía.</em></p>"
 
         return HTMLResponse(f"""
             <html><body style="font-family: sans-serif; max-width: 640px; margin: 40px auto;">
@@ -586,6 +669,30 @@ def _register_routes() -> None:
         if not await has_generated_invite(email):
             await create_invites(created_by=email, count=1)
         return RedirectResponse("/invites/mine", status_code=303)
+
+    from fastapi.responses import Response
+    from abi_core.ui.secure_storage import FILES_ROUTE, split_key
+
+    @chainlit_asgi_app.get(FILES_ROUTE + "/{object_key:path}")
+    async def encrypted_file(object_key: str, current_user=Depends(get_current_user)):
+        """An attachment, decrypted for its owner only. Another user's object
+        answers 404 — not 403 — so its existence is not revealed."""
+        layer = _data_layer()
+        storage = getattr(layer, "storage_provider", None)
+        if not current_user or storage is None or not hasattr(storage, "read_decrypted"):
+            raise HTTPException(status_code=404)
+        owner, stored_key = split_key(object_key)
+        user = await layer.get_user(current_user.identifier)
+        if user is None or user.id != owner:
+            raise HTTPException(status_code=404)
+        rows = await layer.execute_sql('SELECT "mime", "name" FROM elements WHERE "objectKey" = :k LIMIT 1',
+                                       {"k": stored_key})
+        mime = (rows[0].get("mime") if rows else None) or "application/octet-stream"
+        try:
+            data = await storage.read_decrypted(stored_key)
+        except Exception:
+            raise HTTPException(status_code=404)
+        return Response(content=data, media_type=mime, headers={"Cache-Control": "private, no-store"})
 
     if _catch_all is not None:
         chainlit_asgi_app.router.routes.append(_catch_all)

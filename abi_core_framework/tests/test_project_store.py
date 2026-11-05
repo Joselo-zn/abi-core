@@ -99,3 +99,34 @@ def test_technical_design_kept_but_hidden_from_model_schema():
     assert PlannerOutput.model_validate(out).to_dict()["plan"]["technical_design"] == design
     # ...but the model never sees it in the schema it decodes against
     assert "technical_design" not in json.dumps(PlannerOutput.model_json_schema())
+
+
+def test_default_store_uses_the_configured_bucket(monkeypatch):
+    """Found 2026-10-31 in GCP: a default ArtifactStore() ignored
+    ARTIFACT_BUCKET and tried to create 'abi-artifacts'."""
+    from abi_core.common.artifact_store import ArtifactStore
+    monkeypatch.setenv("ARTIFACT_BUCKET", "configured-bucket")
+    assert ArtifactStore().bucket == "configured-bucket"
+    assert ArtifactStore(bucket="explicit").bucket == "explicit"
+    monkeypatch.delenv("ARTIFACT_BUCKET")
+    assert ArtifactStore().bucket == "abi-artifacts"
+
+
+def test_store_client_sends_checksums_only_when_required():
+    """Found 2026-10-31 against GCS: boto3's default checksums (aws-chunked)
+    made every PutObject fail with SignatureDoesNotMatch."""
+    pytest.importorskip("boto3")
+    from abi_core.common.artifact_store import ArtifactStore
+    client = ArtifactStore(endpoint="https://storage.googleapis.com", access_key="a", secret_key="b", bucket="x")._get_client()
+    assert client.meta.config.request_checksum_calculation == "when_required"
+    assert client.meta.config.response_checksum_validation == "when_required"
+
+
+def test_gcs_retention_is_left_to_the_bucket(monkeypatch):
+    """GCS takes another lifecycle format and the HMAC key only handles
+    objects: the store does not write the rule there."""
+    pytest.importorskip("boto3")
+    from abi_core.common.artifact_store import ArtifactStore
+    store = ArtifactStore(endpoint="https://storage.googleapis.com", access_key="a", secret_key="b", bucket="x")
+    monkeypatch.setattr(store, "_get_client", lambda: (_ for _ in ()).throw(AssertionError("no lifecycle call on GCS")))
+    asyncio.run(store.ensure_expiration("projects/", 30, "rule"))

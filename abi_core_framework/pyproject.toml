@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "abi-core-ai"
-version = "1.13.82"
+version = "1.13.96"
 description = "Agent-Based Infrastructure Core - Runtime and CLI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -126,6 +126,10 @@ ui = [
     # the swarm's existing MinIO (S3-compatible) instead of erroring with
     # "No blob_storage_client is configured!".
     "boto3>=1.34",
+    # AES-256-GCM for the Chat UI's data at rest (abi_core.ui.crypto). With
+    # Cloud KMS as the key-encryption key, also install the gcp extra
+    # (google-auth). See .abi/specs/not-implemented/chatui-least-privilege-db.md.
+    "cryptography>=42",
 ]
 
 # LLM providers other than Ollama (the only hard dependency — see

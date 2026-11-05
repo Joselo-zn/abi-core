@@ -53,4 +53,18 @@ Both sides have to agree, and each reads its own variable:
 
 With both unset, everything uses Streamable HTTP on `http://<semantic-layer-host>:10100/mcp`. To fall back to SSE, set **both** to `sse` — an agent on `sse` talking to a server on `streamable-http` (or the other way around) can't open a session. Any other value is rejected with a `ValueError`.
 
+## Where the agents find the Semantic Layer
+
+Agents build the Semantic Layer's address from `SEMANTIC_LAYER_HOST`, and the transport adds the path (`/mcp`, or `/sse` for SSE). The value can be a full URL or a bare hostname:
+
+| `SEMANTIC_LAYER_HOST` | Agents connect to |
+|---|---|
+| unset | `http://abi-semantic-layer:10100/mcp` |
+| `my-semantic-layer` | `http://my-semantic-layer:10100/mcp` — the port comes from `SEMANTIC_LAYER_PORT` (default `10100`) |
+| `http://my-semantic-layer:10100` | `http://my-semantic-layer:10100/mcp` |
+| `https://semantic-layer-123.us-central1.run.app` | `https://semantic-layer-123.us-central1.run.app:443/mcp` |
+| `https://sl.example.com:8443` | `https://sl.example.com:8443/mcp` |
+
+A bare hostname is always plain HTTP: that's the Docker network case, where services talk to each other by name. Behind an endpoint that only serves TLS — a Semantic Layer deployed on Cloud Run, or behind your own HTTPS load balancer — give the full `https://` URL. With no port, HTTPS uses 443.
+
 See [Environment Variables → Semantic Layer](environment-variables.md#semantic-layer).

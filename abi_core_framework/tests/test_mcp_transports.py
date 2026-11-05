@@ -162,7 +162,7 @@ class TestMCPHttps:
     SEMANTIC_LAYER_HOST=https://host must reach https://host:443/mcp."""
 
     @pytest.mark.parametrize("value, scheme, host, port", [
-        ("https://sl-alpha-123.northamerica-south1.run.app", "https", "sl-alpha-123.northamerica-south1.run.app", 443),
+        ("https://semantic-layer-123.us-central1.run.app", "https", "semantic-layer-123.us-central1.run.app", 443),
         ("https://sl.example.com:8443", "https", "sl.example.com", 8443),
         ("http://abi-swarm-semantic-layer:10100", "http", "abi-swarm-semantic-layer", 10100),
         ("http://abi-swarm-semantic-layer", "http", "abi-swarm-semantic-layer", 10100),

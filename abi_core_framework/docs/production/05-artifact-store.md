@@ -89,7 +89,7 @@ For a single file (or bytes already in memory), use the `ArtifactStore` class di
 ```python
 from abi_core.common.artifact_store import ArtifactStore
 
-store = ArtifactStore()  # reads ARTIFACT_ENDPOINT/ARTIFACT_ACCESS_KEY/... from env
+store = ArtifactStore()  # reads ARTIFACT_ENDPOINT/ARTIFACT_ACCESS_KEY/ARTIFACT_BUCKET/... from env
 await store.ensure_bucket()
 url = await store.upload("task_1/report.pdf", pdf_bytes)
 # or: await store.upload_file("task_1/report.pdf", "/local/path/report.pdf")
@@ -172,6 +172,28 @@ data: {"conclusion": "Report generated successfully.",
 - Use a persistent volume for `/data` (already configured in compose)
 - Pre-signed URLs expire after 1 hour by default
 - MinIO is S3-compatible — you can swap it for AWS S3 by changing the endpoint
+
+## On Google Cloud Storage
+
+GCS speaks the same S3 API through its interoperability endpoint. Create an HMAC key for a service account that can read and write objects in the bucket, and point the store at it:
+
+```yaml
+environment:
+  - ARTIFACT_ENDPOINT=https://storage.googleapis.com
+  - ARTIFACT_ACCESS_KEY=${GCS_HMAC_ACCESS_ID}
+  - ARTIFACT_SECRET_KEY=${GCS_HMAC_SECRET}
+  - ARTIFACT_BUCKET=my-artifacts
+```
+
+One difference: on GCS the store doesn't set how long files are kept, so `PROJECT_RETENTION_DAYS` has no effect. Set the retention on the bucket once, as its owner:
+
+```json
+{"rule": [{"action": {"type": "Delete"}, "condition": {"age": 30}}]}
+```
+
+```bash
+gcloud storage buckets update gs://my-artifacts --lifecycle-file=lifecycle.json
+```
 
 ## Next step
 

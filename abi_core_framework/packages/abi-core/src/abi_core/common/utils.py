@@ -97,6 +97,48 @@ def abi_logging(message: str, level: str = 'info'):
     log_fn(message)
 
 
+# ── User content in logs ────────────────────────────────────────
+#
+# Logs go to stdout (Cloud Logging in production) and, with
+# LOG_TO_ARTIFACT_STORE, to the artifact store: they must not carry what the
+# user wrote, the plan, prompts, model output or file contents. Wherever a
+# log line would include such content, it goes through redact() — explicit
+# on purpose, so every such place is visible and greppable.
+#
+#   ABI_LOG_USER_CONTENT  true to log the content itself, for local
+#                         debugging only (default: false)
+#
+# Spec: .abi/specs/not-implemented/logs-without-user-content.md
+
+def _log_user_content() -> bool:
+    return os.getenv("ABI_LOG_USER_CONTENT", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+def redact(value: Any) -> str:
+    """A fingerprint of `value` for a log line: its length and a short hash,
+    never the content — enough to follow the same text across agents and
+    retries. With ABI_LOG_USER_CONTENT=true, the content itself."""
+    if value is None:
+        return "<none>"
+    text = value if isinstance(value, str) else json.dumps(value, default=str, ensure_ascii=False)
+    if _log_user_content():
+        return text
+    import hashlib
+    digest = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:8]
+    return f"<text len={len(text)} sha={digest}>"
+
+
+def mask_email(email: Optional[str]) -> str:
+    """'jane@example.com' -> 'j***@example.com'. With ABI_LOG_USER_CONTENT=true,
+    the address itself."""
+    if not email:
+        return "<none>"
+    if _log_user_content():
+        return email
+    local, sep, domain = str(email).partition("@")
+    return f"{local[:1]}***{sep}{domain}" if sep else "<redacted>"
+
+
 async def flush_logs(agent_name: str = None, bucket: str = None, task_id: str = None):
     """Flush buffered logs to MinIO.
     
@@ -498,7 +540,7 @@ async def yield_chunk_data(chunk: str) -> str:
         else:
             chunk_data = {"message": str(chunk), "type": type(chunk).__name__}
 
-        abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {str(chunk)[:100]}...", level="debug")
+        abi_logging(f"[DEBUG] Chunk received: {type(chunk).__name__} - {redact(str(chunk))}", level="debug")
 
         yield (f"data: {json.dumps(chunk_data, ensure_ascii=False, default=str)}\n\n").encode()
     except Exception as serialize_error:

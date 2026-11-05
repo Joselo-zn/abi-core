@@ -14,17 +14,17 @@ run_v2 = pytest.importorskip("google.cloud.run_v2")
 from abi_core.common import sandbox, sandbox_cloudrun as cr  # noqa: E402
 from abi_core.common.sandbox import RESULT_BEGIN, RESULT_END, SandboxLimits  # noqa: E402
 
-JOBS = "abi-sandbox-python=abi-sandbox-python-alpha,abi-sandbox-pygame=abi-sandbox-pygame-alpha"
+JOBS = "abi-sandbox-python=sandbox-python-prod,abi-sandbox-pygame=sandbox-pygame-prod"
 
 
 @pytest.mark.parametrize("image, key", [
     ("abi-sandbox-python:latest", "abi-sandbox-python"),
-    ("northamerica-south1-docker.pkg.dev/p/r/abi-sandbox-pygame:abc123", "abi-sandbox-pygame"),
+    ("us-central1-docker.pkg.dev/my-project/images/abi-sandbox-pygame:abc123", "abi-sandbox-pygame"),
     ("reg/abi-sandbox-python@sha256:00", "abi-sandbox-python"),
 ])
 def test_image_key_and_job(image, key):
     assert cr.image_key(image) == key
-    assert cr.job_for(image, JOBS) == f"{key}-alpha"
+    assert cr.job_for(image, JOBS) == key.replace("abi-", "") + "-prod"
 
 
 def test_an_image_without_a_job_is_an_error():
@@ -115,7 +115,7 @@ class _FakeOperation:
 
 def _fake_cloud_run(monkeypatch, *, task, logs, fail=False):
     seen = {}
-    execution = SimpleNamespace(name="projects/p/locations/r/jobs/abi-sandbox-python-alpha/executions/e-123")
+    execution = SimpleNamespace(name="projects/p/locations/r/jobs/sandbox-python-prod/executions/e-123")
 
     class Jobs:
         def run_job(self, request):
@@ -147,7 +147,7 @@ def test_run_returns_output_result_and_exit_code(monkeypatch):
     assert result.error is None and result.ok
     assert result.result_json == '{"can_win": true}'
     assert result.stdout.strip() == "game started"
-    assert seen["request"].name == "projects/p/locations/r/jobs/abi-sandbox-python-alpha"
+    assert seen["request"].name == "projects/p/locations/r/jobs/sandbox-python-prod"
     assert seen["logs_for"] == "e-123"
 
 

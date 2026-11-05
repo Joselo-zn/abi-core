@@ -19,7 +19,7 @@ import asyncio
 import json
 
 from app import agent
-from abi_core.common.utils import abi_logging, format_plan_summary, format_conversation_summary, plan_execution_order
+from abi_core.common.utils import abi_logging, format_plan_summary, format_conversation_summary, plan_execution_order, redact
 from abi_core.common.a2a_response import A2AResponse
 from abi_core.common.semantic_tools import tool_find_agent, MCPToolkit
 from abi_core.common.workflow import AgentInteractionFlow, InteractionFlowNode
@@ -389,7 +389,7 @@ async def guardian_validate(query, context_id):
                 }
             if resp.text:
                 # Guardian responded with text — assume approved
-                abi_logging(f"[🛡️] Guardian text response: {resp.text[:100]}")
+                abi_logging(f"[🛡️] Guardian text response: {redact(resp.text)}")
                 return {"status": "approved", "allowed": True, "reason": resp.text}
 
         # No parseable response — treat as approved with warning
@@ -422,7 +422,7 @@ def gate_decision(triage, guardian, query):
 
     # Guardian failed (timeout, unreachable, etc.)
     if guardian_status == "error":
-        abi_logging(f"[❌] Guardian failed: {guardian.get('reason', 'unknown')}")
+        abi_logging(f"[❌] Guardian failed: {redact(guardian.get('reason', 'unknown'))}")
         return {
             "action": "system_error",
             "message": "El sistema experimentó una falla en la validación de seguridad. Por favor reintente más tarde.",
@@ -431,7 +431,7 @@ def gate_decision(triage, guardian, query):
 
     # Guardian blocked (injection, reverse engineering, policy violation)
     if guardian_status == "blocked":
-        abi_logging(f"[🛡️] Query blocked by guardian: {guardian.get('reason', '')}")
+        abi_logging(f"[🛡️] Query blocked by guardian: {redact(guardian.get('reason', ''))}")
         return {
             "action": "blocked",
             "message": "Tu solicitud no puede ser procesada por razones de seguridad.",
@@ -535,7 +535,7 @@ def build_routing_contract(query: str, session_ctx: dict, pending_clarification:
 
 async def call_planner(query, context_id, task_id):
     """Call Planner agent and return raw A2A results."""
-    abi_logging(f"[📞] Calling Planner: {query}")
+    abi_logging(f"[📞] Calling Planner: {redact(query)}")
 
     planner_card = await find_infra_agent("planner")
     if not planner_card:
@@ -566,7 +566,7 @@ def extract_plan(planner_results):
     abi_logging(f"[🔍] extract_plan received {len(planner_results)} results")
     for i, r in enumerate(planner_results):
         parsed = A2AResponse.parse(r)
-        abi_logging(f"  [{i}] {parsed}")
+        abi_logging(f"  [{i}] {type(parsed).__name__} {redact(str(parsed))}")
 
     needs_clarification, msg, questions = A2AResponse.find_clarification(planner_results)
     if needs_clarification:
@@ -843,7 +843,7 @@ async def build_workflow(plan_result, context_id, task_id):
             abi_logging(f"[⚠️] Task {tid}: unknown type '{task_type}', skipping")
             continue
 
-        abi_logging(f"[✅] Task {tid}: assigned to agent '{target.name}' at {get_agent_url(target)} with prompt {desc}")
+        abi_logging(f"[✅] Task {tid}: assigned to agent '{target.name}' at {get_agent_url(target)} with prompt {redact(desc)}")
         if task_type == "direct_tool":
             # Structured JSON, not prose — the methodology block (free text)
             # doesn't apply here, the Planner's entrypoint parses this as JSON.
@@ -1277,7 +1277,7 @@ async def review_deliverables(artifacts: list, run_id: str = None):
             f"warnings={len(report.warnings)} sandbox={'yes' if report.layer2_ran else report.layer2_skipped}"
         )
         for f in report.errors:
-            abi_logging(f"[🔍]   ❌ {f.as_text()}")
+            abi_logging(f"[🔍]   ❌ {redact(f.as_text())}")
     return report
 
 

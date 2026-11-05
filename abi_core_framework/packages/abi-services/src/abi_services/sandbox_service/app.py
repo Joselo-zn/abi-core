@@ -36,7 +36,7 @@ from fastapi import FastAPI, Request
 from abi_core.common import project_store
 from abi_core.common.sandbox import SandboxLimits, run_in_sandbox
 from abi_core.common.sandbox_service_client import SANDBOX_ACTION, request_digest
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 
 AUDIT_FILE = "sandbox-audit.jsonl"
 
@@ -179,7 +179,7 @@ async def audit(run_id: str, entry: Dict[str, Any]) -> None:
     """Append one line. The object store has no append: read, add, write —
     serialized per run inside this (single) service process."""
     if not run_id:
-        abi_logging(f"[🧪] sandbox request without run_id: {entry}", level="warning")
+        abi_logging(f"[🧪] sandbox request without run_id: caller={entry.get('caller')} {redact(entry)}", level="warning")
         return
     entry = {"at": datetime.now(timezone.utc).isoformat(), **entry}
     async with _audit_locks[run_id]:

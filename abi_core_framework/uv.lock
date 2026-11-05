@@ -33,7 +33,7 @@ wheels = [
 
 [[package]]
 name = "abi-core-ai"
-version = "1.13.82"
+version = "1.13.96"
 source = { editable = "." }
 dependencies = [
     { name = "a2a-sdk" },
@@ -118,6 +118,7 @@ ui = [
     { name = "asyncpg" },
     { name = "boto3" },
     { name = "chainlit" },
+    { name = "cryptography" },
     { name = "qrcode", extra = ["pil"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
@@ -141,6 +142,7 @@ requires-dist = [
     { name = "chainlit", marker = "extra == 'ui'", specifier = ">=2.12.0" },
     { name = "click", specifier = ">=8.5.0" },
     { name = "cryptography", marker = "extra == 'security'", specifier = ">=50.0.1" },
+    { name = "cryptography", marker = "extra == 'ui'", specifier = ">=42" },
     { name = "docker", specifier = ">=7.2.0" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "fastmcp", specifier = ">=3.2.0,<4" },

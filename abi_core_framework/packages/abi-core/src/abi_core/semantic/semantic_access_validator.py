@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict
 
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact, mask_email
 from abi_core.security.agent_auth import sign_payload_hmac
 from abi_core.common.agent_card_loader import CardEnvError, resolve_card_env
 
@@ -302,7 +302,7 @@ class SemanticAccessValidator:
         
         if not agent_id:
             abi_logging("❌ Could not extract agent ID from request context")
-            abi_logging(f"Request context: {request_context}")
+            abi_logging(f"Request context keys: {sorted(request_context) if isinstance(request_context, dict) else type(request_context).__name__}")
             return None
         
         return {
@@ -485,7 +485,7 @@ class SemanticAccessValidator:
                     result = response.json()
                     return result.get("result", {})
                 else:
-                    abi_logging(f"❌ OPA returned {response.status_code}: {response.text}")
+                    abi_logging(f"❌ OPA returned {response.status_code}: {redact(response.text)}")
                     return {"error": f"OPA service error: HTTP {response.status_code}"}
                     
         except httpx.TimeoutException:
@@ -559,7 +559,7 @@ class SemanticAccessValidator:
         risk_score = validation_result.get("risk_score", 0.0)
         
         # Build log message with user info if available
-        user_str = f" | user: {user_info['email']}" if user_info else ""
+        user_str = f" | user: {mask_email(user_info.get('email'))}" if user_info else ""
         
         if allowed:
             abi_logging(f"✅ Semantic access granted for '{agent_id}'{user_str} (risk: {risk_score:.2f})")
@@ -567,7 +567,7 @@ class SemanticAccessValidator:
             abi_logging(f"❌ Semantic access denied for '{agent_id}'{user_str}: {reason} (risk: {risk_score:.2f})")
         
         # Log adicional para debugging
-        abi_logging(f"🔍 Validation details for {agent_id}: {validation_result}")
+        abi_logging(f"🔍 Validation details for {agent_id}: {redact(validation_result)}")
 
 # Instancia global del validador
 _validator = SemanticAccessValidator(GUARDIAN_URL, OPA_URL, AGENT_CARD_DIR)

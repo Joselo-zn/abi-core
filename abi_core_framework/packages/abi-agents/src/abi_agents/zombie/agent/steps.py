@@ -9,7 +9,7 @@ import os
 import time
 
 from app import agent
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 from abi_agents.zombie.agent.zombie import ZOMBIE_TOOLS
 from abi_agents.zombie.agent.config.config import config
 from abi_agents.zombie.agent import lifecycle
@@ -307,7 +307,7 @@ async def analyze_and_execute(context, query):
         else:
             raise
     
-    abi_logging(f"[✅] Query: {query} Results: {result}")
+    abi_logging(f"[✅] Query: {redact(query)} Results: {redact(result)}")
     
     return {"result": result, "query": query}
 

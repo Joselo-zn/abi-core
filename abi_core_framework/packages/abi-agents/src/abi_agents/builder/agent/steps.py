@@ -9,7 +9,7 @@ import os
 import time
 
 from app import agent
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 from abi_core.common.semantic_tools import tool_search_tools
 
 @agent.step(
@@ -385,7 +385,7 @@ async def register_card(build_result):
         if isinstance(reg_result, dict) and reg_result.get("success"):
             abi_logging(f"[✅] Agent card registered in semantic layer: {agent_name}")
         else:
-            abi_logging(f"[⚠️] Registration response: {reg_result}")
+            abi_logging(f"[⚠️] Registration response: {redact(reg_result)}")
     except Exception as e:
         abi_logging(f"[⚠️] Could not register in semantic layer: {e}")
         # Continue anyway — the agent can still work via direct A2A

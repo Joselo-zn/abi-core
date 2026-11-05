@@ -66,8 +66,11 @@ services:
 ```
 
 The schema (users, threads, steps, feedbacks, elements — Chainlit's own
-tables — plus `invites` and `waiting_list`) is created automatically on
-first use. No migration step.
+tables — plus `invites`, `waiting_list` and `data_keys`) is created on first
+use: at start-up the UI creates only the tables and columns that are missing.
+No migration step. If the UI connects with a role that can't create them —
+see [a least-privilege role](#encrypted-data-and-a-least-privilege-database) —
+the error lists what's missing, for the database owner to create.
 
 ### 3. Generate the auth secret
 
@@ -134,6 +137,42 @@ Google login through it registers with whatever account they used. There's
 no way to restrict a link to one particular person's email; if that matters,
 don't share the link beyond the one person it's for.
 ```
+
+## Encrypted data and a least-privilege database
+
+Once conversations are stored, a copy of the database is a copy of everything your users wrote. The UI encrypts their content before it reaches Postgres, so a leaked dump or an over-curious query shows ciphertext.
+
+**What's encrypted** (AES-256-GCM): messages, conversation titles, feedback comments, attachment names and user metadata. Attachments are encrypted in the bucket too; the UI serves them decrypted, only to their owner, from `/abi-ui/files/...` — anyone else gets a 404.
+
+**Keys.** Each user has their own data key, stored in the `data_keys` table wrapped by a key-encryption key (KEK) you provide:
+
+| Variable | Use |
+|---|---|
+| `ABI_UI_KMS_KEY` | A Cloud KMS key as the KEK: `projects/<project>/locations/<region>/keyRings/<ring>/cryptoKeys/<key>`. Install `abi-core-ai[ui,gcp]`; the UI's service account needs `roles/cloudkms.cryptoKeyEncrypterDecrypter` on that key |
+| `ABI_UI_LOCAL_KEK` | A local KEK, for development: 32 random bytes, base64 |
+| `ABI_UI_IDENTITY_KEY` | A secret for the HMAC of users' emails |
+
+```bash
+python -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())"   # a local KEK
+```
+
+With neither KEK set, the UI stores everything in clear and logs a warning at start-up — fine on your laptop, never with real users. Rows written before you turned encryption on stay readable.
+
+**Destroying a user's data key makes all their data unreadable** — every message, title and file — without touching a row. That's how you honor a deletion request when backups still hold the rows.
+
+**No emails in clear.** With `ABI_UI_IDENTITY_KEY` set, users are looked up by an HMAC of their email, so the address itself isn't stored; existing users are migrated on their next login. Keep the secret stable: changing it makes every user a stranger.
+
+**A least-privilege role.** Deleting a conversation or removing a 👍/👎 hides the row instead of deleting it. So the UI's database role needs no `CREATE` and no `DELETE`:
+
+```sql
+GRANT USAGE ON SCHEMA public TO chatui;
+GRANT SELECT, INSERT, UPDATE ON users, threads, steps, feedbacks, elements,
+      invites, waiting_list, data_keys TO chatui;
+```
+
+Create the tables once with the owner — or let the UI create them on a first start with an owner role — and run the UI with the restricted one from then on.
+
+**Search** over conversations keeps working: it filters in the application, on the decrypted text.
 
 ## Without any of this
 

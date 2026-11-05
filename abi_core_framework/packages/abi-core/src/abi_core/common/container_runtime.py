@@ -98,9 +98,14 @@ async def check_container_health(
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     checks = 0
+    from abi_core.common.cloudrun_auth import auth_header
+
     while loop.time() < deadline:
         try:
-            req = urllib.request.Request(url, method="GET")
+            # A Cloud Run ephemeral checks IAM on /health too: without the
+            # ID token every check got a 403 until the timeout (live
+            # 2026-10-31). Cached per audience, so cheap on every loop.
+            req = urllib.request.Request(url, method="GET", headers=await auth_header(url))
             await asyncio.to_thread(urllib.request.urlopen, req, timeout=2)
             abi_logging(f"[✅] Health check passed: {url}")
             return True

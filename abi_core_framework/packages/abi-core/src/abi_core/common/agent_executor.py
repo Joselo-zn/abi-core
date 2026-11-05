@@ -1,6 +1,6 @@
 import json
 
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -89,7 +89,7 @@ class ABIAgentExecutor(AgentExecutor):
                     content = item["content"]
                     meta = item.get("meta") or {}
                     text_content = content if isinstance(content, str) else json.dumps(content)
-                    abi_logging(f"REQUIERE INPUT {text_content[:200]}")
+                    abi_logging(f"REQUIERE INPUT {redact(text_content)}")
                     parts = [Part(text=text_content)]
                     if meta:
                         # Same reasoning as the is_task_completed branch

@@ -16,6 +16,7 @@ All variables are set in `compose.yaml` per service. Agents read them via `confi
 | `AGENT_PORT` | auto-assigned | A2A protocol port |
 | `WEB_INTERFACE_PORT` | auto-assigned | HTTP/SSE port (if web interface enabled) |
 | `LOG_LEVEL` | `INFO` | DEBUG, INFO, WARNING, ERROR |
+| `ABI_LOG_USER_CONTENT` | `false` | `true` makes `redact()` and `mask_email()` log the content itself instead of a fingerprint. Local debugging only — see [Monitoring & Logs](../production/02-monitoring-logs.md#never-log-what-the-user-wrote) |
 | `ABI_REASONING_TIMEOUT` | `180` | Seconds a single reasoning turn (routing decision, planner call, synthesis) may run before the agent gives up and reports a timeout to the user |
 | `ABI_DAG_MAX_WAIT` | `900` | Seconds a full DAG execution (tool-calling pipeline) may run before giving up — separate and more generous than `ABI_REASONING_TIMEOUT` because a DAG step can itself be a slow LLM tool-calling call. See [Troubleshooting → Timeout reported but the work finished anyway](../production/03-troubleshooting.md#timeout-reported-but-the-work-finished-anyway). |
 | `EXECUTION_TIMEOUT` | `3600` | Ephemeral agents only — a last-resort backstop, not the mechanism that decides "too slow". Work is bounded by real progress instead: once a model stream starts, 120s without a token counts as a stall; the wait for the *first* token has no limit, since on a single-slot model server a request can legitimately queue behind others. See [Troubleshooting → Timeout reported but the work finished anyway](../production/03-troubleshooting.md#timeout-reported-but-the-work-finished-anyway). |
@@ -24,7 +25,8 @@ All variables are set in `compose.yaml` per service. Agents read them via `confi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SEMANTIC_LAYER_HOST` | `http://<project>-semantic-layer:10100` | Semantic Layer URL |
+| `SEMANTIC_LAYER_HOST` | `http://<project>-semantic-layer:10100` | Where agents reach the Semantic Layer: a full URL (`http://…` or `https://…`, e.g. a Cloud Run `https://….run.app`) or a bare hostname (plain HTTP). See [MCP Transports](mcp-transports.md#where-the-agents-find-the-semantic-layer) |
+| `SEMANTIC_LAYER_PORT` | `10100` | Port used when `SEMANTIC_LAYER_HOST` is a bare hostname. With `https://` and no port, 443 |
 | `MCP_HOST` | `<project>-semantic-layer` | MCP server hostname |
 | `MCP_PORT` | `10100` | MCP server port |
 | `MCP_TRANSPORT` | `streamable-http` | How agents reach the Semantic Layer: `streamable-http`, or `sse` (deprecated, compatibility only). Must match `SEMANTIC_LAYER_TRANSPORT` — see [MCP Transports](mcp-transports.md) |
@@ -52,9 +54,9 @@ All variables are set in `compose.yaml` per service. Agents read them via `confi
 | `ARTIFACT_PUBLIC_ENDPOINT` | falls back to `ARTIFACT_ENDPOINT` | MinIO URL used **only** when generating a presigned download link for a human (e.g. a link in a chat response). Set this to whatever host the user's browser can actually reach — `http://localhost:9000` in local dev, or your real public hostname/reverse-proxy in production. Must be the S3 API endpoint (same port as `ARTIFACT_ENDPOINT`, typically 9000) — MinIO's Console UI port (9001) does not validate presigned URLs, it just serves the Console's own app shell. |
 | `ARTIFACT_ACCESS_KEY` | `minioadmin` | MinIO access key |
 | `ARTIFACT_SECRET_KEY` | `minioadmin` | MinIO secret key |
-| `ARTIFACT_BUCKET` | `abi-artifacts` | Default bucket |
-| `LOG_TO_ARTIFACT_STORE` | `true` | Upload execution logs to MinIO |
-| `PROJECT_RETENTION_DAYS` | `30` | Days before a plan run's files in the bucket expire (bucket lifecycle rule) |
+| `ARTIFACT_BUCKET` | `abi-artifacts` | Bucket `ArtifactStore()` uses when none is passed |
+| `LOG_TO_ARTIFACT_STORE` | `false` | Upload execution logs to MinIO |
+| `PROJECT_RETENTION_DAYS` | `30` | Days before a plan run's files in the bucket expire (bucket lifecycle rule). No effect on GCS: set the bucket's lifecycle instead — see [Artifact Store → On Google Cloud Storage](../production/05-artifact-store.md#on-google-cloud-storage) |
 | `LOG_AGENT_NAME` | agent name | Identifier in log bucket |
 | `LOG_BUCKET` | `abi-logs` | Bucket for logs |
 
@@ -163,6 +165,9 @@ across logins/devices), and an invite-only registration system.
 | `CHAINLIT_URL` | request's own URL | Chainlit's own var (not ABI-Core's) — the public URL it uses to build the OAuth `redirect_uri` (`<CHAINLIT_URL>/auth/oauth/google/callback`). Must match an Authorized redirect URI on the Google OAuth client. Set explicitly behind a proxy (e.g. Cloud Run) where the request's own URL isn't the public one. |
 | `CHAINLIT_AUTH_SECRET` | — | Signs session JWTs. Generate with `chainlit create-secret`. Changing it logs out every active session. |
 | `ARTIFACT_ENDPOINT` / `ARTIFACT_ACCESS_KEY` / `ARTIFACT_SECRET_KEY` | — | Same MinIO instance as the [Artifact Store](#artifact-store-minio) — reused so thread elements/files (images, attachments) don't error with "No blob_storage_client is configured". |
+| `ABI_UI_KMS_KEY` | — | Cloud KMS key (`projects/…/locations/…/keyRings/…/cryptoKeys/…`) that wraps each user's data key. Needs `abi-core-ai[ui,gcp]` and `roles/cloudkms.cryptoKeyEncrypterDecrypter`. See [Encrypted data](../production/07-authentication.md#encrypted-data-and-a-least-privilege-database) |
+| `ABI_UI_LOCAL_KEK` | — | Local key-encryption key, 32 bytes base64 — development only. With neither this nor `ABI_UI_KMS_KEY`, data is stored in clear and a warning is logged |
+| `ABI_UI_IDENTITY_KEY` | — | Secret for the HMAC that identifies users by email without storing it. Keep it stable |
 | `CHAINLIT_ELEMENTS_BUCKET` | `abi-chainlit-elements` | Separate MinIO bucket from `ARTIFACT_BUCKET` — chat thread elements don't mix with agent-generated artifacts. Create it before first use (`mc mb`). |
 | `ADMIN_NOTIFICATION_EMAIL` | — | Where the "someone joined the waiting list" email goes. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `SMTP_PORT` defaults to `587` | SMTP for the waiting-list notification. Left unset, waiting-list signups still work (recorded in Postgres) — the email is just skipped, logged as a warning. |
@@ -201,9 +206,9 @@ Where the Builder runs ephemeral agents. Set on the **Builder** (spawns) and the
 |----------|---------|-------------|
 | `CONTAINER_RUNTIME` | `docker` | `docker`: containers on the shared Docker network via `/var/run/docker.sock`. `cloudrun`: one Cloud Run service per ephemeral (requires `pip install "abi-core-ai[gcp]"`) |
 | `EPHEMERAL_HEALTH_TIMEOUT` | `300` | Seconds the Builder waits for a new ephemeral's `/health` (start-up includes a `pip install`, measured up to ~70 s). With Docker the wait ends as soon as the container exits, so a broken start-up still fails fast. An ephemeral that never gets healthy is destroyed |
-| `CLOUDRUN_PROJECT` | — | GCP project id (required with `cloudrun`) |
+| `CLOUDRUN_PROJECT` | — | GCP project id (required with `cloudrun`; also used by the sandbox's `cloudrun` backend) |
 | `CLOUDRUN_PROJECT_NUMBER` | — | GCP project number — ephemeral URLs are `https://<service>-<number>.<region>.run.app`, known before the service exists (required with `cloudrun`) |
-| `CLOUDRUN_REGION` | — | e.g. `us-central1` (required with `cloudrun`) |
+| `CLOUDRUN_REGION` | — | e.g. `us-central1` (required with `cloudrun`; also used by the sandbox's `cloudrun` backend) |
 | `CLOUDRUN_SERVICE_ACCOUNT` | project default | Identity ephemerals run as. Give it no Cloud Run permissions: ephemerals run generated code |
 | `CLOUDRUN_NETWORK` / `CLOUDRUN_SUBNET` | — | Direct VPC egress for ephemerals, so their calls to other internal services count as internal traffic |
 | `ABI_ENV` | `default` | Environment label on every ephemeral service (`alpha`, `prod`); the sweep only deletes its own environment's |
@@ -229,7 +234,8 @@ Set on the process that calls `run_in_sandbox` (the Orchestrator). See [Code Exe
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SANDBOX_RUNTIME` | `docker` | Sandbox backend: `docker` (local Docker socket) or `service` (governed sandbox-service) |
+| `SANDBOX_RUNTIME` | `docker` | Sandbox backend: `docker` (local Docker socket), `service` (governed sandbox-service) or `cloudrun` (Cloud Run Jobs, requires `abi-core-ai[gcp]`) |
+| `SANDBOX_CLOUDRUN_JOBS` | — | With `cloudrun`: image name → Cloud Run Job, e.g. `abi-sandbox-python=sandbox-python-prod,abi-sandbox-pygame=sandbox-pygame-prod`. An image with no Job is an error. Also needs `CLOUDRUN_PROJECT` and `CLOUDRUN_REGION` |
 | `SANDBOX_SERVICE_URL` | — | sandbox-service URL, with `SANDBOX_RUNTIME=service` |
 | `SANDBOX_IMAGE_PYTHON` | `abi-sandbox-python:latest` | Image for plain Python deliverables |
 | `SANDBOX_IMAGE_PYGAME` | `abi-sandbox-pygame:latest` | Image for pygame deliverables |
@@ -240,6 +246,7 @@ On **sandbox-service** itself:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `11500` | Listening port |
+| `SANDBOX_SERVICE_BACKEND` | `docker` | Where the service runs the code: `docker` (local socket) or `cloudrun` (Cloud Run Jobs; set `CLOUDRUN_PROJECT`, `CLOUDRUN_REGION` and `SANDBOX_CLOUDRUN_JOBS` on the service) |
 | `OPA_URL` | — | OPA server; unset or unreachable means every run is denied |
 | `SANDBOX_OPA_PATH` | `abi/sandbox` | OPA data path queried for the decision |
 | `SANDBOX_SERVICE_CARD` | `/app/service_cards/sandbox.json` | The service's own `ServiceCard`, used to verify who is calling |

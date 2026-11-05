@@ -11,6 +11,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 # (running label, completed label) per phase. "awaiting_confirmation" is never
@@ -162,6 +163,55 @@ def error_message(lang: str, meta: Optional[dict]) -> Optional[str]:
             return "⏱️ " + text["error_timeout"].format(seconds=meta["max_wait"])
         return "⏱️ " + text["error_timeout_plain"]
     return None
+
+
+# Limit notices (meta.notice = {key, params}): the agent sends a key and
+# its parameters and the UI writes the text in its language. Keys and params:
+# abi-core .abi/specs/not-implemented/gcp-workflows/gcp-workflows-pipelines.md,
+# "Avisos de límite".
+_NOTICE = {
+    "es": {
+        "limit.messages_per_day": "Llegaste al límite de {limit} mensajes de hoy. Se renueva en {wait}.",
+        "limit.chats_per_day": "Llegaste al límite de {limit} conversaciones nuevas de hoy. Puedes seguir en las que ya tienes; se renueva en {wait}.",
+        "limit.plans_per_day": "Llegaste al límite de {limit} planes de hoy. Puedes seguir conversando; podrás crear otro en {wait}.",
+        "limit.global_plans_per_day": "El swarm llegó a su límite de trabajos de hoy. Puedes seguir conversando; se renueva en {wait}.",
+        "limit.runs_per_day": "Llegaste al límite de {limit} ejecuciones de workflows de hoy. Se renueva en {wait}.",
+        "limit.active_workflows": "Ya tienes {limit} workflows activos, el máximo. Borra uno para crear otro.",
+    },
+    "en": {
+        "limit.messages_per_day": "You reached today's limit of {limit} messages. It renews in {wait}.",
+        "limit.chats_per_day": "You reached today's limit of {limit} new conversations. You can keep using the ones you have; it renews in {wait}.",
+        "limit.plans_per_day": "You reached today's limit of {limit} plans. You can keep chatting; you can create another one in {wait}.",
+        "limit.global_plans_per_day": "The swarm reached today's limit of jobs. You can keep chatting; it renews in {wait}.",
+        "limit.runs_per_day": "You reached today's limit of {limit} workflow runs. It renews in {wait}.",
+        "limit.active_workflows": "You already have {limit} active workflows, the maximum. Delete one to create another.",
+    },
+}
+
+
+def _wait_until(resets_at: str, now: Optional[datetime] = None) -> str:
+    """"5 h 20 min" from now until an ISO 8601 UTC time."""
+    now = now or datetime.now(timezone.utc)
+    target = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+    minutes = max(1, int((target - now).total_seconds() // 60))
+    return f"{minutes // 60} h {minutes % 60} min" if minutes >= 60 else f"{minutes} min"
+
+
+def notice_message(lang: str, meta: Optional[dict], now: Optional[datetime] = None) -> Optional[str]:
+    """Text for a notice the agent sent as a key (``meta.notice``), in the UI
+    language; None for an unknown key or bad parameters (the caller keeps the
+    agent's own text)."""
+    notice = (meta or {}).get("notice") or {}
+    template = _NOTICE[ui_language(lang)].get(notice.get("key", ""))
+    if not template:
+        return None
+    params = dict(notice.get("params") or {})
+    try:
+        if params.get("resets_at"):
+            params["wait"] = _wait_until(params["resets_at"], now)
+        return template.format(**params)
+    except (KeyError, ValueError):
+        return None
 
 
 def format_duration(seconds: float) -> str:

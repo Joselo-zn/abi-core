@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from langchain_core.tools import tool as langchain_tool
 
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 
 
 # ── Base Tools (always available to zombies) ───────────────────
@@ -76,7 +76,7 @@ def run_shell(command: str) -> str:
     Returns:
         stdout + stderr output from the command.
     """
-    abi_logging(f"[🐚] Shell: {command}")
+    abi_logging(f"[🐚] Shell: {redact(command)}")
     try:
         result = subprocess.run(
             command,

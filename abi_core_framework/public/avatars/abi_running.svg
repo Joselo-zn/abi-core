@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <style>
+    .t { fill: #4CC2FF; animation: split 1.6s ease-in-out infinite; }
+    .b { fill: #4CC2FF; animation: split-down 1.6s ease-in-out infinite; }
+    @keyframes split { 0%, 100% { transform: translateY(0); opacity: 1; } 50% { transform: translateY(-1.4px); opacity: .75; } }
+    @keyframes split-down { 0%, 100% { transform: translateY(0); opacity: 1; } 50% { transform: translateY(1.4px); opacity: .75; } }
+    @media (prefers-reduced-motion: reduce) {
+      .t, .b { animation: fade 2.4s ease-in-out infinite; }
+      @keyframes fade { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+    }
+  </style>
+  <polygon class="t" points="12,3.9 20.1,11.3 3.9,11.3"/>
+  <polygon class="b" points="3.9,12.7 20.1,12.7 12,20.1"/>
+</svg>

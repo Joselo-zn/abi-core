@@ -130,7 +130,9 @@ answers["intent"]["choice"], answers["intent"]["confidence"], answers["intent"][
 
 ```python
 from abi_core.common.semantic_tools import (
-    tool_find_agent,       # Find one agent by description
+    tool_find_agent,       # Find one agent by description (full card)
+    tool_find_agent_for_model,  # Same lookup, for a model: no url or auth
+    agent_card_for_model,  # Cut a card down to what a model may read
     tool_list_agents,      # Find multiple agents
     tool_recommend_agents, # Recommend agents with scores
     tool_check_agent_health,
@@ -140,6 +142,8 @@ from abi_core.common.semantic_tools import (
     mcp_toolkit,           # Global instance
 )
 ```
+
+When a model picks agents itself — you hand it a tool to find one — give it `tool_find_agent_for_model`, not `tool_find_agent`. The model still sees a tool named `tool_find_agent`, but what comes back is only the agent's name, description and its skills' names and descriptions: no URL, no `auth`, no LLM config, nothing it could leak in a reply or be talked into using. Code that connects to the agent calls `tool_find_agent.ainvoke({"query": ...})` and keeps the full card. `agent_card_for_model(card)` does the same cut on a card you already have.
 
 ### MCPToolkit
 
@@ -154,6 +158,21 @@ tools = await toolkit.list_tools_detailed()              # With schemas
 matches = await toolkit.search_tools("description")     # Search by capability
 exists = await toolkit.has_tool("name")                  # Check existence
 ```
+
+`MCPToolkit` and the semantic tools read the Semantic Layer's address from the environment (`SEMANTIC_LAYER_HOST`, `SEMANTIC_LAYER_PORT`, `MCP_TRANSPORT`) every time they connect. To open a session yourself:
+
+```python
+from abi_core.abi_mcp import client
+from abi_core.common.utils import get_mcp_server_config
+
+cfg = get_mcp_server_config()        # or get_mcp_server_config(environ={...})
+async with client.init_session(cfg.host, cfg.port, cfg.transport, scheme=cfg.scheme) as session:
+    tools = await session.list_tools()
+```
+
+For `find_agent` and the other semantic tools, use the functions above: they also sign the call with the agent's card.
+
+`scheme` is `"http"` by default; `get_mcp_server_config()` sets it to `"https"` when `SEMANTIC_LAYER_HOST` starts with `https://`. See [MCP Transports](mcp-transports.md#where-the-agents-find-the-semantic-layer).
 
 ---
 

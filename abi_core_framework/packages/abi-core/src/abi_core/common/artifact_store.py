@@ -34,7 +34,7 @@ class ArtifactStore:
         endpoint: str = None,
         access_key: str = None,
         secret_key: str = None,
-        bucket: str = "abi-artifacts",
+        bucket: Optional[str] = None,
         region: str = "us-east-1",
         public_endpoint: str = None,
     ):
@@ -74,7 +74,14 @@ class ArtifactStore:
             aws_access_key_id=self.access_key,
             aws_secret_access_key=self.secret_key,
             region_name=self.region,
-            config=Config(signature_version="s3v4"),
+            # Checksums only where the S3 API requires them: since boto3 1.36
+            # every upload carries a checksum with aws-chunked encoding,
+            # which S3-compatible stores such as GCS reject
+            # (SignatureDoesNotMatch on PutObject, verified against GCS
+            # 2026-10-31 with boto3 1.43).
+            config=Config(signature_version="s3v4",
+                          request_checksum_calculation="when_required",
+                          response_checksum_validation="when_required"),
         )
 
     def _get_client(self):
@@ -116,8 +123,18 @@ class ArtifactStore:
         The S3 API replaces the bucket's whole lifecycle configuration on
         every put, so the current rules are read first and only the rule with
         ``rule_id`` is added or replaced — other rules on the bucket survive.
+
+        On GCS the rule is not written: its XML API takes another lifecycle
+        format, and the store's HMAC key should only read and write objects.
+        The retention lives on the bucket, set once by its owner (user
+        decision 2026-10-31).
         """
         import asyncio
+        from urllib.parse import urlparse
+
+        if urlparse(self.endpoint).hostname == "storage.googleapis.com":
+            abi_logging(f"[📦] Retention of {prefix} is the bucket's lifecycle on GCS; not written by the store")
+            return
 
         client = self._get_client()
         try:

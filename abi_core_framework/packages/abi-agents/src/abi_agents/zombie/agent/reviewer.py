@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from app import agent
 from abi_core.agent.agent_response import AgentResponse
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 from abi_agents.zombie.agent import lifecycle
 from abi_agents.zombie.agent.config.config import config
 
@@ -250,7 +250,7 @@ async def review_ask():
     for a in state["arrivals"].values():
         if a.get("agent"):
             await _call_code_agent(a["agent"], {"caller": "reviewer", "done": True})
-    abi_logging(f"[🔍] Questions {state['questions']}; answered {sorted(k for k, v in state['answers'].items() if v != 'no answer')}")
+    abi_logging(f"[🔍] Questions {redact(state['questions'])}; answered {sorted(k for k, v in state['answers'].items() if v != 'no answer')}")
     return {"asked": sorted(state["questions"])}
 
 

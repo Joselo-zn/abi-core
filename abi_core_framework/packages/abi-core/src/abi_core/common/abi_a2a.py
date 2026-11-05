@@ -90,7 +90,10 @@ async def agent_connection(
     # could reset. `write`/`connect` stay bounded — those are genuinely
     # short, fixed operations, not "wait for a long-running task."
     timeout_config = httpx.Timeout(timeout=None, read=None, write=30.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout_config) as httpx_client:
+    # On Cloud Run, ephemerals check IAM: an ID token goes with every
+    # request to a *.run.app host (ephemeral-invoker-iam.md).
+    from abi_core.common.cloudrun_auth import CloudRunIdToken
+    async with httpx.AsyncClient(timeout=timeout_config, auth=CloudRunIdToken()) as httpx_client:
         target_url = get_agent_url(target_card)
         abi_logging(f"Target URL: {target_url or 'No URL'}")
         

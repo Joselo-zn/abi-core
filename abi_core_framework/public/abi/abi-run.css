@@ -1,0 +1,36 @@
+/* ABI run indicator — installed by abi_core.ui.chainlit_app into
+   public/abi/abi-run.css. Point config.toml's custom_css here, or
+   @import it from the project's own stylesheet. See
+   .abi/specs/not-implemented/ux/chainlit-run-progress-indicator.md.
+
+   !important where Chainlit's own stylesheet would win the cascade: it is
+   loaded after custom_css. */
+
+/* Chainlit's loading dot becomes the same animated ABI diamond used as the
+   run step's avatar (public/avatars/abi_running.svg), so the indicator
+   keeps one shape from the first instant of a run. */
+.loading-cursor {
+  --loading-cursor-size: 20px;
+  --loading-cursor-color: transparent;
+  --loading-cursor-animation: none;
+  background-image: url("/public/avatars/abi_running.svg") !important;
+  background-size: contain !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  border-radius: 0 !important;
+}
+
+/* Once a step is running, its avatar already is the indicator — hide the
+   separate loading dot so the two never show at once. */
+body:has(.loading-shimmer) .loading-cursor {
+  visibility: hidden !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-shimmer {
+    animation: none !important;
+    background: none !important;
+    -webkit-text-fill-color: currentColor !important;
+    text-fill-color: currentColor !important;
+  }
+}

@@ -58,10 +58,19 @@ Security/access-decision logs themselves come from the validators
 ## Log format in container output
 
 ```
-✅ Semantic access granted for 'agent://planner' | user: admin@co.com (risk: 0.15)
+✅ Semantic access granted for 'agent://planner' | user: a***@co.com (risk: 0.15)
 ❌ Semantic access denied for 'agent://unknown': Agent not registered (risk: 0.90)
 [📋 AUDIT] a2a_access: orchestrator → planner | allowed=True |
 ```
+
+## What the logs don't carry
+
+An audit trail answers who did what and whether it was allowed — not what the user wrote. ABI keeps user content out of every log it writes:
+
+- **Agents and Guardian** log messages, plans and prompts as fingerprints (`redact()`), and emails masked (`mask_email()`). See [Monitoring & Logs](../production/02-monitoring-logs.md#never-log-what-the-user-wrote).
+- **OPA** writes each decision to its log (`decision_logs.console=true`), input included. Two input fields carry what the user wrote: the preview of an agent-to-agent message (`input.communication.message_preview`) and an agent card's skill descriptions (`input.agent_card.skills[*].description`, which for a generated agent can hold its task's prompt). `log_mask.rego` (`package system.log`) erases both from the log. The policies still see them, and each logged decision lists what was removed under `erased`.
+
+Projects created with `abi-core create project --with-guardian` include `log_mask.rego`. For an existing project, copy it from a new project into `services/guardian/opa/policies/` and restart OPA (`docker compose restart <project>-opa`).
 
 ## Risk scoring
 

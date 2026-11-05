@@ -1,7 +1,7 @@
 """Zombie Agent — Self-configuring ephemeral agent class."""
 
 from abi_core.agent.agent import AbiAgent
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 from abi_agents.zombie.agent.config.config import config
 
 # Tools loaded once at init, shared with DAG functions in main.py
@@ -28,7 +28,7 @@ class ZombieAgent(AbiAgent):
         ZOMBIE_TOOLS.extend(ctx["lib_tools"] + ctx["mcp_tools"])
 
         tool_list = [tool.name for tool in ZOMBIE_TOOLS]
-        abi_logging(f"[🤖] My task: {config.SYSTEM_PROMPT}")
+        abi_logging(f"[🤖] My task: {redact(config.SYSTEM_PROMPT)}")
         abi_logging(f"[🔧] My tools to complete the task: {len(ZOMBIE_TOOLS)} tools: {tool_list}")
 
         super().__init__(

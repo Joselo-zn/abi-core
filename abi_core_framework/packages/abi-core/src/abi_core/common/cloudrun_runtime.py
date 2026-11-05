@@ -158,11 +158,11 @@ def _build_service(
 
     return run_v2.Service(
         template=template,
-        # Reachable only from inside the project's network; the network is
-        # the protection, so per-request IAM is off (no ID tokens needed by
-        # the Orchestrator). Accepted for alpha — see the spec.
+        # Reachable only from inside the project's network, and IAM is checked
+        # on every request: callers send an ID token (cloudrun_auth) and need
+        # roles/run.invoker. Leaving IAM on also means the Builder needs no
+        # run.services.setIamPolicy (ephemeral-invoker-iam.md).
         ingress=run_v2.IngressTraffic.INGRESS_TRAFFIC_INTERNAL_ONLY,
-        invoker_iam_disabled=True,
         labels={
             _LABEL_EPHEMERAL: "true",
             _LABEL_ENV: os.getenv("ABI_ENV", "default"),

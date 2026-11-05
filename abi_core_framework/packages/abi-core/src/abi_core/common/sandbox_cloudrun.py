@@ -26,10 +26,10 @@ Requires the optional dependency: pip install "abi-core-ai[gcp]".
 
 Environment:
     CLOUDRUN_PROJECT       GCP project id (required)
-    CLOUDRUN_REGION        e.g. northamerica-south1 (required)
+    CLOUDRUN_REGION        e.g. us-central1 (required)
     SANDBOX_CLOUDRUN_JOBS  image -> Job, e.g.
-                           "abi-sandbox-python=abi-sandbox-python-alpha,
-                            abi-sandbox-pygame=abi-sandbox-pygame-alpha"
+                           "abi-sandbox-python=sandbox-python-prod,
+                            abi-sandbox-pygame=sandbox-pygame-prod"
                            (image name without registry or tag). An image
                            with no Job is an error, never a fallback.
 
@@ -72,7 +72,7 @@ def _require(name: str) -> str:
 
 
 def image_key(image: str) -> str:
-    """'northamerica-south1-docker.pkg.dev/p/r/abi-sandbox-python:abc' -> 'abi-sandbox-python'."""
+    """'us-central1-docker.pkg.dev/my-project/images/abi-sandbox-python:abc' -> 'abi-sandbox-python'."""
     name = image.rsplit("/", 1)[-1]
     return name.split("@", 1)[0].split(":", 1)[0]
 
@@ -229,7 +229,7 @@ def _run_sync(image: str, command: List[str], env: Dict[str, str],
 
 async def run(image: str, command: List[str], env: Dict[str, str],
               bundle: Dict[str, str], limits: SandboxLimits) -> SandboxResult:
-    abi_logging(f"[🧪] Sandbox (Cloud Run Jobs): {image_key(image)} {' '.join(command)}")
+    abi_logging(f"[🧪] Sandbox (Cloud Run Jobs): {image_key(image)} {command[0]} (+{len(command) - 1} args)")
     try:
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_sync, image, command, env, bundle, limits),

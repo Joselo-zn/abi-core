@@ -2,9 +2,9 @@ import asyncio
 import json
 from collections.abc import AsyncIterable
 
-from abi_core.common.utils import abi_logging, build_plan_view, format_plan_summary
+from abi_core.common.utils import abi_logging, build_plan_view, format_plan_summary, redact
 from abi_core.common.workflow import Status
-from abi_core.common.semantic_tools import tool_find_agent
+from abi_core.common.semantic_tools import tool_find_agent_for_model
 from abi_core.agent.agent import AbiAgent, _HeartbeatDone
 from abi_core.agent.agent_response import AgentResponse, RunPhase
 from abi_core.agent.routing_tools import build_routing_decision_schema, format_system_state
@@ -38,7 +38,9 @@ class AbiOrchestratorAgent(AbiAgent):
             agent_name=config.AGENT_NAME,
             description=config.AGENT_DESCRIPTION,
             llm_config=config.LLM_CONFIG,
-            tools=[tool_find_agent, *MEMORY_TOOLS],
+            # The model gets a cut-down card: no url, llmConfig or auth
+            # (agent-identity-disclosure.md).
+            tools=[tool_find_agent_for_model, *MEMORY_TOOLS],
             system_prompt=config.SYSTEM_PROMPT,
             content_types=['text', 'text/plain'],
         )
@@ -292,7 +294,7 @@ class AbiOrchestratorAgent(AbiAgent):
         """Orchestrate workflow execution using the task DAG."""
 
         abi_logging(f'[*] Orchestrator stream - context: {context_id}, task: {task_id}')
-        abi_logging(f'[📝] Query: {query}')
+        abi_logging(f'[📝] Query: {redact(query)}')
 
         if not query:
             raise ValueError('Please provide a Query')
@@ -476,7 +478,7 @@ class AbiOrchestratorAgent(AbiAgent):
                     f"[🧭] Routing decision: action={outcome.action} "
                     f"valid={contract['valid_actions']} "
                     f"history_turns={len(session_ctx.get('conversation_summary') or [])} "
-                    f"detail={(getattr(outcome, 'objective', None) or getattr(outcome, 'decision', None) or getattr(outcome, 'text', None) or '')[:120]!r}"
+                    f"detail={redact(getattr(outcome, 'objective', None) or getattr(outcome, 'decision', None) or getattr(outcome, 'text', None) or '')}"
                 )
 
                 if outcome.action == "create_plan":
@@ -526,7 +528,7 @@ class AbiOrchestratorAgent(AbiAgent):
                         # a fallback to text=None here would hide exactly
                         # the residual risk that spec already flags.
                         abi_logging(
-                            f"[⚠️] resolve_pending_plan chosen but decision sub-field empty for query={query!r}",
+                            f"[⚠️] resolve_pending_plan chosen but decision sub-field empty for query={redact(query)}",
                             level="warning",
                         )
                         yield AgentResponse.text("No pude interpretar tu respuesta. ¿Podés reformularla?")
@@ -642,7 +644,7 @@ class AbiOrchestratorAgent(AbiAgent):
             # Log execution plan summary
             tasks = plan.get("tasks", [])
 
-            abi_logging(f"[📋] Executing plan: '{plan.get('objective', '')}' — {len(tasks)} tasks")
+            abi_logging(f"[📋] Executing plan: {redact(plan.get('objective', ''))} — {len(tasks)} tasks")
             for t in tasks:
                 tid = t.get("task_id", "?")
                 ttype = t.get("type", "?")
@@ -651,7 +653,7 @@ class AbiOrchestratorAgent(AbiAgent):
                 if t.get("agents"):
                     a = t["agents"][0]
                     agent_name = a.get("name", "?") if isinstance(a, dict) else str(a)
-                abi_logging(f"[📋]   {tid} [{ttype}] → {agent_name or 'pending'} | {desc}")
+                abi_logging(f"[📋]   {tid} [{ttype}] → {agent_name or 'pending'} | {redact(desc)}")
 
             from abi_core.common.a2a_response import A2AResponse
 

@@ -58,7 +58,7 @@ async def select_methodology(
     """
     from abi_core.agent.llm_provider import invoke
     from abi_core.common.prompts.framework import build_methodology_selection_prompt
-    from abi_core.common.utils import abi_logging, clean_llm_json
+    from abi_core.common.utils import abi_logging, clean_llm_json, redact
 
     try:
         text = await invoke(
@@ -73,7 +73,7 @@ async def select_methodology(
             abi_logging(f"[⚠️] Unknown methodology '{methodology}', defaulting to {DEFAULT_METHODOLOGY}")
             methodology = DEFAULT_METHODOLOGY
         rationale = parsed.get("rationale", "")
-        abi_logging(f"[🧭] Methodology selected: {methodology} — {rationale}")
+        abi_logging(f"[🧭] Methodology selected: {methodology} — {redact(rationale)}")
         return {"methodology": methodology, "rationale": rationale}
     except Exception as e:  # noqa: BLE001 — best-effort, never block decomposition
         abi_logging(f"[⚠️] Methodology selection failed, defaulting to {DEFAULT_METHODOLOGY}: {e}")

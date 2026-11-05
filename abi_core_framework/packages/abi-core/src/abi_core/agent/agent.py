@@ -7,7 +7,7 @@ import asyncio
 import os
 from typing import Any, Dict, List, AsyncIterable, Optional, TYPE_CHECKING
 
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 
 if TYPE_CHECKING:
     from abi_core.session import SessionBackend
@@ -217,7 +217,7 @@ class AbiAgent:
             context = await self.session_backend.update_context(
                 session_id, {answer_id: answer_text}
             )
-            abi_logging(f'[💬] Received answer for {answer_id}')
+            abi_logging(f'[💬] Received answer for {redact(answer_id)}')
             return context, True
 
         return context, False
@@ -497,7 +497,7 @@ class AbiAgent:
         """
         import json as _json
 
-        abi_logging(f'[📝] {self.agent_name} processing: {query}.')
+        abi_logging(f'[📝] {self.agent_name} processing: {redact(query)}')
 
         # Auto-manage session context
         context, was_answer = await self.process_answer(context_id, query)
@@ -663,7 +663,9 @@ class AbiAgent:
 
         try:
             start = time.time()
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            from abi_core.common.cloudrun_auth import CloudRunIdToken
+            # An ephemeral on Cloud Run checks IAM on /health too.
+            async with httpx.AsyncClient(timeout=5.0, auth=CloudRunIdToken()) as client:
                 resp = await client.get(f"{agent_url}/health")
             elapsed_ms = round((time.time() - start) * 1000, 2)
 

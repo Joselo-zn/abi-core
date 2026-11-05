@@ -94,7 +94,7 @@ def _extract_text(content: Any) -> str:
         return "".join(parts)
     return str(content)
 
-from abi_core.common.utils import abi_logging
+from abi_core.common.utils import abi_logging, redact
 
 # Our provider names -> (langchain's model_provider identifier, package to
 # suggest installing if it's missing). See init_chat_model's own docstring
@@ -523,7 +523,7 @@ async def invoke(
                         tool_calls = getattr(msg, "tool_calls", [])
                         abi_logging(
                             f"[🔄] Agent msg: type={msg_type}, "
-                            f"content={str(content)[:100] if content else '(empty)'}, "
+                            f"content={redact(content) if content else '(empty)'}, "
                             f"tool_calls={len(tool_calls)}"
                         )
                         if content and msg_type != "ToolMessage":

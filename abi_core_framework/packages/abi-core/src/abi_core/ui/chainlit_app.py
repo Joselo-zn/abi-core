@@ -41,7 +41,8 @@ from abi_core.ui.run_follow import (
     request_stop,
     utc_now_iso,
 )
-from abi_core.ui.run_progress import RunProgress, error_message, format_task_update, task_step_name
+from abi_core.ui.run_progress import (RunProgress, error_message, format_task_update, notice_message,
+                                      task_step_name, ui_language)
 
 # Suppress httpcore async generator cleanup warnings (cosmetic, non-blocking)
 warnings.filterwarnings("ignore", message=".*async generator ignored GeneratorExit.*")
@@ -55,6 +56,18 @@ warnings.filterwarnings("ignore", message=".*async generator ignored GeneratorEx
 # .abi/specs/not-implemented/chainlit-invite-link-registration.md.
 if os.getenv("OAUTH_GOOGLE_CLIENT_ID"):
     import abi_core.ui.auth  # noqa: F401 — side effects only
+
+# The project's own pieces (ABI_UI_EXTENSIONS): routes, composer commands,
+# starters and chat hooks. Spec: .abi/specs/not-implemented/ui-extensions.md
+from abi_core.ui import extensions as _extensions  # noqa: E402
+
+_extensions.load()
+
+if _extensions.ui.registry.starters:
+    @cl.set_starters
+    async def _extension_starters(user=None, language=None):
+        return [cl.Starter(label=label, message=message, icon=icon)
+                for label, message, icon in _extensions.ui.registry.starters]
 
 
 def _install_bundled_elements() -> None:
@@ -389,14 +402,71 @@ def _build_identity_chain() -> "list[dict] | None":
 
     from abi_core.security.identity_chain import build_chain
 
-    return build_chain(secret, [("user_id", user_id), ("thread_id", thread_id)])
+    ids = [("user_id", user_id), ("thread_id", thread_id)]
+    # Sealed with the rest of the chain, so the browser cannot claim it: the
+    # Orchestrator's quotas skip an admin (abi-swarm rate-limit.md).
+    if (getattr(user, "metadata", None) or {}).get("is_admin"):
+        ids.append(("role", "admin"))
+    return build_chain(secret, ids)
+
+
+_GREETING = {
+    "es": "🐝 **{title}** listo. ¿Qué quieres construir?",
+    "en": "🐝 **{title}** ready. What do you want to build?",
+}
+
+
+async def _provision_user_accounts() -> None:
+    """Ask the provisioner (ABI_UI_PROVISION_URL) to create this user's
+    accounts, once: on success the user's metadata gets
+    ``workflow_accounts: "ready"`` and later chats skip it; on failure the
+    next chat tries again. Off without the URL or the hop secret.
+
+    At chat start, not in the OAuth callback: the chain carries Chainlit's
+    user id (the one the Orchestrator sees), which only exists once the
+    user is persisted. Spec:
+    .abi/specs/not-implemented/gcp-workflows/v1/01-principales-y-cuentas.md
+    """
+    url = os.getenv("ABI_UI_PROVISION_URL")
+    secret = os.getenv("HOP_SECRET_CHATUI_PROVISIONER")
+    user = getattr(cl.context.session, "user", None)
+    user_id = getattr(user, "id", None)
+    metadata = dict(getattr(user, "metadata", None) or {})
+    if not url or not secret or not user_id or metadata.get("workflow_accounts") == "ready":
+        return
+    import httpx
+    from abi_core.common.cloudrun_auth import CloudRunIdToken
+    from abi_core.common.utils import abi_logging
+    from abi_core.security.identity_chain import build_chain
+    try:
+        async with httpx.AsyncClient(timeout=60, auth=CloudRunIdToken()) as client:
+            resp = await client.post(f"{url.rstrip('/')}/provision",
+                                     json={"identity_chain": build_chain(secret, [("user_id", user_id)])})
+        if resp.status_code != 200:
+            abi_logging(f"[⚠️] Provisioning returned {resp.status_code}; retried on the next chat", level="warning")
+            return
+        metadata["workflow_accounts"] = "ready"
+        from chainlit.data import get_data_layer
+        data_layer = get_data_layer()
+        if data_layer is not None:
+            await data_layer.create_user(cl.User(identifier=user.identifier, metadata=metadata))
+        user.metadata = metadata
+    except Exception as e:  # noqa: BLE001 — never break a chat start over this
+        abi_logging(f"[⚠️] Provisioning failed ({type(e).__name__}); retried on the next chat", level="warning")
 
 
 @cl.on_chat_start
 async def on_start():
     await _get_client().ensure_session()
     await _sync_session_token_to_thread()
-    await cl.Message(content=f"🐝 **{UI_TITLE}** ready. What do you want to build?").send()
+    _spawn_background(_provision_user_accounts())
+    await _extensions.run_chat_start()
+    # Chainlit shows starters only on an empty chat: with starters, the
+    # greeting would hide them (found by the UX session, 2026-11-01).
+    if not _extensions.ui.registry.starters:
+        lang = ui_language(getattr(cl.context.session, "language", None))
+        greeting = _GREETING[lang].format(title=UI_TITLE)
+        await cl.Message(content=greeting).send()
 
 
 async def _stream_to_agent(query: str) -> None:
@@ -593,7 +663,9 @@ async def _stream_to_agent(query: str) -> None:
                 if element is not None:
                     collected_elements.append(element)
             elif response_type == "text" and content:
-                final_content = content
+                # A notice sent as a key (a reached limit) gets its text in the
+                # UI language; anything else is shown as the agent wrote it.
+                final_content = notice_message(progress.lang, parsed.get("meta")) or content
             elif response_type == "data" and content:
                 # Final result payload (AgentResponse.result). Render something
                 # human-readable: pull "result" if present, otherwise stringify
@@ -723,7 +795,10 @@ async def on_chat_end():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    """Send the user message to the agent and stream the response."""
+    """Send the user message to the agent and stream the response, unless
+    an extension takes it (its command, or a hook such as an open form)."""
+    if await _extensions.handle_message(message):
+        return
     await _stream_to_agent(message.content)
 
 

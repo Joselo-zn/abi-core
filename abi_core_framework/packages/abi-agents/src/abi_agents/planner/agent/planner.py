@@ -10,7 +10,7 @@ import json
 import os
 from collections.abc import AsyncIterable
 
-from abi_core.common.utils import abi_logging, clean_llm_json, format_plan_summary
+from abi_core.common.utils import abi_logging, clean_llm_json, format_plan_summary, redact
 from abi_core.agent.agent import AbiAgent, _HeartbeatDone
 from abi_core.agent.agent_response import AgentResponse
 
@@ -200,7 +200,7 @@ class AbiPlannerAgent(AbiAgent):
                     yield item
 
             result = tool_fn.func(filename=target_tag, content=content)
-            abi_logging(f"[⚡] direct_tool '{tool_name}': {result}")
+            abi_logging(f"[⚡] direct_tool '{tool_name}': {redact(result)}")
 
             # The Planner is long-lived (not ephemeral like a zombie), so its
             # workspace is never wiped between requests — scanning it wholesale
@@ -240,7 +240,7 @@ class AbiPlannerAgent(AbiAgent):
         """Stream planning process with Q&A and heartbeat support."""
 
         abi_logging(f'[*] Planner stream - session: {session_id}, task: {task_id}')
-        abi_logging(f'[📝] Query: {query}')
+        abi_logging(f'[📝] Query: {redact(query)}')
 
         # Deterministic short-circuit: a direct_tool task sent by
         # build_workflow (orchestrator/agent/steps.py) arrives as structured

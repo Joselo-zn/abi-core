@@ -128,7 +128,7 @@ def _run_sync(image: str, command: List[str], env: Dict[str, str],
 
 async def run(image: str, command: List[str], env: Dict[str, str],
               bundle: Dict[str, str], limits: SandboxLimits) -> SandboxResult:
-    abi_logging(f"[🧪] Sandbox: {image} {' '.join(command)}")
+    abi_logging(f"[🧪] Sandbox: {image} {command[0]} (+{len(command) - 1} args)")
     try:
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_sync, image, command, env, bundle, limits),
