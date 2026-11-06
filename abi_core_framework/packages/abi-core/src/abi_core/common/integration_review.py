@@ -44,10 +44,13 @@ class Finding:
     file: str
     line: Optional[int]
     message: str
+    detail: Optional[str] = None  # the traceback's frames: shown on demand, one per line
 
     def as_text(self) -> str:
         where = f"{self.file}:{self.line}" if self.line else self.file
-        return f"[{where}] {self.message}"
+        text = f"[{where}] {self.message}"
+        # Whoever reads this text (the reviewer, the chat) needs the frames too.
+        return f"{text} ⏎ {self.detail.replace(chr(10), ' ⏎ ')}" if self.detail else text
 
 
 @dataclass
@@ -402,9 +405,12 @@ def _imports_any(files: Dict[str, str], names: Set[str]) -> bool:
     return False
 
 
-def _traceback_tail(stderr: str, lines: int = 6) -> str:
-    tail = [l for l in stderr.strip().splitlines() if l.strip()][-lines:]
-    return " ⏎ ".join(l.strip() for l in tail)
+def _traceback_parts(stderr: str, lines: int = 6) -> Tuple[str, Optional[str]]:
+    """(the last line, which names the failure; the frames before it, or None)."""
+    tail = [l.strip() for l in stderr.strip().splitlines() if l.strip()][-lines:]
+    if not tail:
+        return "", None
+    return tail[-1], "\n".join(tail[:-1]) or None
 
 
 async def execution_findings(files: Dict[str, str], entry_point: str) -> Tuple[List[Finding], bool, Optional[str]]:
@@ -441,18 +447,19 @@ async def execution_findings(files: Dict[str, str], entry_point: str) -> Tuple[L
     if result.oom_killed:
         findings.append(Finding("error", 2, entry_point, None, "se quedó sin memoria al ejecutarse"))
     elif "Traceback (most recent call last)" in result.stderr:
-        tail = _traceback_tail(result.stderr)
-        if "EOFError" in tail and not long_running:
+        failure, frames = _traceback_parts(result.stderr)
+        if "EOFError" in f"{failure} {frames}" and not long_running:
             findings.append(Finding("warning", 2, entry_point, None,
-                f"espera entrada interactiva del usuario; no se pudo ejecutar sin ella ({tail})"))
+                f"espera entrada interactiva del usuario; no se pudo ejecutar sin ella ({failure})", frames))
         else:
-            findings.append(Finding("error", 2, entry_point, None, f"falla al ejecutarse: {tail}"))
+            findings.append(Finding("error", 2, entry_point, None, f"falla al ejecutarse: {failure}", frames))
     elif result.timed_out and not long_running:
         findings.append(Finding("warning", 2, entry_point, None,
             f"no terminó en {LAYER2_TIMEOUT_S}s (puede estar esperando entrada o en un ciclo)"))
     elif not result.timed_out and result.exit_code not in (0, None):
+        failure, frames = _traceback_parts(result.stderr)
         findings.append(Finding("warning", 2, entry_point, None,
-            f"terminó con código {result.exit_code}: {_traceback_tail(result.stderr) or result.stdout[-200:]}"))
+            f"terminó con código {result.exit_code}: {failure or result.stdout[-200:]}", frames))
     return findings, True, None
 
 

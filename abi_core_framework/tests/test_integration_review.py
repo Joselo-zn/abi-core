@@ -217,3 +217,57 @@ class TestExecutionLayer:
                  "main.py": "from util import greet\nprint(greet(input()))\n"}
         report = await review_files(files)
         assert report.passed and any("entrada interactiva" in f.message for f in report.warnings)
+
+
+class TestTracebackDetail:
+    """The message names the failure; the frames go apart, for the delivery
+    card to show on demand. No sandbox: its result is stubbed."""
+
+    STDERR = ('Traceback (most recent call last):\n'
+              '  File "/app/main.py", line 3, in <module>\n'
+              '    print(len(f))\n'
+              "TypeError: object of type 'Fleet' has no len()\n")
+
+    async def _finding(self, monkeypatch, stderr, exit_code=1, stdout=""):
+        from types import SimpleNamespace
+        from abi_core.common import integration_review as ir, sandbox
+        result = SimpleNamespace(error=None, oom_killed=False, timed_out=False, exit_code=exit_code,
+                                 stderr=stderr, stdout=stdout)
+
+        async def run_in_sandbox(*a, **k):
+            return result
+
+        monkeypatch.setattr(sandbox, "run_in_sandbox", run_in_sandbox)
+        findings, ran, _ = await ir.execution_findings({"main.py": "print(1)\n"}, "main.py")
+        assert ran and len(findings) == 1
+        return findings[0]
+
+    @pytest.mark.asyncio
+    async def test_error_keeps_the_failure_in_the_message_and_the_frames_apart(self, monkeypatch):
+        f = await self._finding(monkeypatch, self.STDERR)
+        assert f.severity == "error"
+        assert f.message == "falla al ejecutarse: TypeError: object of type 'Fleet' has no len()"
+        assert f.detail == ('Traceback (most recent call last):\nFile "/app/main.py", line 3, in <module>\n'
+                            "print(len(f))")
+
+    @pytest.mark.asyncio
+    async def test_the_text_for_the_reviewer_still_has_the_frames(self, monkeypatch):
+        text = (await self._finding(monkeypatch, self.STDERR)).as_text()
+        assert text.startswith("[main.py] falla al ejecutarse: TypeError")
+        assert 'File "/app/main.py", line 3' in text and "\n" not in text
+
+    @pytest.mark.asyncio
+    async def test_interactive_input_stays_a_warning(self, monkeypatch):
+        stderr = "Traceback (most recent call last):\n  File \"main.py\", line 1\nEOFError: EOF when reading a line\n"
+        f = await self._finding(monkeypatch, stderr)
+        assert f.severity == "warning" and "entrada interactiva" in f.message and "line 1" in f.detail
+
+    @pytest.mark.asyncio
+    async def test_a_bad_exit_without_a_traceback(self, monkeypatch):
+        f = await self._finding(monkeypatch, "", exit_code=3, stdout="salida")
+        assert f.message == "terminó con código 3: salida" and f.detail is None
+
+    def test_a_finding_without_detail_reads_as_before(self):
+        from abi_core.common.integration_review import Finding
+        assert Finding("error", 1, "a.py", 2, "mal").as_text() == "[a.py:2] mal"
+
