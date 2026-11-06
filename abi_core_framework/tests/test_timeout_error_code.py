@@ -53,3 +53,11 @@ def test_ui_shows_it_in_the_users_language_after_the_stream():
 def test_unknown_or_missing_code_keeps_the_generic_message():
     assert error_message("es", None) is None
     assert error_message("es", {"error_code": "other"}) is None
+
+
+def test_failure_codes_have_their_own_text_in_both_languages():
+    for code in ("request_blocked", "provider_unavailable", "policy_denied", "internal"):
+        es, en = error_message("es", {"error_code": code}), error_message("en", {"error_code": code})
+        assert es and en and es != en and "unavailable" not in es
+    assert error_message("es", {"error_code": "something_new"}) is None
+    assert "tu pedido" in error_message("es", {"error_code": "internal"})

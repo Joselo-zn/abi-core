@@ -57,6 +57,10 @@ _TEXT = {
         "task_failed": "✕ No se completó",
         "error_timeout": "Esto está tardando más de lo esperado (más de {seconds}s): probablemente el modelo está sobrecargado. Intentá de nuevo.",
         "error_timeout_plain": "Esto está tardando más de lo esperado: probablemente el modelo está sobrecargado. Intentá de nuevo.",
+        "error_request_blocked": "No puedo ayudarte con ese pedido.",
+        "error_provider_unavailable": "No pude terminar: falló el servicio de IA que uso, no tu pedido. Prueba de nuevo en un momento.",
+        "error_policy_denied": "No pude terminar: una pieza interna de mi equipo no dejó pasar un paso, no fue tu pedido. Prueba de nuevo.",
+        "error_internal": "No pude terminar por un problema de mi lado, no de tu pedido. Prueba de nuevo.",
     },
     "en": {
         "working": "Working",
@@ -77,6 +81,10 @@ _TEXT = {
         "task_failed": "✕ Not completed",
         "error_timeout": "This is taking longer than expected (over {seconds}s); the model is probably overloaded. Try again.",
         "error_timeout_plain": "This is taking longer than expected; the model is probably overloaded. Try again.",
+        "error_request_blocked": "I can't help with that request.",
+        "error_provider_unavailable": "I couldn't finish: the AI service I use failed, not your request. Try again in a moment.",
+        "error_policy_denied": "I couldn't finish: an internal part of my team didn't let a step through; it wasn't your request. Try again.",
+        "error_internal": "I couldn't finish because of a problem on my side, not your request. Try again.",
     },
 }
 
@@ -162,6 +170,9 @@ def error_message(lang: str, meta: Optional[dict]) -> Optional[str]:
         if meta.get("max_wait"):
             return "⏱️ " + text["error_timeout"].format(seconds=meta["max_wait"])
         return "⏱️ " + text["error_timeout_plain"]
+    code = meta.get("error_code")
+    if code in ("request_blocked", "provider_unavailable", "policy_denied", "internal"):
+        return "❌ " + _TEXT[ui_language(lang)][f"error_{code}"]
     return None
 
 

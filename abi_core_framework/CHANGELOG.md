@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A new chat shows that it's getting ready.** Opening a chat used to leave
+  the page blank for several seconds while the UI opened its session with the
+  agent and synced the session token — longer with the agent and the database
+  cold. The first thing on a new chat is now "Getting the system ready…"
+  ("Preparando el sistema…" in Spanish) with a spinner, removed when the setup
+  is done. Measured with an agent that takes 5 s to open its session: the
+  indicator appears at 0.8 s. New bundled element: `Preparing`.
 - **Extension points for the Chat UI (`ABI_UI_EXTENSIONS`).** A project adds
   its own pieces without forking the Chat UI. `ABI_UI_EXTENSIONS` lists
   Python modules, and each one exposes `register(ui)` from

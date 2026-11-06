@@ -81,7 +81,21 @@ yield AgentResponse.element("image", {"url": url}, name="Chart")   # rich elemen
 yield AgentResponse.status("Planning...", phase=RunPhase.PLANNING.value)  # timeline phase
 ```
 
-`error(message, code=None, **meta)` puts `code` (and any extra keys) in `meta.error_code`, so a client can show its own localized text; `message` stays the English fallback. `AgentResponse.error_from(exc)` builds one from an exception, keeping its `error_code` and `max_wait` when it has them — the bundled Chainlit UI shows timeouts in the browser's language this way. `element()` is covered in [Rich Elements](../single-agent/10-rich-elements.md); `phase` and the other progress keys in [Run Progress](../single-agent/11-run-progress.md) (`from abi_core.agent.agent_response import RunPhase`).
+`error(message, code=None, **meta)` puts `code` (and any extra keys) in `meta.error_code`, so a client can show its own localized text; `message` stays the English fallback. `AgentResponse.error_from(exc)` builds one from an exception, keeping its `error_code` and `max_wait` when it has them — the bundled Chainlit UI shows timeouts in the browser's language this way. It also has its own text, in English or Spanish, for these codes: `timeout`, `request_blocked` (the request itself is refused), `provider_unavailable` (the AI service failed), `policy_denied` (an internal policy stopped a step) and `internal` (a problem on the system's side). The last three tell the user the failure wasn't their request's fault. Any other code shows the generic "unavailable" message.
+
+To give every error a code — including errors that only arrive as text, such as one coming back from another agent — use `abi_core.agent.failures` where your agent's stream leaves:
+
+```python
+from abi_core.agent import failures
+
+async for chunk in agent.stream(query, context_id, task_id):
+    chunk = failures.tag(chunk)          # adds meta.error_code to an error that has none
+    if failures.code_of(chunk) in failures.SYSTEM_CODES:
+        ...                              # the system failed, not the request
+    yield chunk
+```
+
+`tag()` leaves non-error responses, and errors that already have a code, as they are. For the rest, `classify(text)` picks the code from the error's text: `provider_unavailable` for the model provider's quota, billing, rate-limit, 429 or 503 errors, and for an Ollama server that doesn't answer; `policy_denied` for a denied OPA or A2A call; `internal` for anything else — including an internal service, such as the Semantic Layer, that doesn't answer. `request_blocked` is never guessed: set it where you refuse the request, with `AgentResponse.error(message, code="request_blocked")`. `SYSTEM_CODES` is `("provider_unavailable", "policy_denied", "internal")`. `element()` is covered in [Rich Elements](../single-agent/10-rich-elements.md); `phase` and the other progress keys in [Run Progress](../single-agent/11-run-progress.md) (`from abi_core.agent.agent_response import RunPhase`).
 
 ---
 

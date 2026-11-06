@@ -457,10 +457,20 @@ async def _provision_user_accounts() -> None:
 
 @cl.on_chat_start
 async def on_start():
-    await _get_client().ensure_session()
-    await _sync_session_token_to_thread()
-    _spawn_background(_provision_user_accounts())
-    await _extensions.run_chat_start()
+    # Shown before any network wait: with the agent and the database cold,
+    # the setup below takes seconds and a new chat would look dead (found
+    # live, 2026-11-05). Removed once the setup is done.
+    lang = ui_language(getattr(cl.context.session, "language", None))
+    preparing = cl.Message(content="", elements=[cl.CustomElement(
+        name="Preparing", display="inline", props={"lang": lang})])
+    await preparing.send()
+    try:
+        await _get_client().ensure_session()
+        await _sync_session_token_to_thread()
+        _spawn_background(_provision_user_accounts())
+        await _extensions.run_chat_start()
+    finally:
+        await preparing.remove()
     # Chainlit shows starters only on an empty chat: with starters, the
     # greeting would hide them (found by the UX session, 2026-11-01).
     if not _extensions.ui.registry.starters:
@@ -529,6 +539,7 @@ async def _stream_to_agent(query: str) -> None:
     actions_sent = False
     collected_elements = []
     outcome = "done"
+    error_code = None
     # Set once an update without meta.phase renames the step after its
     # agent — the ticker must not overwrite that name.
     legacy_status = False
@@ -739,6 +750,7 @@ async def _stream_to_agent(query: str) -> None:
                     final_content = content
             elif response_type == "error" and content:
                 outcome = "failed"
+                error_code = (parsed.get("meta") or {}).get("error_code")
                 _spawn_background(_notify_admin_of_error(content, _get_client()._token))
                 # A coded error (e.g. a timeout) gets its own text in the user's
                 # language; anything else keeps the generic message.
@@ -770,6 +782,8 @@ async def _stream_to_agent(query: str) -> None:
         await response_msg.send()
 
     await _sync_session_token_to_thread()
+    # Extensions learn how the turn ended (the welcome's failure card).
+    await _extensions.run_run_end({"query": query, "outcome": outcome, "error_code": error_code})
 
 
 @cl.on_stop

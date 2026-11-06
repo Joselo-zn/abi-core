@@ -168,6 +168,7 @@ across logins/devices), and an invite-only registration system.
 | `ABI_UI_KMS_KEY` | — | Cloud KMS key (`projects/…/locations/…/keyRings/…/cryptoKeys/…`) that wraps each user's data key. Needs `abi-core-ai[ui,gcp]` and `roles/cloudkms.cryptoKeyEncrypterDecrypter`. See [Encrypted data](../production/07-authentication.md#encrypted-data-and-a-least-privilege-database) |
 | `ABI_UI_LOCAL_KEK` | — | Local key-encryption key, 32 bytes base64 — development only. With neither this nor `ABI_UI_KMS_KEY`, data is stored in clear and a warning is logged |
 | `ABI_UI_IDENTITY_KEY` | — | Secret for the HMAC that identifies users by email without storing it. Keep it stable |
+| `ABI_UI_EXTENSIONS` | — | Python modules (comma-separated) whose `register(ui)` adds routes, commands, starters and chat hooks to the Chat UI. They must be importable in the UI's container (`PYTHONPATH`). See [Extending the Chat UI](../production/07-authentication.md#extending-the-chat-ui) |
 | `CHAINLIT_ELEMENTS_BUCKET` | `abi-chainlit-elements` | Separate MinIO bucket from `ARTIFACT_BUCKET` — chat thread elements don't mix with agent-generated artifacts. Create it before first use (`mc mb`). |
 | `ADMIN_NOTIFICATION_EMAIL` | — | Where the "someone joined the waiting list" email goes. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `SMTP_PORT` defaults to `587` | SMTP for the waiting-list notification. Left unset, waiting-list signups still work (recorded in Postgres) — the email is just skipped, logged as a warning. |

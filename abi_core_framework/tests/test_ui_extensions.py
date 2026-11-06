@@ -176,3 +176,18 @@ def test_starters_hide_the_greeting(monkeypatch):
     run(start([], "es-MX"))
     run(start([("Automatizar un proceso", "…", None)], "es-MX"))
     assert len(sent) == 1 and "listo. ¿Qué quieres construir?" in sent[0]
+
+
+def test_run_end_hooks_run_in_order_and_a_failing_one_does_not_stop_the_next(fresh):
+    seen = []
+
+    async def first(run):
+        seen.append(("first", run["outcome"], run["error_code"]))
+        raise RuntimeError("hook bug")
+
+    async def second(run):
+        seen.append(("second", run["query"]))
+    fresh.on_run_end(first)
+    fresh.on_run_end(second)
+    run(extensions.run_run_end({"query": "crea un juego", "outcome": "failed", "error_code": "internal"}))
+    assert seen == [("first", "failed", "internal"), ("second", "crea un juego")]

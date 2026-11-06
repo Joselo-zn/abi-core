@@ -174,6 +174,61 @@ Create the tables once with the owner — or let the UI create them on a first s
 
 **Search** over conversations keeps working: it filters in the application, on the decrypted text.
 
+## Extending the Chat UI
+
+The Chat UI runs from the installed `abi-core-ai` package, not from your project, so you don't fork it to add something. You write a Python module with a `register(ui)` function, and list it in `ABI_UI_EXTENSIONS`:
+
+```python
+# my_extensions/support.py
+import chainlit as cl
+from fastapi import Depends
+
+
+def register(ui):
+    @ui.route("GET", "/support/status")
+    async def status(user=Depends(ui.require_user)):      # 401 without a logged-in user
+        return {"user": user.identifier, "open_tickets": 2}
+
+    async def ticket(message):
+        await cl.Message(content=f"Ticket opened: {message.content}").send()
+
+    ui.command("ticket", "Open a support ticket", "life-buoy", ticket)
+    ui.starter("Track my order", "Where is my order?")
+```
+
+The module has to be importable inside the UI's container. Copy it into the image and put its folder on `PYTHONPATH` — the UI doesn't look in its working directory on its own:
+
+```dockerfile
+# ui/Dockerfile, after the pip install
+COPY my_extensions/ ./my_extensions/
+ENV PYTHONPATH=/app
+```
+
+```yaml
+# compose.yaml, on the chat UI service
+environment:
+  - ABI_UI_EXTENSIONS=my_extensions.support      # comma-separated for several
+```
+
+The UI logs `UI extension loaded: my_extensions.support` at start-up. A module that fails to import or register is logged as `not loaded` and skipped: a broken extension never takes the chat down.
+
+| On `ui` | What it does |
+|---|---|
+| `route(method, path)` | Adds an HTTP route to the UI's server (a FastAPI route). Errors in it answer a plain 500 and are logged without the request's content |
+| `require_user` | FastAPI dependency: the logged-in user, or 401 |
+| `csrf_token(user_id)` / `verify_csrf(user_id, token)` | A one-hour token for a form your route serves and receives with the session cookie. Needs `CHAINLIT_AUTH_SECRET` |
+| `command(id, description, icon, handler)` | A command in the message box; a message sent with it goes to `handler(message)` instead of the agent |
+| `starter(label, message, icon=None)` | A suggestion on the empty chat |
+| `on_chat_start(fn)` / `on_chat_resume(fn)` | Run when a conversation starts or is resumed (`fn(thread)`), in the background |
+| `on_message(fn)` | Runs before a message goes to the agent; returning `True` keeps it from the agent |
+| `on_run_end(fn)` | Runs when a turn sent to the agent has finished and its answer is on the page, with `{"query", "outcome", "error_code"}`: `outcome` is `done`, `failed`, `needs_input` or `plan_ready`; `error_code` is the agent's `meta.error_code` when it failed, otherwise `None`. Hooks run in the order they were registered; one that fails doesn't stop the next |
+| `current_user()` | The session's user, or `None` |
+| `identity_chain(secret_env, user_id=None, extra=())` | The user's signed identity chain, sealed with the secret in the environment variable `secret_env`, for a service of yours that has to trust who the user is |
+
+```{warning}
+**A route is open unless you protect it.** Always depend on `ui.require_user`. Chainlit's own `get_current_user` returns `None` when login isn't configured instead of refusing, so a route that relies on it alone answers anyone.
+```
+
 ## Without any of this
 
 Leave `OAUTH_GOOGLE_CLIENT_ID` unset and the UI behaves exactly as before —

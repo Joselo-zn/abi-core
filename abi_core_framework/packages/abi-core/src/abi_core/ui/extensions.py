@@ -44,6 +44,7 @@ class _Registry:
     on_chat_start: List[Callable[[], Awaitable[None]]] = field(default_factory=list)
     on_chat_resume: List[Callable[[dict], Awaitable[None]]] = field(default_factory=list)
     on_message: List[Callable[[Any], Awaitable[bool]]] = field(default_factory=list)
+    on_run_end: List[Callable[[dict], Awaitable[None]]] = field(default_factory=list)
     starters: List[Tuple[str, str, Optional[str]]] = field(default_factory=list)
 
 
@@ -174,6 +175,16 @@ class UIExtensions:
         self.registry.on_message.append(fn)
         return fn
 
+    def on_run_end(self, fn):
+        """Runs when a turn sent to the agent has finished and its answer is
+        on the page, with ``{"query", "outcome", "error_code"}``: ``outcome``
+        is done, failed, needs_input or plan_ready; ``error_code`` is the
+        agent's ``meta.error_code`` when it failed (e.g. timeout, internal,
+        provider_unavailable, policy_denied, request_blocked), else None.
+        Hooks run in order, after the answer, so a hook can follow it up."""
+        self.registry.on_run_end.append(fn)
+        return fn
+
     # ── Identity ──────────────────────────────────────────────────────
 
     def current_user(self):
@@ -260,6 +271,11 @@ async def run_chat_resume(thread: dict) -> None:
 
     for fn in ui.registry.on_chat_resume:
         asyncio.create_task(later(fn))
+
+
+async def run_run_end(run: dict) -> None:
+    for fn in ui.registry.on_run_end:
+        await _run_safely(fn, run)
 
 
 async def handle_message(message) -> bool:
