@@ -151,17 +151,25 @@ def test_starters_hide_the_greeting(monkeypatch):
     from abi_core.ui import chainlit_app
     sent = []
 
+    removed = []
+
     class Msg:
-        def __init__(self, content):
-            self.content = content
+        def __init__(self, content, elements=None):
+            self.content, self.elements = content, elements or []
 
         async def send(self):
-            sent.append(self.content)
+            sent.append(self.content or f"<{self.elements[0].name}>")
+
+        async def remove(self):
+            removed.append(self.elements[0].name if self.elements else self.content)
 
     async def noop(*a, **k):
         return None
 
     monkeypatch.setattr(chainlit_app.cl, "Message", Msg)
+    # The "Preparing" indicator is a custom element (it needs a real thread).
+    monkeypatch.setattr(chainlit_app.cl, "CustomElement",
+                        lambda name, props=None, display=None: SimpleNamespace(name=name, props=props))
     monkeypatch.setattr(chainlit_app, "_sync_session_token_to_thread", noop)
     monkeypatch.setattr(chainlit_app, "_provision_user_accounts", noop)
     monkeypatch.setattr(chainlit_app._extensions, "run_chat_start", noop)
@@ -175,7 +183,12 @@ def test_starters_hide_the_greeting(monkeypatch):
 
     run(start([], "es-MX"))
     run(start([("Automatizar un proceso", "…", None)], "es-MX"))
-    assert len(sent) == 1 and "listo. ¿Qué quieres construir?" in sent[0]
+    # Each start shows "Preparing" first and removes it; only the chat
+    # without starters gets the greeting.
+    assert removed == ["Preparing", "Preparing"]
+    greetings = [m for m in sent if m != "<Preparing>"]
+    assert sent.count("<Preparing>") == 2
+    assert len(greetings) == 1 and "listo. ¿Qué quieres construir?" in greetings[0]
 
 
 def test_run_end_hooks_run_in_order_and_a_failing_one_does_not_stop_the_next(fresh):
