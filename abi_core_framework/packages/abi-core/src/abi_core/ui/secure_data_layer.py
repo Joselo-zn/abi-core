@@ -47,6 +47,26 @@ def _session_user_id() -> Optional[str]:
     return getattr(user, "id", None)
 
 
+# Shown only while something happens, then removed from the screen. Deletes
+# are soft (delete_step), so their rows stay; a saved chat must not bring them
+# back: "Preparing" would spin forever when the chat is reopened.
+_TRANSIENT_ELEMENTS = {"Preparing"}
+
+
+def _without_transient(thread):
+    """The thread without the transient elements and the messages that carry them."""
+    if not thread:
+        return thread
+    elements = thread.get("elements") or []
+    transient = [e for e in elements if e.get("name") in _TRANSIENT_ELEMENTS]
+    if not transient:
+        return thread
+    message_ids = {e.get("forId") for e in transient}
+    return {**thread,
+            "elements": [e for e in elements if e.get("name") not in _TRANSIENT_ELEMENTS],
+            "steps": [s for s in thread.get("steps") or [] if s.get("id") not in message_ids]}
+
+
 class SecureDataLayer(SQLAlchemyDataLayer):
     def __init__(self, conninfo: str, storage_provider=None, kek=None, **kwargs):
         """`kek`: crypto.kek_from_env() — None leaves encryption off (local only)."""
@@ -164,7 +184,7 @@ class SecureDataLayer(SQLAlchemyDataLayer):
         rows = await self._raw('SELECT "deletedAt" FROM threads WHERE "id" = :id', {"id": thread_id})
         if rows and rows[0]["deletedAt"]:
             return None
-        return await super().get_thread(thread_id)
+        return _without_transient(await super().get_thread(thread_id))
 
     async def delete_feedback(self, feedback_id: str) -> bool:
         # Kept, hidden: its forId no longer matches a step, so no thread

@@ -225,3 +225,14 @@ def test_service_card_gets_id_from_service_id(tmp_path):
     assert loaded["id"] == "service://abi-swarm-sandbox"
     ctx = ServiceCard.from_dict(card).build_context(tool_name="verify_caller", query="{}")
     assert v._verify_signature(loaded, ctx)
+
+
+@pytest.mark.parametrize("entry,expected", [("main.py", True), ("index.html", True), ("Page.HTM", True), ("a.md", False)])
+def test_run_facts_counts_a_page_as_executable(monkeypatch, entry, expected):
+    from abi_services.sandbox_service import app
+
+    async def plan(*_args):
+        return {"technical_design": {"files": [{"filename": entry, "role": "entry_point"}]}}
+
+    monkeypatch.setattr(app.project_store, "load_json", plan)
+    assert asyncio.run(app.run_facts("r1"))["has_executable_code"] is expected

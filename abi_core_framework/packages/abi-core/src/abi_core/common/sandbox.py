@@ -42,6 +42,7 @@ from typing import Dict, List, Optional
 
 SANDBOX_IMAGE_PYTHON = os.getenv("SANDBOX_IMAGE_PYTHON", "abi-sandbox-python:latest")
 SANDBOX_IMAGE_PYGAME = os.getenv("SANDBOX_IMAGE_PYGAME", "abi-sandbox-pygame:latest")
+SANDBOX_IMAGE_BROWSER = os.getenv("SANDBOX_IMAGE_BROWSER", "abi-sandbox-browser:latest")
 
 # Only these variables may be passed into a sandbox. Anything else is
 # rejected, so a caller can never forward its own environment (and with

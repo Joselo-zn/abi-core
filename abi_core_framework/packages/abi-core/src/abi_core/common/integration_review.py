@@ -19,6 +19,7 @@ Usage:
 """
 
 import ast
+import json
 import os
 import re
 import sys
@@ -29,6 +30,9 @@ from typing import Dict, List, Optional, Set, Tuple
 SANDBOX_THIRD_PARTY = {"pygame", "numpy"}
 
 LAYER2_TIMEOUT_S = int(os.getenv("INTEGRATION_REVIEW_RUN_SECONDS", "15"))
+WEB_CHECK_TIMEOUT_S = int(os.getenv("WEB_CHECK_RUN_SECONDS", "60"))
+WEB_CHECK_MEMORY_MB = int(os.getenv("WEB_CHECK_MEMORY_MB", "1024"))
+WEB_CHECK_PIDS = int(os.getenv("WEB_CHECK_PIDS", "256"))
 
 # task_id prefix of the former integration reviewer ephemeral. The repair is
 # now one model call in the Orchestrator (integration_repair.py); the zombie
@@ -58,6 +62,7 @@ class Finding:
 
 
 _COULD_NOT_RUN = "no se pudo ejecutar"
+_EXTERNAL = "depende de recursos externos"
 _SKIPPED_EN = {"desactivada": "turned off",
                "no se identificó el punto de entrada": "the entry point could not be identified",
                "hay errores de sintaxis": "there are syntax errors"}
@@ -79,6 +84,10 @@ _REPORT_TEXT = {
                    "en el sandbox hasta {seconds} s sin errores. Eso no prueba el uso real "
                    "(por ejemplo, que un juego se pueda jugar bien)."),
         "passed_static": "✅ Revisión estática sin errores: los archivos encajan entre sí. No se ejecutaron ({}).",
+        "passed_web": ("✅ Verificado por código: {entry} se abrió en un navegador en el sandbox, con clic, "
+                       "Espacio y flechas simulados, sin errores de JavaScript ni archivos faltantes. "
+                       "Eso no prueba el uso real (por ejemplo, que un juego se pueda jugar bien)."),
+        "unverified_web": "\n⚠️ Sin verificar: no se pudo comprobar en el navegador que funcione.",
     },
     "en": {
         "title": "**Integration review of the delivered files**",
@@ -97,6 +106,10 @@ _REPORT_TEXT = {
                    "in the sandbox for up to {seconds} s without errors. That does not prove real use "
                    "(for example, that a game plays well)."),
         "passed_static": "✅ Static review without errors: the files fit together. They were not run ({}).",
+        "passed_web": ("✅ Verified by code: {entry} opened in a browser in the sandbox, with a simulated click, "
+                       "Space and arrows, without JavaScript errors or missing files. "
+                       "That does not prove real use (for example, that a game plays well)."),
+        "unverified_web": "\n⚠️ Unverified: it could not be proven in the browser that it works.",
     },
 }
 
@@ -107,6 +120,7 @@ class IntegrationReport:
     findings: List[Finding] = field(default_factory=list)
     layer2_ran: bool = False
     layer2_skipped: Optional[str] = None
+    web: bool = False                # a page checked in a browser, not a Python set
 
     @property
     def errors(self) -> List[Finding]:
@@ -131,11 +145,14 @@ class IntegrationReport:
         """
         return not self.layer2_ran and self.layer2_skipped != "desactivada"
 
-    def _skipped(self, lang: str) -> Optional[str]:
+    def skipped_reason(self, lang: str = "es") -> Optional[str]:
+        """Why it did not run, in the user's language."""
         if lang != "en" or not self.layer2_skipped:
             return self.layer2_skipped
         if self.layer2_skipped.startswith(_COULD_NOT_RUN):
             return "could not run" + self.layer2_skipped[len(_COULD_NOT_RUN):]
+        if self.layer2_skipped.startswith(_EXTERNAL):
+            return "depends on external resources" + self.layer2_skipped[len(_EXTERNAL):]
         return _SKIPPED_EN.get(self.layer2_skipped, self.layer2_skipped)
 
     def as_text(self, lang: str = "es") -> str:
@@ -147,12 +164,12 @@ class IntegrationReport:
         if self.layer2_ran:
             lines.append(t["ran"])
         elif self.layer2_skipped:
-            lines.append(t["not_ran"].format(self._skipped(lang)))
+            lines.append(t["not_ran"].format(self.skipped_reason(lang)))
         if self.errors:
             lines.append(t["errors"].format(len(self.errors)))
             lines += [f"- {f.as_text(lang)}" for f in self.errors]
         elif self.execution_unverified:
-            lines.append(t["unverified"])
+            lines.append(t["unverified_web"] if self.web else t["unverified"])
         if self.warnings:
             lines.append(t["warnings"].format(len(self.warnings)))
             lines += [f"- {f.as_text(lang)}" for f in self.warnings]
@@ -170,10 +187,11 @@ class IntegrationReport:
         t = _REPORT_TEXT["en" if lang == "en" else "es"]
         entry = f"`{self.entry_point}`" if self.entry_point else t["the_entry"]
         if self.layer2_ran:
-            lines = [t["passed"].format(entry=entry, seconds=LAYER2_TIMEOUT_S)]
+            lines = [t["passed_web"].format(entry=entry) if self.web
+                     else t["passed"].format(entry=entry, seconds=LAYER2_TIMEOUT_S)]
             warnings_header = t["warnings_ran"].format(len(self.warnings))
         else:
-            lines = [t["passed_static"].format(self._skipped(lang) or t["no_run"])]
+            lines = [t["passed_static"].format(self.skipped_reason(lang) or t["no_run"])]
             warnings_header = t["warnings"].format(len(self.warnings)).lstrip("\n")
         if self.warnings:
             lines.append("\n" + warnings_header)
@@ -546,4 +564,99 @@ async def review_files(files: Dict[str, str], run_sandbox: bool = True) -> Optio
         report.findings += layer2
         report.layer2_ran = ran
         report.layer2_skipped = skipped
+    return report
+
+
+# ── Web deliverables: the page in a browser ────────────────────
+# Spec: .abi/specs/not-implemented/web-deliverable-browser-check.md
+
+_FRAME = re.compile(r"\(?([^\s()]+):(\d+):\d+\)?\s*$", re.M)
+_MAX_WEB_ERRORS = 10
+_MAX_EXTERNAL_NAMED = 3
+_MAX_WEB_TEXT = 500
+
+
+def web_entry_point(files: Dict[str, bytes]) -> Optional[str]:
+    """index.html, or the only page. By code, never the model's choice."""
+    pages = sorted(f for f in files if f.lower().endswith((".html", ".htm")))
+    for page in pages:
+        if page.lower() == "index.html":
+            return page
+    return pages[0] if len(pages) == 1 else None
+
+
+def _web_findings(data: dict, entry_point: str) -> List[Finding]:
+    """The check's result, deduplicated: a game loop repeats an error every frame."""
+    findings: List[Finding] = []
+    if data.get("crashed"):
+        findings.append(Finding("error", 2, entry_point, None, "la página se cayó en el navegador",
+                                en="the page crashed in the browser"))
+    if data.get("load_timeout"):
+        findings.append(Finding("error", 2, entry_point, None, "la página no terminó de cargar en el navegador",
+                                en="the page did not finish loading in the browser"))
+    for path in sorted({str(p)[:_MAX_WEB_TEXT] for p in data.get("missing") or []}):
+        findings.append(Finding("error", 2, path, None, "la página pide este archivo y no existe",
+                                en="the page asks for this file and it does not exist"))
+    seen = set()
+    for error in data.get("js_errors") or []:
+        message = str(error.get("message", ""))[:_MAX_WEB_TEXT]
+        if message in seen or len(seen) >= _MAX_WEB_ERRORS:
+            continue
+        seen.add(message)
+        stack = str(error.get("stack") or "")
+        frames = "\n".join(line.strip() for line in stack.splitlines()[1:7]) or None
+        frame = _FRAME.search(stack)
+        findings.append(Finding("error", 2, frame.group(1) if frame else entry_point,
+                                int(frame.group(2)) if frame else None,
+                                f"error de JavaScript: {message}", frames, en=f"JavaScript error: {message}"))
+    return findings
+
+
+async def web_execution_findings(files: Dict[str, bytes], entry_point: str) -> Tuple[List[Finding], bool, Optional[str]]:
+    """Open the page in the browser sandbox. Returns (findings, ran, skipped_reason).
+    The check failing is never the page's fault: it leaves the page unverified."""
+    from abi_core.common.sandbox import SANDBOX_IMAGE_BROWSER, SandboxLimits, run_in_sandbox
+
+    limits = SandboxLimits(timeout_s=WEB_CHECK_TIMEOUT_S, memory_mb=WEB_CHECK_MEMORY_MB, pids=WEB_CHECK_PIDS)
+    command = ["python", "/opt/abi-sandbox/browser_check.py", entry_point]
+    try:
+        result = await run_in_sandbox(files, command, image=SANDBOX_IMAGE_BROWSER, limits=limits)
+        if result.error and not result.error.startswith("sandbox denied"):
+            result = await run_in_sandbox(files, command, image=SANDBOX_IMAGE_BROWSER, limits=limits)
+    except ValueError as e:  # too large, or a file name the bundle refuses
+        return [], False, f"{_COULD_NOT_RUN}: {e}"
+    if result.error:
+        return [], False, f"{_COULD_NOT_RUN}: {result.error}"
+    try:
+        data = json.loads(result.result_json or "")
+        if not isinstance(data, dict):
+            raise ValueError
+    except ValueError:
+        why = "no terminó a tiempo" if result.timed_out else "sin memoria" if result.oom_killed else "sin resultado"
+        return [], False, f"{_COULD_NOT_RUN}: {why}"
+
+    findings = _web_findings(data, entry_point)
+    external = sorted({str(u)[:_MAX_WEB_TEXT] for u in data.get("external") or []})
+    if external:
+        # With the resource refused, its absence breaks the page here even if
+        # it works for the user: only what doesn't depend on it is a finding.
+        named = ", ".join(external[:_MAX_EXTERNAL_NAMED])
+        more = len(external) - _MAX_EXTERNAL_NAMED
+        kept = [f for f in findings if f.message.startswith("la página pide")]
+        return kept, False, f"{_EXTERNAL}: {named}" + (f" (+{more})" if more > 0 else "")
+    return findings, True, None
+
+
+async def review_web_files(files: Dict[str, bytes], run_sandbox: bool = True) -> Optional[IntegrationReport]:
+    """The page checked in a browser. None when the set has no page."""
+    if not any(f.lower().endswith((".html", ".htm")) for f in files):
+        return None
+    entry = web_entry_point(files)
+    report = IntegrationReport(entry_point=entry, web=True)
+    if not run_sandbox:
+        report.layer2_skipped = "desactivada"
+    elif not entry:
+        report.layer2_skipped = "no se identificó el punto de entrada"
+    else:
+        report.findings, report.layer2_ran, report.layer2_skipped = await web_execution_findings(files, entry)
     return report

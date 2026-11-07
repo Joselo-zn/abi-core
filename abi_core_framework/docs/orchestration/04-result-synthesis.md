@@ -63,7 +63,7 @@ event: result → "I built a snake game in Python with pygame: the snake, food
 
 The description follows the user's language. The verdict, the report and the links heading don't yet: the reference Orchestrator calls them without a language, so its verdict and report come out in Spanish and its links heading in English, whatever language the user wrote in. (The example above shows them all in English for readability.)
 
-If you write your own agent, you choose. `IntegrationReport.as_text(lang)` and `as_pass_text(lang)` take `"es"` (the default) or `"en"`, and so does `format_artifact_links(artifacts, lang)`, whose default is `"en"`.
+If you write your own agent, you choose. `IntegrationReport.as_text(lang)` and `as_pass_text(lang)` take `"es"` (the default) or `"en"`, and so does `format_artifact_links(artifacts, lang)`, whose default is `"en"`. When the sandbox run didn't happen, `IntegrationReport.skipped_reason(lang)` gives the reason, with the same languages and the same default; it returns `None` if no reason was recorded.
 
 In the report, a finding's `message` names the failure on its own. For a crash in the sandbox, the traceback's frames are in `Finding.detail`, and `as_text()` includes them.
 

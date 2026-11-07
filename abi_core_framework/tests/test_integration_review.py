@@ -5,6 +5,8 @@ static layer (AST) always; execution layer only with Docker + sandbox images.
 Spec: .abi/specs/not-implemented/sdd-pipeline/07-deliverable-integration-review.md
 """
 
+import asyncio
+import json
 import textwrap
 
 import pytest
@@ -319,3 +321,114 @@ class TestReportLanguage:
         assert "**Generated files:**" in format_artifact_links(arts)
         assert "**Archivos generados:**" in format_artifact_links(arts, "es")
 
+
+
+# ── Web deliverables: the page in a browser ────────────────────
+# Spec: .abi/specs/not-implemented/web-deliverable-browser-check.md
+
+def _web_sandbox(monkeypatch, *results):
+    """run_in_sandbox replaced: returns `results` in order, records the calls."""
+    from abi_core.common import sandbox
+    calls, queue = [], list(results)
+
+    async def fake(files, command, image=None, env=None, limits=None, backend=None):
+        calls.append({"files": files, "command": command, "image": image, "limits": limits})
+        return queue.pop(0)
+
+    monkeypatch.setattr(sandbox, "run_in_sandbox", fake)
+    return calls
+
+
+def _web_result(**data):
+    from abi_core.common.sandbox import SandboxResult
+    body = {"js_errors": [], "missing": [], "external": [], "load_timeout": False, "crashed": False, **data}
+    return SandboxResult(exit_code=0, result_json=json.dumps(body))
+
+
+def _web_review(files):
+    from abi_core.common.integration_review import review_web_files
+    return asyncio.run(review_web_files(files))
+
+
+def test_web_entry_point_is_decided_by_code():
+    from abi_core.common.integration_review import web_entry_point
+    assert web_entry_point({"a.html": b"", "INDEX.html": b""}) == "INDEX.html"
+    assert web_entry_point({"game.html": b"", "game.js": b""}) == "game.html"
+    assert web_entry_point({"a.html": b"", "b.html": b""}) is None
+
+
+def test_web_review_only_runs_for_a_set_with_a_page():
+    assert _web_review({"game.js": b"", "notes.md": b""}) is None
+
+
+def test_clean_page_passes_and_says_what_was_checked(monkeypatch):
+    from abi_core.common.sandbox import SANDBOX_IMAGE_BROWSER
+    calls = _web_sandbox(monkeypatch, _web_result())
+    report = _web_review({"index.html": b"<p>x</p>"})
+    assert report.layer2_ran and not report.errors and not report.execution_unverified
+    assert calls[0]["image"] == SANDBOX_IMAGE_BROWSER
+    assert calls[0]["command"][-1] == "index.html"
+    text = report.as_pass_text("es")
+    assert "navegador" in text and "Espacio" in text and "15" not in text
+    assert "browser" in report.as_pass_text("en")
+
+
+def test_javascript_error_names_file_and_line_once(monkeypatch):
+    stack = "ReferenceError: bird is not defined\n    at HTMLDocument.<anonymous> (game.js:12:5)"
+    error = {"message": "bird is not defined", "stack": stack}
+    _web_sandbox(monkeypatch, _web_result(js_errors=[error, error, error]))
+    report = _web_review({"index.html": b"", "game.js": b""})
+    assert len(report.errors) == 1
+    finding = report.errors[0]
+    assert (finding.file, finding.line) == ("game.js", 12)
+    assert "bird is not defined" in finding.text("es") and finding.text("en").startswith("JavaScript error")
+    assert "game.js:12:5" in finding.detail
+
+
+def test_missing_local_file_is_an_error(monkeypatch):
+    _web_sandbox(monkeypatch, _web_result(missing=["falta.js"]))
+    report = _web_review({"index.html": b""})
+    assert [f.file for f in report.errors] == ["falta.js"]
+
+
+def test_external_resource_leaves_it_unverified_and_named(monkeypatch):
+    url = "https://cdn.example.com/phaser.js"
+    # The JS error is the refused resource's doing, not a finding.
+    _web_sandbox(monkeypatch, _web_result(external=[url], js_errors=[{"message": "Phaser is not defined"}]))
+    report = _web_review({"index.html": b""})
+    assert not report.errors and not report.layer2_ran and report.execution_unverified
+    assert url in report.layer2_skipped
+    assert url in report.as_text("es")
+    assert "depends on external resources" in report.as_text("en")
+    assert report.skipped_reason("en").startswith("depends on external resources: ")
+    assert report.skipped_reason("es") == report.layer2_skipped
+
+
+def test_external_resource_keeps_a_missing_local_file(monkeypatch):
+    _web_sandbox(monkeypatch, _web_result(external=["https://x.test/a.js"], missing=["falta.js"]))
+    report = _web_review({"index.html": b""})
+    assert [f.file for f in report.errors] == ["falta.js"]
+    assert report.layer2_skipped.startswith("depende de recursos externos")
+
+
+def test_the_check_failing_is_not_the_pages_fault(monkeypatch):
+    from abi_core.common.sandbox import SandboxResult
+    for failed, why in ((SandboxResult(exit_code=None, timed_out=True), "no terminó a tiempo"),
+                        (SandboxResult(exit_code=137, oom_killed=True), "sin memoria"),
+                        (SandboxResult(exit_code=1), "sin resultado"),
+                        (SandboxResult(exit_code=0, result_json="[1]"), "sin resultado")):
+        _web_sandbox(monkeypatch, failed)
+        report = _web_review({"index.html": b""})
+        assert not report.errors and report.execution_unverified and why in report.layer2_skipped
+
+
+def test_an_infrastructure_failure_is_retried_once(monkeypatch):
+    from abi_core.common.sandbox import SandboxResult
+    calls = _web_sandbox(monkeypatch, SandboxResult(exit_code=None, error="job failed"), _web_result())
+    assert _web_review({"index.html": b""}).layer2_ran
+    assert len(calls) == 2
+
+
+def test_a_file_the_bundle_refuses_leaves_it_unverified():
+    report = _web_review({"index.html": b"", "mi archivo.png": b""})
+    assert report.execution_unverified and "unsafe file path" in report.layer2_skipped

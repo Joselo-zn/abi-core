@@ -117,7 +117,8 @@ async def run_facts(run_id: str) -> Dict[str, Any]:
         facts["plan_exists"] = True
         design = (plan.get("technical_design") or {}).get("files") or []
         facts["has_executable_code"] = any(
-            f.get("role") == "entry_point" and str(f.get("filename", "")).endswith(".py") for f in design
+            f.get("role") == "entry_point" and str(f.get("filename", "")).lower().endswith((".py", ".html", ".htm"))
+            for f in design
         )
     except Exception:
         pass

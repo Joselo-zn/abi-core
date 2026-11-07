@@ -75,7 +75,7 @@ test_run_without_plan_is_denied if {
 
 test_run_without_executable_code_is_denied if {
 	inp := object.union(ok_input, {"run": object.union(ok_input.run, {"has_executable_code": false})})
-	"run has no executable code (no .py entry point in its technical design)" in sandbox.deny with input as inp
+	"run has no executable code (no .py or .html entry point in its technical design)" in sandbox.deny with input as inp
 }
 
 test_last_run_within_the_limit_is_allowed if {

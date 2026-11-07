@@ -43,7 +43,7 @@ deny contains "run has no plan" if {
 	not input.run.plan_exists
 }
 
-deny contains "run has no executable code (no .py entry point in its technical design)" if {
+deny contains "run has no executable code (no .py or .html entry point in its technical design)" if {
 	not input.run.has_executable_code
 }
 

@@ -127,6 +127,9 @@ class Plan(BaseModel):
     objective: str = Field(..., max_length=300, description="What the plan accomplishes")
     tasks: List[PlanTask] = Field(..., min_length=1)
     execution_strategy: Literal["sequential", "parallel", "mixed"] = "sequential"
+    deliverable_kind: Literal["game", "page", "document", "script", "other"] = Field(
+        "other", description="What the user receives: game, page (a website or web page that is not a game), "
+                             "document (a PDF, report or letter), script (other code), other")
     # Not model-chosen — the Planner overwrites both fields deterministically
     # after this schema is filled (see AbiPlannerAgent._call_llm). Kept
     # `Optional`/description-free rather than removed so existing UI code

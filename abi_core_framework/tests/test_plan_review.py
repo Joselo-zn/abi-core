@@ -147,3 +147,11 @@ def test_text_summary_drops_internal_noise():
     assert "ollama:11434" not in text
     assert "No agent assigned" not in text
     assert "A new agent will be created" in text
+
+
+def test_deliverable_kind_is_offered_to_the_model_and_optional():
+    from abi_core.common.plan_models import Plan
+    schema = Plan.model_json_schema()
+    assert schema["properties"]["deliverable_kind"]["enum"] == ["game", "page", "document", "script", "other"]
+    assert "deliverable_kind" not in schema["required"]
+
