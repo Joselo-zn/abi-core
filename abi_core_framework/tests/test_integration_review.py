@@ -271,3 +271,51 @@ class TestTracebackDetail:
         from abi_core.common.integration_review import Finding
         assert Finding("error", 1, "a.py", 2, "mal").as_text() == "[a.py:2] mal"
 
+
+class TestReportLanguage:
+    def _report(self, **changes):
+        from abi_core.common.integration_review import Finding, IntegrationReport
+        findings = [Finding("error", 2, "main.py", None, "falla al ejecutarse: X", "frame", en="fails when run: X"),
+                    Finding("warning", 1, "a.py", 2, "sin uso", en="unused")]
+        return IntegrationReport("main.py", findings, layer2_ran=True, **changes)
+
+    def test_failed_report_in_english_has_no_spanish(self):
+        text = self._report().as_text("en")
+        assert "Integration review" in text and "Entry point: `main.py`" in text and "1 error(s)" in text
+        assert "fails when run: X" in text and "[a.py:2] unused" in text
+        for spanish in ("Revisión", "Punto de entrada", "advertencia", "falla al", "sin uso"):
+            assert spanish not in text
+
+    def test_spanish_stays_the_default(self):
+        report = self._report()
+        assert report.as_text() == report.as_text("es") and "Revisión de integración" in report.as_text()
+        assert "falla al ejecutarse: X" in report.as_text()
+
+    def test_pass_text_in_both_languages(self):
+        from abi_core.common.integration_review import IntegrationReport
+        ran = IntegrationReport("main.py", layer2_ran=True)
+        assert ran.as_pass_text("en").startswith("✅ Verified by code") and "`main.py` ran" in ran.as_pass_text("en")
+        assert ran.as_pass_text().startswith("✅ Verificado por código")
+        off = IntegrationReport("main.py", layer2_skipped="desactivada")
+        assert "They were not run (turned off)" in off.as_pass_text("en")
+        assert "No se ejecutaron (desactivada)" in off.as_pass_text()
+
+    def test_a_skip_reason_with_the_sandbox_error(self):
+        from abi_core.common.integration_review import IntegrationReport
+        report = IntegrationReport("main.py", layer2_skipped="no se pudo ejecutar: sandbox denied")
+        assert "could not run: sandbox denied" in report.as_text("en")
+
+    def test_static_findings_carry_both_languages(self):
+        from abi_core.common.integration_review import static_findings
+        findings, _ = static_findings({"a.py": "def f(x):\n    return x\n",
+                                       "main.py": "from a import f, g\nf()\nf(1, 2)\nf(1, y=2)\n"})
+        errors = [f for f in findings if f.severity == "error"]
+        assert len(errors) == 4 and all(f.en and f.en != f.message for f in errors)
+        assert not any(w in f.en for f in errors for w in ("recibe", "no define", "desconocido"))
+
+    def test_the_links_heading(self):
+        from abi_core.common.artifact_store import format_artifact_links
+        arts = [{"filename": "a.txt", "download_url": "/x"}]
+        assert "**Generated files:**" in format_artifact_links(arts)
+        assert "**Archivos generados:**" in format_artifact_links(arts, "es")
+

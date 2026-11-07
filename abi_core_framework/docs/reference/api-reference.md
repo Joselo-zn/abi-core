@@ -257,7 +257,7 @@ from abi_core.common.artifact_store import (
     upload_workspace_artifacts,  # scan a workspace dir, upload new files, skip `exclude`
     download_artifacts,          # download a list of MinIO keys into a local workspace
     generate_download_urls,      # add 'download_url' (pre-signed) to a list of artifact dicts
-    format_artifact_links,       # render artifacts as a markdown links block
+    format_artifact_links,       # render artifacts as a markdown links block (lang: "en", the default, or "es")
 )
 ```
 

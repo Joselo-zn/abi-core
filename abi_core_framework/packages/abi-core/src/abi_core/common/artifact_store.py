@@ -387,11 +387,12 @@ async def download_artifacts(
     return paths
 
 
-def format_artifact_links(artifacts: List[Dict[str, str]]) -> str:
+def format_artifact_links(artifacts: List[Dict[str, str]], lang: str = "en") -> str:
     """Format artifacts as markdown download links.
 
     Args:
         artifacts: List of dicts with 'filename' and 'download_url' (or 'url').
+        lang: "es" or "en", for the heading.
 
     Returns:
         Markdown string with links, or empty string if no artifacts.
@@ -399,7 +400,8 @@ def format_artifact_links(artifacts: List[Dict[str, str]]) -> str:
     if not artifacts:
         return ""
 
-    lines = ["\n\n📎 **Generated files:**"]
+    heading = "Archivos generados" if lang == "es" else "Generated files"
+    lines = [f"\n\n📎 **{heading}:**"]
     for art in artifacts:
         fname = art.get("filename", "unknown")
         url = art.get("download_url", art.get("url", ""))

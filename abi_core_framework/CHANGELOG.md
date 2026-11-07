@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The integration report and the links heading can be in English.**
+  `IntegrationReport.as_text(lang)`, `as_pass_text(lang)` and
+  `Finding.as_text(lang)` take `"es"` (the default) or `"en"`, and new
+  `Finding.text(lang)` and `Finding.en` hold a finding's message in English.
+  `format_artifact_links(artifacts, lang)` takes `"en"` (the default) or `"es"`
+  for its heading. Without `lang` nothing changes, and the reference
+  Orchestrator doesn't pass it yet: its verdict and report stay in Spanish and
+  its links heading in English.
 - **A new chat shows that it's getting ready.** Opening a chat used to leave
   the page blank for several seconds while the UI opened its session with the
   agent and synced the session token — longer with the agent and the database

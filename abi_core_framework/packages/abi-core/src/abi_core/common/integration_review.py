@@ -45,12 +45,60 @@ class Finding:
     line: Optional[int]
     message: str
     detail: Optional[str] = None  # the traceback's frames: shown on demand, one per line
+    en: Optional[str] = None      # the message in English
 
-    def as_text(self) -> str:
+    def text(self, lang: str = "es") -> str:
+        return self.en if lang == "en" and self.en else self.message
+
+    def as_text(self, lang: str = "es") -> str:
         where = f"{self.file}:{self.line}" if self.line else self.file
-        text = f"[{where}] {self.message}"
+        text = f"[{where}] {self.text(lang)}"
         # Whoever reads this text (the reviewer, the chat) needs the frames too.
         return f"{text} ⏎ {self.detail.replace(chr(10), ' ⏎ ')}" if self.detail else text
+
+
+_COULD_NOT_RUN = "no se pudo ejecutar"
+_SKIPPED_EN = {"desactivada": "turned off",
+               "no se identificó el punto de entrada": "the entry point could not be identified",
+               "hay errores de sintaxis": "there are syntax errors"}
+_REPORT_TEXT = {
+    "es": {
+        "title": "**Revisión de integración de los archivos entregados**",
+        "entry": "Punto de entrada: `{}`",
+        "ran": "Ejecución en sandbox: sí",
+        "not_ran": "Ejecución en sandbox: no ({})",
+        "errors": "\n❌ {} error(es) — el conjunto no funciona tal como se entregó:",
+        "unverified": ("\n⚠️ Sin verificar: la revisión estática no encontró errores, pero el conjunto "
+                       "no se pudo ejecutar, así que no está comprobado que funcione."),
+        "warnings": "\n⚠️ {} advertencia(s):",
+        "warnings_ran": "⚠️ {} advertencia(s), que no impiden que se ejecute:",
+        "clean": "\n✅ Sin hallazgos.",
+        "the_entry": "el punto de entrada",
+        "no_run": "sin ejecución",
+        "passed": ("✅ Verificado por código: los archivos encajan entre sí y {entry} se ejecutó "
+                   "en el sandbox hasta {seconds} s sin errores. Eso no prueba el uso real "
+                   "(por ejemplo, que un juego se pueda jugar bien)."),
+        "passed_static": "✅ Revisión estática sin errores: los archivos encajan entre sí. No se ejecutaron ({}).",
+    },
+    "en": {
+        "title": "**Integration review of the delivered files**",
+        "entry": "Entry point: `{}`",
+        "ran": "Run in the sandbox: yes",
+        "not_ran": "Run in the sandbox: no ({})",
+        "errors": "\n❌ {} error(s): the files do not work as delivered:",
+        "unverified": ("\n⚠️ Unverified: the static review found no errors, but the files "
+                       "could not be run, so it is not proven that they work."),
+        "warnings": "\n⚠️ {} warning(s):",
+        "warnings_ran": "⚠️ {} warning(s), which don't stop it from running:",
+        "clean": "\n✅ No findings.",
+        "the_entry": "the entry point",
+        "no_run": "not run",
+        "passed": ("✅ Verified by code: the files fit together and {entry} ran "
+                   "in the sandbox for up to {seconds} s without errors. That does not prove real use "
+                   "(for example, that a game plays well)."),
+        "passed_static": "✅ Static review without errors: the files fit together. They were not run ({}).",
+    },
+}
 
 
 @dataclass
@@ -83,55 +131,53 @@ class IntegrationReport:
         """
         return not self.layer2_ran and self.layer2_skipped != "desactivada"
 
-    def as_text(self) -> str:
-        """Deterministic, user-facing report (Spanish, like the rest of the
-        Orchestrator's deterministic messages)."""
-        lines = ["**Revisión de integración de los archivos entregados**"]
+    def _skipped(self, lang: str) -> Optional[str]:
+        if lang != "en" or not self.layer2_skipped:
+            return self.layer2_skipped
+        if self.layer2_skipped.startswith(_COULD_NOT_RUN):
+            return "could not run" + self.layer2_skipped[len(_COULD_NOT_RUN):]
+        return _SKIPPED_EN.get(self.layer2_skipped, self.layer2_skipped)
+
+    def as_text(self, lang: str = "es") -> str:
+        """Deterministic, user-facing report, in the user's language."""
+        t = _REPORT_TEXT["en" if lang == "en" else "es"]
+        lines = [t["title"]]
         if self.entry_point:
-            lines.append(f"Punto de entrada: `{self.entry_point}`")
+            lines.append(t["entry"].format(self.entry_point))
         if self.layer2_ran:
-            lines.append("Ejecución en sandbox: sí")
+            lines.append(t["ran"])
         elif self.layer2_skipped:
-            lines.append(f"Ejecución en sandbox: no ({self.layer2_skipped})")
+            lines.append(t["not_ran"].format(self._skipped(lang)))
         if self.errors:
-            lines.append(f"\n❌ {len(self.errors)} error(es) — el conjunto no funciona tal como se entregó:")
-            lines += [f"- {f.as_text()}" for f in self.errors]
+            lines.append(t["errors"].format(len(self.errors)))
+            lines += [f"- {f.as_text(lang)}" for f in self.errors]
         elif self.execution_unverified:
-            lines.append(
-                "\n⚠️ Sin verificar: la revisión estática no encontró errores, pero el conjunto "
-                "no se pudo ejecutar, así que no está comprobado que funcione."
-            )
+            lines.append(t["unverified"])
         if self.warnings:
-            lines.append(f"\n⚠️ {len(self.warnings)} advertencia(s):")
-            lines += [f"- {f.as_text()}" for f in self.warnings]
+            lines.append(t["warnings"].format(len(self.warnings)))
+            lines += [f"- {f.as_text(lang)}" for f in self.warnings]
         if not self.errors and not self.warnings and not self.execution_unverified:
-            lines.append("\n✅ Sin hallazgos.")
+            lines.append(t["clean"])
         return "\n".join(lines)
 
-    def as_pass_text(self) -> str:
+    def as_pass_text(self, lang: str = "es") -> str:
         """Deterministic verdict for a set that passed (no errors, not
         unverified), saying exactly what the check covered — so the user's
         answer never depends on a model interpreting the review. Live
         2026-10-15: the synthesis model reported a set with 0 errors as "does
         not run" (from unused-method warnings) and another as "fully
-        functional". Spanish, like as_text()."""
-        entry = f"`{self.entry_point}`" if self.entry_point else "el punto de entrada"
+        functional". In the user's language, like as_text()."""
+        t = _REPORT_TEXT["en" if lang == "en" else "es"]
+        entry = f"`{self.entry_point}`" if self.entry_point else t["the_entry"]
         if self.layer2_ran:
-            lines = [
-                f"✅ Verificado por código: los archivos encajan entre sí y {entry} se ejecutó "
-                f"en el sandbox hasta {LAYER2_TIMEOUT_S} s sin errores. Eso no prueba el uso real "
-                "(por ejemplo, que un juego se pueda jugar bien)."
-            ]
-            warnings_header = f"⚠️ {len(self.warnings)} advertencia(s), que no impiden que se ejecute:"
+            lines = [t["passed"].format(entry=entry, seconds=LAYER2_TIMEOUT_S)]
+            warnings_header = t["warnings_ran"].format(len(self.warnings))
         else:
-            lines = [
-                "✅ Revisión estática sin errores: los archivos encajan entre sí. "
-                f"No se ejecutaron ({self.layer2_skipped or 'sin ejecución'})."
-            ]
-            warnings_header = f"⚠️ {len(self.warnings)} advertencia(s):"
+            lines = [t["passed_static"].format(self._skipped(lang) or t["no_run"])]
+            warnings_header = t["warnings"].format(len(self.warnings)).lstrip("\n")
         if self.warnings:
             lines.append("\n" + warnings_header)
-            lines += [f"- {f.as_text()}" for f in self.warnings]
+            lines += [f"- {f.as_text(lang)}" for f in self.warnings]
         return "\n".join(lines)
 
 
@@ -144,15 +190,19 @@ class _Sig:
     kw_names: Set[str]
     any_kwargs: bool
 
-    def accepts(self, n_pos: int, kw: Set[str]) -> Optional[str]:
+    def accepts(self, n_pos: int, kw: Set[str]) -> Optional[Tuple[str, str]]:
+        """What is wrong with the call as (Spanish, English), or None."""
         if self.max_args is not None and n_pos > self.max_args:
-            return f"recibe {n_pos} argumento(s) posicional(es), acepta como máximo {self.max_args}"
+            return (f"recibe {n_pos} argumento(s) posicional(es), acepta como máximo {self.max_args}",
+                    f"gets {n_pos} positional argument(s), takes at most {self.max_args}")
         unknown = {k for k in kw if k not in self.kw_names} if not self.any_kwargs else set()
         if unknown:
-            return f"argumento(s) con nombre desconocido(s): {', '.join(sorted(unknown))}"
+            names = ", ".join(sorted(unknown))
+            return f"argumento(s) con nombre desconocido(s): {names}", f"unknown keyword argument(s): {names}"
         provided = n_pos + len(kw & self.kw_names)
         if provided < self.min_args:
-            return f"recibe {provided} argumento(s), requiere al menos {self.min_args}"
+            return (f"recibe {provided} argumento(s), requiere al menos {self.min_args}",
+                    f"gets {provided} argument(s), needs at least {self.min_args}")
         return None
 
 
@@ -258,7 +308,7 @@ def static_findings(files: Dict[str, str]) -> Tuple[List[Finding], Optional[str]
         try:
             trees[fname] = ast.parse(src, filename=fname)
         except SyntaxError as e:
-            findings.append(Finding("error", 1, fname, e.lineno, f"error de sintaxis: {e.msg}"))
+            findings.append(Finding("error", 1, fname, e.lineno, f"error de sintaxis: {e.msg}", en=f"syntax error: {e.msg}"))
 
     modules = {f[:-3]: f for f in trees}
     classes: Dict[str, _ClassInfo] = {}          # "module.Class" → info
@@ -288,7 +338,8 @@ def static_findings(files: Dict[str, str]) -> Tuple[List[Finding], Optional[str]
                             continue
                         if alias.name not in exported[top]:
                             findings.append(Finding("error", 1, fname, node.lineno,
-                                f"`from {top} import {alias.name}`: `{modules[top]}` no define `{alias.name}`"))
+                                f"`from {top} import {alias.name}`: `{modules[top]}` no define `{alias.name}`",
+                                en=f"`from {top} import {alias.name}`: `{modules[top]}` does not define `{alias.name}`"))
                         else:
                             bound = alias.asname or alias.name
                             if f"{top}.{alias.name}" in classes:
@@ -297,13 +348,15 @@ def static_findings(files: Dict[str, str]) -> Tuple[List[Finding], Optional[str]
                                 local_funcs[bound] = f"{top}.{alias.name}"
                 elif top not in sys.stdlib_module_names and top not in SANDBOX_THIRD_PARTY:
                     findings.append(Finding("warning", 1, fname, node.lineno,
-                        f"importa `{node.module}`, que no está entre los archivos entregados ni en el entorno de ejecución"))
+                        f"importa `{node.module}`, que no está entre los archivos entregados ni en el entorno de ejecución",
+                        en=f"imports `{node.module}`, which is neither among the delivered files nor in the runtime"))
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     top = alias.name.split(".")[0]
                     if top not in modules and top not in sys.stdlib_module_names and top not in SANDBOX_THIRD_PARTY:
                         findings.append(Finding("warning", 1, fname, node.lineno,
-                            f"importa `{alias.name}`, que no está entre los archivos entregados ni en el entorno de ejecución"))
+                            f"importa `{alias.name}`, que no está entre los archivos entregados ni en el entorno de ejecución",
+                            en=f"imports `{alias.name}`, which is neither among the delivered files nor in the runtime"))
             elif isinstance(node, ast.Attribute):
                 referenced_attrs.add(node.attr)
 
@@ -336,11 +389,13 @@ def static_findings(files: Dict[str, str]) -> Tuple[List[Finding], Optional[str]
                     problem = init.accepts(n_pos, kw)
                     if problem:
                         findings.append(Finding("error", 1, fname, node.lineno,
-                            f"`{func.id}(...)` {problem} (firma en `{info.module}.py`)"))
+                            f"`{func.id}(...)` {problem[0]} (firma en `{info.module}.py`)",
+                            en=f"`{func.id}(...)` {problem[1]} (signature in `{info.module}.py`)"))
             elif isinstance(func, ast.Name) and func.id in local_funcs:
                 problem = functions[local_funcs[func.id]].accepts(n_pos, kw)
                 if problem:
-                    findings.append(Finding("error", 1, fname, node.lineno, f"`{func.id}(...)` {problem}"))
+                    findings.append(Finding("error", 1, fname, node.lineno, f"`{func.id}(...)` {problem[0]}",
+                                            en=f"`{func.id}(...)` {problem[1]}"))
             elif isinstance(func, ast.Attribute):
                 owner = func.value
                 key = owner.id if isinstance(owner, ast.Name) else (
@@ -360,12 +415,14 @@ def static_findings(files: Dict[str, str]) -> Tuple[List[Finding], Optional[str]
                 if sig is None:
                     if func.attr not in info.attrs:
                         findings.append(Finding("error", 1, fname, node.lineno,
-                            f"`{key}.{func.attr}(...)`: `{info.name}` (en `{info.module}.py`) no tiene el método `{func.attr}`"))
+                            f"`{key}.{func.attr}(...)`: `{info.name}` (en `{info.module}.py`) no tiene el método `{func.attr}`",
+                            en=f"`{key}.{func.attr}(...)`: `{info.name}` (in `{info.module}.py`) has no method `{func.attr}`"))
                     continue
                 problem = sig.accepts(n_pos, kw)
                 if problem:
                     findings.append(Finding("error", 1, fname, node.lineno,
-                        f"`{key}.{func.attr}(...)` {problem} (firma de `{info.name}.{func.attr}` en `{info.module}.py`)"))
+                        f"`{key}.{func.attr}(...)` {problem[0]} (firma de `{info.name}.{func.attr}` en `{info.module}.py`)",
+                        en=f"`{key}.{func.attr}(...)` {problem[1]} (signature of `{info.name}.{func.attr}` in `{info.module}.py`)"))
 
     # Public methods nobody calls anywhere in the set
     for key, info in classes.items():
@@ -373,7 +430,8 @@ def static_findings(files: Dict[str, str]) -> Tuple[List[Finding], Optional[str]
             if name.startswith("_") or name in referenced_attrs:
                 continue
             findings.append(Finding("warning", 1, f"{info.module}.py", info.line,
-                f"`{info.name}.{name}()` no se usa en ningún archivo — comportamiento definido pero no conectado"))
+                f"`{info.name}.{name}()` no se usa en ningún archivo — comportamiento definido pero no conectado",
+                en=f"`{info.name}.{name}()` is not used in any file: behavior defined but not connected"))
 
     # README pointing at files that don't exist
     for fname, src in files.items():
@@ -381,7 +439,8 @@ def static_findings(files: Dict[str, str]) -> Tuple[List[Finding], Optional[str]
             for ref in sorted(set(re.findall(r"[\w./-]+\.py\b", src))):
                 if os.path.basename(ref) not in files:
                     findings.append(Finding("warning", 1, fname, None,
-                        f"menciona `{ref}`, que no está entre los archivos entregados"))
+                        f"menciona `{ref}`, que no está entre los archivos entregados",
+                        en=f"mentions `{ref}`, which is not among the delivered files"))
 
     entry = infer_entry_point(trees) if trees else None
     return findings, entry
@@ -445,21 +504,26 @@ async def execution_findings(files: Dict[str, str], entry_point: str) -> Tuple[L
 
     findings: List[Finding] = []
     if result.oom_killed:
-        findings.append(Finding("error", 2, entry_point, None, "se quedó sin memoria al ejecutarse"))
+        findings.append(Finding("error", 2, entry_point, None, "se quedó sin memoria al ejecutarse",
+                                en="ran out of memory while running"))
     elif "Traceback (most recent call last)" in result.stderr:
         failure, frames = _traceback_parts(result.stderr)
         if "EOFError" in f"{failure} {frames}" and not long_running:
             findings.append(Finding("warning", 2, entry_point, None,
-                f"espera entrada interactiva del usuario; no se pudo ejecutar sin ella ({failure})", frames))
+                f"espera entrada interactiva del usuario; no se pudo ejecutar sin ella ({failure})", frames,
+                en=f"waits for interactive input from the user; it could not run without it ({failure})"))
         else:
-            findings.append(Finding("error", 2, entry_point, None, f"falla al ejecutarse: {failure}", frames))
+            findings.append(Finding("error", 2, entry_point, None, f"falla al ejecutarse: {failure}", frames,
+                                    en=f"fails when run: {failure}"))
     elif result.timed_out and not long_running:
         findings.append(Finding("warning", 2, entry_point, None,
-            f"no terminó en {LAYER2_TIMEOUT_S}s (puede estar esperando entrada o en un ciclo)"))
+            f"no terminó en {LAYER2_TIMEOUT_S}s (puede estar esperando entrada o en un ciclo)",
+            en=f"did not end in {LAYER2_TIMEOUT_S}s (it may be waiting for input or in a loop)"))
     elif not result.timed_out and result.exit_code not in (0, None):
         failure, frames = _traceback_parts(result.stderr)
         findings.append(Finding("warning", 2, entry_point, None,
-            f"terminó con código {result.exit_code}: {failure or result.stdout[-200:]}", frames))
+            f"terminó con código {result.exit_code}: {failure or result.stdout[-200:]}", frames,
+            en=f"ended with code {result.exit_code}: {failure or result.stdout[-200:]}"))
     return findings, True, None
 
 

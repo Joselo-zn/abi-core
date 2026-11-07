@@ -128,8 +128,9 @@ from abi_core.common.artifact_store import generate_download_urls, format_artifa
 await generate_download_urls(artifacts)
 
 # Format as markdown links for the response
-links = format_artifact_links(artifacts)
-# "📎 quarterly-report.pdf: https://minio.../presigned-url"
+links = format_artifact_links(artifacts)     # lang="es" for a Spanish heading
+# 📎 **Generated files:**
+# - [quarterly-report.pdf](https://minio.../presigned-url)
 ```
 
 Want to hand that link to the user as a scannable QR instead of (or in addition to) text? See [Rich Elements](../single-agent/10-rich-elements.md#qr-codes).

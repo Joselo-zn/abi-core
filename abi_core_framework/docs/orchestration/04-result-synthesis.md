@@ -61,7 +61,11 @@ event: result → "I built a snake game in Python with pygame: the snake, food
                  - game_objects.py, main.py (download links)"
 ```
 
-The verdict and the report are currently written in Spanish; the description follows the user's language.
+The description follows the user's language. The verdict, the report and the links heading don't yet: the reference Orchestrator calls them without a language, so its verdict and report come out in Spanish and its links heading in English, whatever language the user wrote in. (The example above shows them all in English for readability.)
+
+If you write your own agent, you choose. `IntegrationReport.as_text(lang)` and `as_pass_text(lang)` take `"es"` (the default) or `"en"`, and so does `format_artifact_links(artifacts, lang)`, whose default is `"en"`.
+
+In the report, a finding's `message` names the failure on its own. For a crash in the sandbox, the traceback's frames are in `Finding.detail`, and `as_text()` includes them.
 
 ## Artifacts
 
@@ -75,8 +79,9 @@ Agents can upload files (PDFs, CSVs, images) to the Artifact Store (MinIO). The 
 from abi_core.common.artifact_store import generate_download_urls, format_artifact_links
 
 await generate_download_urls(artifacts)
-links = format_artifact_links(artifacts)
-# "📎 report.pdf: https://minio.../presigned-url"
+links = format_artifact_links(artifacts)     # lang="es" for a Spanish heading
+# 📎 **Generated files:**
+# - [report.pdf](https://minio.../presigned-url)
 ```
 
 ## Learning across plans
