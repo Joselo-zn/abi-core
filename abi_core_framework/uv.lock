@@ -33,7 +33,7 @@ wheels = [
 
 [[package]]
 name = "abi-core-ai"
-version = "1.13.100"
+version = "1.13.102"
 source = { editable = "." }
 dependencies = [
     { name = "a2a-sdk" },

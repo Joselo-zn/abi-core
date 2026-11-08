@@ -2,9 +2,11 @@
 
 Runs inside the sandbox: `python /opt/abi-sandbox/browser_check.py index.html`,
 in /workspace, with the deliverable's files. Serves them on loopback, opens the
-page, waits, simulates a click, Space and the arrows, and keeps watching. Leaves
-in .result.json the uncaught JavaScript errors, the local files that don't exist
-and the external resources the page asked for (refused: no network here).
+page, waits, presses the visible buttons, simulates a click, Space and the
+arrows, and keeps watching. Leaves in .result.json the uncaught JavaScript
+errors (each with its phase: "load" before the simulated input, "interaction"
+after), the local files that don't exist and the external resources the page
+asked for (refused: no network here).
 
 An exit code other than 0 with no result means the check itself failed, which
 says nothing about the page.
@@ -24,6 +26,10 @@ RESULT_FILE = ".result.json"
 LOAD_TIMEOUT_MS = 20_000
 SETTLE_MS = 3_000
 KEYS = ("Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight")
+# What a person would press first ("Start"): visible buttons, in page order.
+BUTTONS = "button:visible, input[type=button]:visible, input[type=submit]:visible, [role=button]:visible"
+MAX_BUTTONS = 5
+BUTTON_TIMEOUT_MS = 1_000
 # Sandboxed already, with no user namespaces to give Chromium its own.
 CHROMIUM_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
 # Browsers ask for it on their own: no page breaks without one.
@@ -46,6 +52,7 @@ def check(entry: str) -> dict:
     server = _serve()
     origin = f"http://127.0.0.1:{server.server_address[1]}"
     result = {"js_errors": [], "missing": [], "external": [], "load_timeout": False, "crashed": False}
+    phase = {"now": "load"}
 
     def local(url: str) -> bool:
         return url.startswith(origin + "/") or url == origin
@@ -65,7 +72,7 @@ def check(entry: str) -> dict:
 
     def on_page_error(error):
         stack = (error.stack or "").replace(origin + "/", "")
-        result["js_errors"].append({"message": error.message, "stack": stack})
+        result["js_errors"].append({"message": error.message, "stack": stack, "phase": phase["now"]})
 
     def on_websocket(socket):
         if urlparse(socket.url).hostname != "127.0.0.1":
@@ -89,6 +96,15 @@ def check(entry: str) -> dict:
             result["load_timeout"] = True
         try:
             page.wait_for_timeout(SETTLE_MS)
+            phase["now"] = "interaction"
+            for button in page.locator(BUTTONS).all()[:MAX_BUTTONS]:
+                try:
+                    if button.is_visible():
+                        button.click(timeout=BUTTON_TIMEOUT_MS)
+                        page.wait_for_timeout(500)
+                except PlaywrightError:
+                    # Covered, disabled or gone after an earlier press.
+                    pass
             page.mouse.click(640, 360)
             for key in KEYS:
                 page.keyboard.press(key)

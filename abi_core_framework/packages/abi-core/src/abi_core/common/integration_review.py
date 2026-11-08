@@ -84,9 +84,12 @@ _REPORT_TEXT = {
                    "en el sandbox hasta {seconds} s sin errores. Eso no prueba el uso real "
                    "(por ejemplo, que un juego se pueda jugar bien)."),
         "passed_static": "✅ Revisión estática sin errores: los archivos encajan entre sí. No se ejecutaron ({}).",
-        "passed_web": ("✅ Verificado por código: {entry} se abrió en un navegador en el sandbox, con clic, "
-                       "Espacio y flechas simulados, sin errores de JavaScript ni archivos faltantes. "
+        "passed_web": ("✅ Verificado por código: {entry} se abrió en un navegador en el sandbox, con botones, "
+                       "clic, Espacio y flechas simulados, sin errores de JavaScript ni archivos faltantes. "
                        "Eso no prueba el uso real (por ejemplo, que un juego se pueda jugar bien)."),
+        "passed_web_trial": ("⚠️ Algunas pruebas no corrieron satisfactoriamente: {entry} se abrió en un "
+                             "navegador en el sandbox sin errores, pero salieron errores al simular botones, "
+                             "clic, Espacio y flechas. Pruébalo y dime si necesita ajustes."),
         "unverified_web": "\n⚠️ Sin verificar: no se pudo comprobar en el navegador que funcione.",
     },
     "en": {
@@ -106,9 +109,12 @@ _REPORT_TEXT = {
                    "in the sandbox for up to {seconds} s without errors. That does not prove real use "
                    "(for example, that a game plays well)."),
         "passed_static": "✅ Static review without errors: the files fit together. They were not run ({}).",
-        "passed_web": ("✅ Verified by code: {entry} opened in a browser in the sandbox, with a simulated click, "
-                       "Space and arrows, without JavaScript errors or missing files. "
+        "passed_web": ("✅ Verified by code: {entry} opened in a browser in the sandbox, with simulated buttons, "
+                       "click, Space and arrows, without JavaScript errors or missing files. "
                        "That does not prove real use (for example, that a game plays well)."),
+        "passed_web_trial": ("⚠️ Some tests did not run successfully: {entry} opened in a browser in the "
+                             "sandbox without errors, but errors came up under the simulated buttons, click, "
+                             "Space and arrows. Try it and tell me if it needs adjustments."),
         "unverified_web": "\n⚠️ Unverified: it could not be proven in the browser that it works.",
     },
 }
@@ -133,6 +139,12 @@ class IntegrationReport:
     @property
     def passed(self) -> bool:
         return not self.errors
+
+    @property
+    def needs_trial(self) -> bool:
+        """A page that loads clean but errs under the simulated input: the
+        user tries it (user decision 2026-11-08). Its errors are warnings."""
+        return self.web and self.layer2_ran and not self.errors and bool(self.warnings)
 
     @property
     def execution_unverified(self) -> bool:
@@ -186,7 +198,10 @@ class IntegrationReport:
         functional". In the user's language, like as_text()."""
         t = _REPORT_TEXT["en" if lang == "en" else "es"]
         entry = f"`{self.entry_point}`" if self.entry_point else t["the_entry"]
-        if self.layer2_ran:
+        if self.needs_trial:
+            lines = [t["passed_web_trial"].format(entry=entry)]
+            warnings_header = t["warnings_ran"].format(len(self.warnings))
+        elif self.layer2_ran:
             lines = [t["passed_web"].format(entry=entry) if self.web
                      else t["passed"].format(entry=entry, seconds=LAYER2_TIMEOUT_S)]
             warnings_header = t["warnings_ran"].format(len(self.warnings))
@@ -586,7 +601,10 @@ def web_entry_point(files: Dict[str, bytes]) -> Optional[str]:
 
 
 def _web_findings(data: dict, entry_point: str) -> List[Finding]:
-    """The check's result, deduplicated: a game loop repeats an error every frame."""
+    """The check's result, deduplicated: a game loop repeats an error every frame.
+    An error that only came up under the simulated input is a warning (user
+    decision 2026-11-08): keys pressed before "Start" can break a page that
+    plays fine. One with no phase (an older image) counts as on load."""
     findings: List[Finding] = []
     if data.get("crashed"):
         findings.append(Finding("error", 2, entry_point, None, "la página se cayó en el navegador",
@@ -606,9 +624,14 @@ def _web_findings(data: dict, entry_point: str) -> List[Finding]:
         stack = str(error.get("stack") or "")
         frames = "\n".join(line.strip() for line in stack.splitlines()[1:7]) or None
         frame = _FRAME.search(stack)
-        findings.append(Finding("error", 2, frame.group(1) if frame else entry_point,
-                                int(frame.group(2)) if frame else None,
-                                f"error de JavaScript: {message}", frames, en=f"JavaScript error: {message}"))
+        file, line = (frame.group(1), int(frame.group(2))) if frame else (entry_point, None)
+        if error.get("phase") == "interaction":
+            findings.append(Finding("warning", 2, file, line,
+                                    f"error de JavaScript al simular botones y teclas: {message}", frames,
+                                    en=f"JavaScript error under the simulated buttons and keys: {message}"))
+        else:
+            findings.append(Finding("error", 2, file, line, f"error de JavaScript: {message}", frames,
+                                    en=f"JavaScript error: {message}"))
     return findings
 
 

@@ -385,6 +385,37 @@ def test_javascript_error_names_file_and_line_once(monkeypatch):
     assert "game.js:12:5" in finding.detail
 
 
+def test_an_error_only_under_the_simulated_input_asks_the_user_to_try_it(monkeypatch):
+    # Turbo Circuit (2026-11-08): arrows pressed before "Start" read a null player.
+    stack = "TypeError: Cannot read properties of null (reading 'controls')\n    at index.html:1280:51"
+    error = {"message": "Cannot read properties of null (reading 'controls')", "stack": stack, "phase": "interaction"}
+    _web_sandbox(monkeypatch, _web_result(js_errors=[error]))
+    report = _web_review({"index.html": b""})
+    assert report.passed and report.needs_trial and not report.execution_unverified
+    assert [(f.file, f.line) for f in report.warnings] == [("index.html", 1280)]
+    assert "al simular botones y teclas" in report.warnings[0].text("es")
+    text = report.as_pass_text("es")
+    assert text.startswith("⚠️ Algunas pruebas no corrieron satisfactoriamente")
+    assert "Pruébalo y dime si necesita ajustes" in text and "index.html:1280" in text
+    assert "Try it and tell me if it needs adjustments" in report.as_pass_text("en")
+
+
+def test_an_error_on_load_still_fails(monkeypatch):
+    on_load = {"message": "x is not defined", "stack": "ReferenceError\n    at index.html:3:1", "phase": "load"}
+    no_phase = {"message": "y is not defined", "stack": "ReferenceError\n    at index.html:4:1"}
+    later = {"message": "z", "stack": "TypeError\n    at index.html:9:1", "phase": "interaction"}
+    _web_sandbox(monkeypatch, _web_result(js_errors=[on_load, no_phase, later]))
+    report = _web_review({"index.html": b""})
+    assert [f.line for f in report.errors] == [3, 4] and not report.passed and not report.needs_trial
+    assert [f.line for f in report.warnings] == [9]
+
+
+def test_a_clean_page_does_not_need_a_trial(monkeypatch):
+    _web_sandbox(monkeypatch, _web_result())
+    report = _web_review({"index.html": b""})
+    assert not report.needs_trial and report.as_pass_text("es").startswith("✅")
+
+
 def test_missing_local_file_is_an_error(monkeypatch):
     _web_sandbox(monkeypatch, _web_result(missing=["falta.js"]))
     report = _web_review({"index.html": b""})
