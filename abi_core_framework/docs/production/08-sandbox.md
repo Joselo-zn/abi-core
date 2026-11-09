@@ -64,12 +64,16 @@ Build them once from `abi_core_framework/sandbox-images`:
 ```bash
 docker build -f python/Dockerfile -t abi-sandbox-python:latest .
 docker build -f pygame/Dockerfile -t abi-sandbox-pygame:latest .
+docker build -f data/Dockerfile -t abi-sandbox-data:latest .
 ```
 
 | Image | Contents |
 |-------|----------|
 | `abi-sandbox-python` | Python 3.12 + numpy |
 | `abi-sandbox-pygame` | The above + pygame (headless with `SDL_VIDEODRIVER=dummy`) |
+| `abi-sandbox-data` | `abi-sandbox-python` + pandas 2.3.3 and openpyxl 3.1.5, for data analysis. Constant: `SANDBOX_IMAGE_DATA` |
+
+Build `abi-sandbox-python` first: the other two start from it.
 
 There is no network at run time, so nothing is installed during a run. A deliverable that imports a package the image doesn't have fails with `ModuleNotFoundError` — report it as a finding.
 
@@ -100,6 +104,12 @@ and runs code from a step or task decorated with `@agent.sandboxed`, which takes
 @agent.sandboxed
 async def check(run_id):
     result = await run_in_sandbox(files, ["python", "main.py"])
+```
+
+A data analysis has no plan. A caller whose card lists `run_sandbox_data` instead may run in the `abi-sandbox-data` image without one, with the same limit on runs per `run_id`; any other image still needs `run_sandbox`, a plan and an entry point.
+
+```json
+"security": {"allowed_actions": ["run_sandbox_data"]}
 ```
 
 Outside a decorated function, `with sandbox_caller(run_id): ...` (`abi_core.common.sandbox_service_client`) does the same. A denied or unreachable service comes back as `SandboxResult.error` (`"sandbox denied: <reason>"`) — never as a pass.

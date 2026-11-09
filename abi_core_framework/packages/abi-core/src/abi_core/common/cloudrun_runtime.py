@@ -108,6 +108,7 @@ def _build_service(
     port: Optional[int],
     entrypoint: Optional[str],
     command: Optional[List[str]],
+    concurrency: int = 1,
 ):
     from google.cloud import run_v2
     from google.protobuf import duration_pb2
@@ -140,8 +141,10 @@ def _build_service(
         timeout=duration_pb2.Duration(
             seconds=int(os.getenv("EPHEMERAL_REQUEST_TIMEOUT", "3600"))
         ),
-        # One task per ephemeral — never interleave two A2A requests.
-        max_instance_request_concurrency=1,
+        # One task per ephemeral — never interleave two A2A requests. The
+        # run's reviewer is the exception: it holds the Orchestrator's request
+        # while the code agents hand in their work (concurrency > 1).
+        max_instance_request_concurrency=concurrency,
     )
     sa = os.getenv("CLOUDRUN_SERVICE_ACCOUNT", "")
     if sa:
@@ -181,6 +184,7 @@ async def run_container(
     command: Optional[List[str]] = None,
     health_check_url: Optional[str] = None,
     health_timeout: int = 30,
+    concurrency: int = 1,
 ) -> Dict[str, Any]:
     """Deploy an ephemeral as a Cloud Run service and optionally wait for health.
 
@@ -194,7 +198,7 @@ async def run_container(
 
     try:
         client = _get_client()
-        service = _build_service(image, env_vars or {}, port, entrypoint, command)
+        service = _build_service(image, env_vars or {}, port, entrypoint, command, concurrency)
         operation = await asyncio.wait_for(
             client.create_service(parent=_parent(), service=service, service_id=sid),
             timeout=_CLOUDRUN_DEPLOY_TIMEOUT,

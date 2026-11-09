@@ -169,6 +169,7 @@ across logins/devices), and an invite-only registration system.
 | `ABI_UI_LOCAL_KEK` | — | Local key-encryption key, 32 bytes base64 — development only. With neither this nor `ABI_UI_KMS_KEY`, data is stored in clear and a warning is logged |
 | `ABI_UI_IDENTITY_KEY` | — | Secret for the HMAC that identifies users by email without storing it. Keep it stable |
 | `ABI_UI_EXTENSIONS` | — | Python modules (comma-separated) whose `register(ui)` adds routes, commands, starters and chat hooks to the Chat UI. They must be importable in the UI's container (`PYTHONPATH`). See [Extending the Chat UI](../production/07-authentication.md#extending-the-chat-ui) |
+| `ABI_UI_ATTACHMENT_MAX_BYTES` | `20971520` (20 MB) | Largest file the Chat UI uploads from a message. A larger one is left out and logged. See [Files attached in the chat](../production/05-artifact-store.md#files-attached-in-the-chat) |
 | `CHAINLIT_ELEMENTS_BUCKET` | `abi-chainlit-elements` | Separate MinIO bucket from `ARTIFACT_BUCKET` — chat thread elements don't mix with agent-generated artifacts. Create it before first use (`mc mb`). |
 | `ADMIN_NOTIFICATION_EMAIL` | — | Where the "someone joined the waiting list" email goes. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | `SMTP_PORT` defaults to `587` | SMTP for the waiting-list notification. Left unset, waiting-list signups still work (recorded in Postgres) — the email is just skipped, logged as a warning. |
@@ -240,6 +241,7 @@ Set on the process that calls `run_in_sandbox` (the Orchestrator). See [Code Exe
 | `SANDBOX_SERVICE_URL` | — | sandbox-service URL, with `SANDBOX_RUNTIME=service` |
 | `SANDBOX_IMAGE_PYTHON` | `abi-sandbox-python:latest` | Image for plain Python deliverables |
 | `SANDBOX_IMAGE_PYGAME` | `abi-sandbox-pygame:latest` | Image for pygame deliverables |
+| `SANDBOX_IMAGE_DATA` | `abi-sandbox-data:latest` | Image for data analysis (pandas, openpyxl) |
 | `SANDBOX_DOCKER_RUNTIME` | — | Docker runtime for sandboxes, e.g. `runsc` (gVisor) if installed |
 
 On **sandbox-service** itself:

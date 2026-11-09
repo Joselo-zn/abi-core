@@ -77,7 +77,8 @@ class AgentStreamClient:
             abi_logging(f"[⚠️] /session/start failed: {e}", level="warning")
         return None
 
-    async def stream(self, query: str, identity_chain: Optional[list] = None) -> AsyncIterator[dict]:
+    async def stream(self, query: str, identity_chain: Optional[list] = None,
+                     attachments: Optional[list] = None) -> AsyncIterator[dict]:
         """Send `query` to /stream and yield decoded AgentResponse-shaped
         events: {"response_type": ..., "content": ..., "meta": {...}}.
 
@@ -91,6 +92,10 @@ class AgentStreamClient:
         offer (chatui when no user is logged in) — those keep
         using the opaque Bearer token below, unchanged.
 
+        `attachments` — the files the user attached to this message, already
+        in the artifact store: [{"key", "name", "mime", "size"}]. Omitted
+        when there are none.
+
         Connection/parse failures are surfaced as a single
         {"response_type": "error", "content": "..."} event rather than
         raising — callers can treat every yielded item the same way.
@@ -100,6 +105,8 @@ class AgentStreamClient:
         body: dict = {"query": query}
         if identity_chain:
             body["identity_chain"] = identity_chain
+        if attachments:
+            body["attachments"] = attachments
 
         try:
             async with httpx.AsyncClient(timeout=600) as client:

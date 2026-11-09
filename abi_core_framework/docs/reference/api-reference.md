@@ -319,7 +319,7 @@ async for event in client.stream("Hello"):
     print(event.get("response_type"), event.get("content"))
 ```
 
-Starts a session on first use, sends its token with every message, decodes each event into a dict, and drops a token the server no longer recognizes. Failures come back as a `{"response_type": "error", ...}` event, not an exception. See [Testing Agents](../single-agent/05-testing-agents.md#talk-to-it-from-python).
+Starts a session on first use, sends its token with every message, decodes each event into a dict, and drops a token the server no longer recognizes. Failures come back as a `{"response_type": "error", ...}` event, not an exception. `stream(query, identity_chain=None, attachments=None)`: `attachments` lists files already in the artifact store, `[{"key", "name", "mime", "size"}]`, and is sent only when not empty — see [Files attached in the chat](../production/05-artifact-store.md#files-attached-in-the-chat). See [Testing Agents](../single-agent/05-testing-agents.md#talk-to-it-from-python).
 
 ---
 

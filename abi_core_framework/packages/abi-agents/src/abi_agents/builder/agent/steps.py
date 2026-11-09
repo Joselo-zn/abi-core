@@ -12,6 +12,10 @@ from app import agent
 from abi_core.common.utils import abi_logging, redact
 from abi_core.common.semantic_tools import tool_search_tools
 
+# Requests the run's reviewer takes at a time: the Orchestrator's plus a
+# hand-off from each code agent (a plan has at most 5 files), with margin.
+REVIEWER_CONCURRENCY = 10
+
 @agent.step(
     name="parse_spec",
     input_map={
@@ -299,6 +303,10 @@ async def build_container(config):
         port=port,
         health_check_url=f"{container_url(agent_name, port)}/health",
         health_timeout=ephemeral.health_timeout(),
+        # The reviewer holds the Orchestrator's request while the code agents
+        # hand in their work: with one request at a time the last hand-off
+        # got 429 until EXECUTION_TIMEOUT (live 2026-11-08).
+        concurrency=REVIEWER_CONCURRENCY if config.get("role") == "reviewer" else 1,
     )
 
     if result["status"] in ("error", "unhealthy"):

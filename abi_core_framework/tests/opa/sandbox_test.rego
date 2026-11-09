@@ -91,3 +91,43 @@ test_run_limit_reached_is_denied if {
 test_empty_input_is_denied if {
 	not sandbox.allow with input as {}
 }
+
+# ── Data analysis without a plan (Back Office, back-office-route.md) ──
+
+back_office := {
+	"verified": true,
+	"id": "agent://back_office_agent",
+	"name": "Abi Back Office Agent",
+	"ephemeral": false,
+	"allowed_actions": ["run_sandbox_data"],
+}
+
+data_input := {
+	"action": "run_sandbox",
+	"run_id": "bo-1",
+	"caller": back_office,
+	"run": {"plan_exists": false, "has_executable_code": false, "runs_used": 0},
+	"limits": {"max_runs": 3},
+	"request": {"command": ["python", "analysis.py"], "image": "abi-sandbox-data:latest"},
+}
+
+test_a_data_analysis_runs_without_a_plan if {
+	sandbox.allow with input as data_input
+}
+
+test_run_sandbox_data_only_opens_the_data_image if {
+	inp := object.union(data_input, {"request": {"command": ["python", "x.py"], "image": "abi-sandbox-python:latest"}})
+	not sandbox.allow with input as inp
+	"run has no plan" in sandbox.deny with input as inp
+	"caller card lacks the run_sandbox permission" in sandbox.deny with input as inp
+}
+
+test_a_data_run_keeps_the_run_limit if {
+	inp := object.union(data_input, {"run": {"plan_exists": false, "has_executable_code": false, "runs_used": 3}})
+	"sandbox run limit reached for this run" in sandbox.deny with input as inp
+}
+
+test_the_data_image_without_the_permission_needs_a_plan if {
+	inp := object.union(data_input, {"caller": object.union(back_office, {"allowed_actions": ["run_sandbox"]})})
+	"run has no plan" in sandbox.deny with input as inp
+}

@@ -117,6 +117,26 @@ local_paths = await download_artifacts(
 A failed download for one key is logged and skipped rather than raising —
 the rest of the keys still get downloaded.
 
+## Files attached in the chat
+
+When a user attaches files to a message in the Chat UI, the UI uploads each one to the artifact store under `attachments/<thread_id>/` and sends their keys with the text, in the `/stream` body:
+
+```json
+{
+  "query": "Summarize this spreadsheet",
+  "attachments": [
+    {"key": "attachments/<thread_id>/<id>/sales.xlsx", "name": "sales.xlsx",
+     "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "size": 48213}
+  ]
+}
+```
+
+`attachments` is there only when the message has files. A file over `ABI_UI_ATTACHMENT_MAX_BYTES` (20 MB by default), or one that fails to upload, is left out and logged; the message still goes out. The agent gets the files with `download_artifacts(keys=[...])`.
+
+The agent that `abi-core add agent` generates doesn't read `attachments` from the body yet: its `/stream` passes only `query` to your steps.
+
+From Python, `AgentStreamClient.stream(query, attachments=[...])` sends the same field.
+
 ## Generate download URLs
 
 The Orchestrator generates pre-signed URLs so users can download artifacts:

@@ -72,6 +72,32 @@ def test_ephemerals_are_created_with_iam_on(monkeypatch):
     assert service.ingress.name == "INGRESS_TRAFFIC_INTERNAL_ONLY"
 
 
+def test_an_ephemeral_takes_one_request_and_the_reviewer_more():
+    """Found live 2026-11-08: with the Orchestrator's request open on the
+    reviewer, the last code agent's hand-off got 429 for its whole retry."""
+    pytest.importorskip("google.cloud.run_v2")
+    from abi_core.common import cloudrun_runtime
+    build = dict(image="img", env_vars={}, port=8000, entrypoint=None, command=None)
+    assert cloudrun_runtime._build_service(**build).template.max_instance_request_concurrency == 1
+    assert cloudrun_runtime._build_service(**build, concurrency=10).template.max_instance_request_concurrency == 10
+
+
+def test_the_runtime_passes_the_concurrency_to_cloud_run(monkeypatch):
+    import asyncio
+    from abi_core.common import container_runtime
+    seen = {}
+
+    class FakeCloudRun:
+        async def run_container(self, **kw):
+            seen.update(kw)
+            return {"status": "running"}
+
+    monkeypatch.setattr(container_runtime, "_backend", lambda: "cloudrun")
+    monkeypatch.setattr(container_runtime, "_cloudrun", lambda: FakeCloudRun())
+    asyncio.run(container_runtime.run_container(name="reviewer-x", image="img", concurrency=10))
+    assert seen["concurrency"] == 10
+
+
 def test_the_builders_health_wait_sends_the_token(monkeypatch, _clean):
     """Found live 2026-10-31: check_container_health used urllib without a token, so
     every /health got a 403 until the 600 s timeout."""

@@ -150,13 +150,17 @@ async def run_container(
     command: Optional[List[str]] = None,
     health_check_url: Optional[str] = None,
     health_timeout: int = 30,
+    concurrency: int = 1,
 ) -> Dict[str, Any]:
-    """Run a Docker container via the Python SDK and optionally wait for health."""
+    """Run a Docker container via the Python SDK and optionally wait for health.
+    ``concurrency``: requests one Cloud Run instance takes at a time (a Docker
+    container has no such limit)."""
     if _backend() == "cloudrun":
         return await _cloudrun().run_container(
             name=name, image=image, env_vars=env_vars, network=network, port=port,
             entrypoint=entrypoint, command=command,
             health_check_url=health_check_url, health_timeout=health_timeout,
+            concurrency=concurrency,
         )
 
     abi_logging(f"[🐳] Running container '{name}' from {image}")

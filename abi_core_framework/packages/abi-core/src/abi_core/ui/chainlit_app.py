@@ -479,7 +479,7 @@ async def on_start():
         await cl.Message(content=greeting).send()
 
 
-async def _stream_to_agent(query: str) -> None:
+async def _stream_to_agent(query: str, attachments: "list[dict] | None" = None) -> None:
     """Send `query` to the agent and render the response.
 
     Shared by on_message (free-text turns) and the plan-confirmation action
@@ -604,7 +604,9 @@ async def _stream_to_agent(query: str) -> None:
         await processing_step.update()
 
     try:
-        async for parsed in _get_client().stream(query, identity_chain=_build_identity_chain()):
+        # Only with files: a client without the parameter keeps working.
+        extra = {"attachments": attachments} if attachments else {}
+        async for parsed in _get_client().stream(query, identity_chain=_build_identity_chain(), **extra):
             response_type = parsed.get("response_type", "")
             content = parsed.get("content", "")
 
@@ -807,13 +809,49 @@ async def on_chat_end():
         follower.cancel()
 
 
+ATTACHMENT_MAX_BYTES = int(os.getenv("ABI_UI_ATTACHMENT_MAX_BYTES", str(20 * 1024 * 1024)))
+
+
+async def _upload_attachments(elements) -> "list[dict]":
+    """The files attached to a message, put in the artifact store so the
+    agent can read them: [{"key", "name", "mime", "size"}]. A file over
+    ATTACHMENT_MAX_BYTES, or one that fails to upload, is left out and
+    logged. Spec: back-office-route.md (decision 6)."""
+    import uuid
+    from abi_core.common.artifact_store import ArtifactStore
+    from abi_core.common.utils import abi_logging
+
+    files = [e for e in elements or [] if getattr(e, "path", None) and os.path.isfile(e.path)]
+    if not files:
+        return []
+    store = ArtifactStore()
+    thread_id = cl.context.session.thread_id
+    out = []
+    for e in files:
+        name = os.path.basename(getattr(e, "name", None) or e.path).replace("/", "_") or "file"
+        size = os.path.getsize(e.path)
+        if size > ATTACHMENT_MAX_BYTES:
+            abi_logging(f"[⚠️] Attachment left out: {size} bytes, over {ATTACHMENT_MAX_BYTES}", level="warning")
+            continue
+        key = f"attachments/{thread_id}/{uuid.uuid4().hex[:12]}/{name}"
+        try:
+            await store.upload_file(key, e.path)
+        except Exception as err:  # noqa: BLE001 — the message still goes out
+            abi_logging(f"[⚠️] Attachment not uploaded ({type(err).__name__})", level="warning")
+            continue
+        out.append({"key": key, "name": name, "mime": getattr(e, "mime", None) or "", "size": size})
+    return out
+
+
 @cl.on_message
 async def on_message(message: cl.Message):
     """Send the user message to the agent and stream the response, unless
-    an extension takes it (its command, or a hook such as an open form)."""
+    an extension takes it (its command, or a hook such as an open form).
+    Attached files go first to the artifact store; the agent gets their keys."""
     if await _extensions.handle_message(message):
         return
-    await _stream_to_agent(message.content)
+    attachments = await _upload_attachments(message.elements) if message.elements else []
+    await _stream_to_agent(message.content, attachments=attachments or None)
 
 
 @cl.action_callback("plan_confirm")
